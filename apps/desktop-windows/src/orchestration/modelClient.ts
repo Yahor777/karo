@@ -57,6 +57,7 @@ export interface ChatRequest {
   readonly messages: readonly ChatMessage[];
   readonly maxTokens?: number;
   readonly temperature?: number;
+  readonly timeoutMs?: number;
 }
 
 export type ChatResponse =
@@ -145,12 +146,13 @@ export class ChatModelClient {
     if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens;
     if (request.temperature !== undefined) body.temperature = request.temperature;
 
+    const timeoutMs = request.timeoutMs ?? this.timeoutMs;
     const probeRequest = {
       url,
       method: "POST" as const,
       headers,
       body: JSON.stringify(body),
-      timeoutMs: this.timeoutMs,
+      timeoutMs,
     };
 
     let response;
@@ -162,7 +164,7 @@ export class ChatModelClient {
         const mapped = mapThrownProviderError(
           err,
           request.provider,
-          this.timeoutMs,
+          timeoutMs,
           request.apiKey,
         );
         if (attempt === 0 && isRetryableProviderError(mapped)) {

@@ -121,12 +121,14 @@ function buildScriptedClient(script: ScriptedResponse[]): {
       readonly apiKey: string;
       readonly messages: readonly ChatMessage[];
       readonly maxTokens?: number;
+      readonly timeoutMs?: number;
     }): Promise<ScriptedChatResponse>;
   };
   calls: Array<{
     which: string;
     modelId: string;
     maxTokens?: number;
+    timeoutMs?: number;
     messages: readonly ChatMessage[];
   }>;
 } {
@@ -134,6 +136,7 @@ function buildScriptedClient(script: ScriptedResponse[]): {
     which: string;
     modelId: string;
     maxTokens?: number;
+    timeoutMs?: number;
     messages: readonly ChatMessage[];
   }> = [];
   let pointer = 0;
@@ -152,6 +155,7 @@ function buildScriptedClient(script: ScriptedResponse[]): {
           modelId: req.modelId,
           messages: req.messages,
           ...(req.maxTokens !== undefined ? { maxTokens: req.maxTokens } : {}),
+          ...(req.timeoutMs !== undefined ? { timeoutMs: req.timeoutMs } : {}),
         });
         const next = script[pointer];
         pointer += 1;
@@ -417,6 +421,8 @@ describe("DesktopOrchestratorTransport — happy path", () => {
     expect(state?.status).toBe("completed");
     expect(state?.participants).toEqual(["quick_edit"]);
     expect(state?.reviewCycles).toBe(0);
+    expect(state?.agentCoreEstimate?.mode).toBe("quick_edit");
+    expect(state?.agentCoreEstimate?.expectedModelCalls).toBe(0);
     expect(calls).toHaveLength(0);
 
     const artifacts = t.getArtifacts(taskId);
@@ -1466,7 +1472,7 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
 
   it("does not treat app preview wording as a required diff preview", async () => {
     const shell = buildShell();
-    const { client } = buildScriptedClient([
+    const { client, calls } = buildScriptedClient([
       { when: "researcher", response: { kind: "ok", text: "Use a small static site." } },
       {
         when: "coder",
@@ -1474,10 +1480,48 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
           kind: "ok",
           text: JSON.stringify({
             artifacts: [
-              { fileName: "src/karo-demo-site/index.html", content: "<main>JJK landing</main>" },
-              { fileName: "src/karo-demo-site/styles.css", content: "body { background: #08070d; }" },
+              {
+                fileName: "src/karo-demo-site/index.html",
+                content:
+                  "<main><section class=\"hero\">JJK landing</section><section class=\"abilities\">Abilities</section><section class=\"energy\">Characters and energy</section><section class=\"features\">Features</section><section class=\"faq\">FAQ</section></main>",
+              },
             ],
-            summary: "Prepared a runnable landing page.",
+            summary: "Prepared HTML.",
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/styles.css",
+                content: "body { background: #08070d; } .hero { min-height: 80vh; } .card { border: 1px solid #2a2438; } @media (min-width: 800px) { main { display: grid; } }",
+              },
+            ],
+            summary: "Prepared CSS.",
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/script.js", content: "document.documentElement.dataset.ready = 'true';\n" }],
+            summary: "Prepared JS.",
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/README.md", content: "# Preview\n\nApply Changes, then open index.html.\n" }],
+            summary: "Prepared README.",
           }),
         },
       },
@@ -1496,7 +1540,7 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     ]);
     const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
     const { taskId } = await t.createAndRunTask({
-      prompt: "Create a modern landing page and make it possible to run and view in preview.",
+      prompt: "Create a modern landing page with hero, features, FAQ, responsive cards, and make it possible to run and view in preview.",
       metadata: SAMPLE_METADATA,
       mode: "auto",
       participants: [],
@@ -1505,16 +1549,23 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     });
     await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
     expect(t.getTaskState(taskId)?.status).toBe("completed");
+    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder", "coder", "coder"]);
+    expect(t.getTaskState(taskId)?.agentCoreEstimate?.expectedModelCalls).toBe(5);
+    expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
+    expect(t.getTaskState(taskId)?.deterministicValidation?.skipModelReview).toBe(true);
+    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "coder", "validator", "finalizer"]);
     expect(t.getFinalReport(taskId)?.outstandingIssues ?? []).not.toContain(
       "No diff preview was generated for the requested show-changes-before-apply workflow.",
     );
     expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort()).toEqual([
+      "src/karo-demo-site/README.md",
       "src/karo-demo-site/index.html",
+      "src/karo-demo-site/script.js",
       "src/karo-demo-site/styles.css",
     ]);
   });
 
-  it("stages a static website fallback when Coder times out on an empty project website prompt", async () => {
+  it("keeps Coder timeout as recovery state and does not treat emergency fallback as success", async () => {
     const shell = buildShell();
     const apply = vi.fn(async () => ({
       success: true,
@@ -1563,6 +1614,15 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
           retryCount: 1,
         },
       },
+      {
+        when: "coder",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "reduced prompt also timed out",
+          retryCount: 0,
+        },
+      },
     ]);
     const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
     const { taskId } = await t.createAndRunTask({
@@ -1575,36 +1635,87 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
       confirmedByUser: true,
       projectPath: "D:\\проекты\\karo-test",
     });
-    await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
+    await flushUntil(() => t.getTaskState(taskId)?.status === "error");
 
     const state = t.getTaskState(taskId);
-    expect(state?.status).toBe("completed");
+    expect(state?.status).toBe("error");
     expect(state?.decision?.executionMode).toBe("agent");
-    expect(state?.participants).toEqual(["researcher", "coder"]);
     expect(state?.reviewCycles).toBe(0);
     expect(apply).not.toHaveBeenCalled();
-    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder"]);
+    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder"]);
+    expect(calls.filter((call) => call.which === "coder").every((call) => call.timeoutMs === 120000)).toBe(true);
 
     const artifactNames = t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort();
-    expect(artifactNames).toEqual([
-      "src/karo-demo-site/README.md",
-      "src/karo-demo-site/index.html",
-      "src/karo-demo-site/script.js",
-      "src/karo-demo-site/styles.css",
-    ]);
-    const indexArtifact = t.getArtifacts(taskId).find((artifact) => artifact.fileName.endsWith("index.html"))!;
-    const index = t.getArtifactVersion(taskId, indexArtifact.id, indexArtifact.latestVersion)?.content ?? "";
-    expect(index).toContain("hero");
-    expect(index).toContain("abilities");
-    expect(index).toContain("energy");
-    expect(index).toContain("features");
-    expect(index).toContain("FAQ");
+    expect(artifactNames).toEqual([]);
+    expect(state?.errorReason).toContain("Coder timed out");
+    expect(state?.errorReason).toContain("Use emergency static scaffold");
+    expect(state?.errorReason).toContain("This run is not completed");
+    expect(state?.providerDiagnostics?.filter((diagnostic) => diagnostic.agentId === "coder")).toHaveLength(2);
+    expect(state?.providerDiagnostics?.some((diagnostic) => diagnostic.errorType === "provider_timeout")).toBe(true);
 
     const report = t.getFinalReport(taskId);
-    expect(report?.bossSummary).toContain("provider_timeout");
-    expect(report?.bossSummary).toContain("Retry Coder");
-    expect(report?.bossSummary).toContain("open src/karo-demo-site/index.html");
-    expect(report?.finalArtifacts).toHaveLength(4);
+    expect(report?.status).toBe("error");
+    expect(report?.bossSummary).toBeUndefined();
+    expect(report?.outstandingIssues?.join("\n")).toContain("Coder timed out");
+    expect(report?.outstandingIssues?.join("\n")).toContain("Retry Coder");
+    expect(report?.outstandingIssues?.join("\n")).toContain("Emergency fallback");
+    expect(report?.finalArtifacts).toHaveLength(0);
+  });
+
+  it("preserves staged website drafts when a later chunk times out", async () => {
+    const shell = buildShell();
+    const { client } = buildScriptedClient([
+      { when: "researcher", response: { kind: "ok", text: "Build a static Minecraft JJK landing page." } },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/index.html",
+                content: "<main><section class=\"hero\">Hero</section><section>FAQ</section></main>",
+              },
+            ],
+            summary: "Prepared HTML.",
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "styles timeout",
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "styles reduced timeout",
+        },
+      },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const { taskId } = await t.createAndRunTask({
+      prompt:
+        "Create a modern landing page website with hero, abilities, characters, energy, features, FAQ, responsive layout, and preview.",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+      projectPath: "D:\\projects\\karo-test",
+    });
+    await flushUntil(() => t.getTaskState(taskId)?.status === "error");
+
+    const artifacts = t.getArtifacts(taskId);
+    expect(artifacts.map((artifact) => artifact.fileName)).toEqual(["src/karo-demo-site/index.html"]);
+    expect(t.getFinalReport(taskId)?.status).toBe("error");
+    expect(t.getFinalReport(taskId)?.finalArtifacts).toHaveLength(1);
+    expect(t.getTaskState(taskId)?.errorReason).toContain("Saved staged drafts before failure: 1 file(s)");
   });
 
   describe("resumeTask", () => {
@@ -1767,7 +1878,10 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
       expect(state?.decision?.intent).toBe("casual_chat");
       expect(state?.decision?.allowFileChanges).toBe(false);
       expect(state?.decision?.requiresContextEngine).toBe(false);
+      expect(state?.agentCoreEstimate?.mode).toBe("chat");
+      expect(state?.agentCoreEstimate?.expectedModelCalls).toBeLessThanOrEqual(1);
       expect(t.getArtifacts(taskId)).toHaveLength(0);
+      expect(calls.length).toBeLessThanOrEqual(1);
       expect(calls.map((c) => c.which)).not.toContain("researcher");
       expect(calls.map((c) => c.which)).not.toContain("coder");
       expect(calls.map((c) => c.which)).not.toContain("reviewer");

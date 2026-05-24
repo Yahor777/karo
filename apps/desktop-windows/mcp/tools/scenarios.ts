@@ -389,6 +389,21 @@ export async function runScenarioPlanMode(ctx: KaroAutomationContext): Promise<S
       await assertNotVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "plan-no-apply" }),
       await assertNotVisible(ctx, { selector: ".kw-pipeline-bar", name: "plan-no-agent-pipeline" }),
     );
+    const planText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
+    const planFailedHonestly = /Plan model call failed|model_not_found|No encrypted API key/i.test(planText ?? "");
+    bag.assertions.push({
+      name: "plan-result-has-mode-contract-sections",
+      passed:
+        planFailedHonestly ||
+        (/Plan Result/i.test(planText ?? "") &&
+          /Goal/i.test(planText ?? "") &&
+          /Assumptions/i.test(planText ?? "") &&
+          /Implementation steps/i.test(planText ?? "") &&
+          /Risks/i.test(planText ?? "") &&
+          /Tests/i.test(planText ?? "") &&
+          /Suggested mode for execution/i.test(planText ?? "")),
+      details: planText ?? "",
+    });
     bag.screenshots.push((await karoScreenshot(ctx, { name: "plan-mode" })).path);
   });
 }
@@ -579,6 +594,15 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
         name: "quick-edit-raw-events-collapsed",
         passed: (await ctx.page.locator(".kw-agent-step-details[open]").count()) === 0,
         details: "raw event details should be collapsed by default",
+      },
+      {
+        name: "quick-edit-shows-user-facing-activity-not-thoughts",
+        passed:
+          /Show activity details|Prepares deterministic staged changes/i.test(
+            await ctx.page.locator(".kw-agent-card").first().textContent() ?? "",
+          ) &&
+          !/thought\s*[·В]/i.test(await ctx.page.locator('[data-testid="chat-thread"]').textContent() ?? ""),
+        details: await ctx.page.locator(".kw-agent-card").first().textContent() ?? "",
       },
       await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "apply-available-after-quick-edit-artifact" }),
     );

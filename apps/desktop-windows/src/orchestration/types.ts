@@ -147,9 +147,29 @@ export interface TaskStateSnapshot {
   readonly isExplainOnly?: boolean | undefined;
   readonly tokenUsage?: TaskUsageSummary | undefined;
   readonly currentContextUsage?: TokenUsageBreakdown | undefined;
+  readonly providerDiagnostics?: readonly ProviderCallDiagnostic[] | undefined;
+  readonly agentCoreEstimate?: AgentCoreEstimate | undefined;
+  readonly deterministicValidation?: DeterministicValidationSummary | undefined;
   readonly decision?: TaskDecision | undefined;
   readonly clarificationState?: ClarificationState | undefined;
   readonly commandPermissionMode?: CommandPermissionMode | undefined;
+}
+
+export interface ProviderCallDiagnostic {
+  readonly id: string;
+  readonly agentId: AgentId;
+  readonly stageName: string;
+  readonly provider: string;
+  readonly modelId: string;
+  readonly inputTokenEstimate: number;
+  readonly selectedFilesCount: number;
+  readonly contextTokens: number;
+  readonly timeoutMs: number;
+  readonly elapsedMs: number;
+  readonly errorType?: string | undefined;
+  readonly partialOutputReceived: boolean;
+  readonly artifactsCreated: boolean;
+  readonly createdAt: string;
 }
 
 export type SelectedContextFileSummary = {
@@ -430,4 +450,59 @@ export interface TaskUsageSummary {
   readonly estimatedCostUsd?: number | undefined;
   readonly perAgent: readonly AgentTokenUsage[];
   readonly warnings: readonly string[];
+}
+
+export type AgentCoreMode =
+  | "chat"
+  | "plan"
+  | "agent"
+  | "quick_edit"
+  | "read_only_context"
+  | "safety"
+  | "clarify";
+
+export type AgentCoreStageId =
+  | "router"
+  | "chat_assistant"
+  | "context_analyst"
+  | "context_curator"
+  | "planner"
+  | "chunked_coder"
+  | "deterministic_validator"
+  | "reviewer"
+  | "targeted_fixer"
+  | "finalizer"
+  | "safety_check";
+
+export interface AgentCoreStageEstimate {
+  readonly id: AgentCoreStageId;
+  readonly label: string;
+  readonly modelCall: boolean;
+  readonly deterministic: boolean;
+  readonly timeoutMs?: number | undefined;
+}
+
+export interface AgentCoreEstimate {
+  readonly mode: AgentCoreMode;
+  readonly routeReason: string;
+  readonly expectedModelCalls: number;
+  readonly maxExpectedModelCalls: number;
+  readonly baselineSingleModelCalls: number;
+  readonly avoidedFullPipelineModelCalls: number;
+  readonly contextTokensEstimate: number;
+  readonly selectedFilesEstimate: number;
+  readonly requiresProjectContext: boolean;
+  readonly allowsArtifacts: boolean;
+  readonly timeoutRisk: "low" | "medium" | "high";
+  readonly fallbackCountsAsSuccess: false;
+  readonly stages: readonly AgentCoreStageEstimate[];
+  readonly warnings: readonly string[];
+}
+
+export interface DeterministicValidationSummary {
+  readonly status: "passed" | "needs_model_review" | "failed";
+  readonly skipModelReview: boolean;
+  readonly issues: readonly string[];
+  readonly checkedSignals: readonly string[];
+  readonly reason: string;
 }

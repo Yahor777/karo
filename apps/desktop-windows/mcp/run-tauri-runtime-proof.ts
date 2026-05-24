@@ -326,6 +326,8 @@ async function runAgentCreateFileScenario(): Promise<RuntimeScenario> {
   const artifactNames = result.artifacts.map((artifact) => artifact.fileName);
   const assertions: Assertion[] = [
     bool("decision-allows-file-changes", state?.decision?.allowFileChanges === true, String(state?.decision?.allowFileChanges)),
+    bool("quick-edit-route-used", result.traceAgentIds.includes("quick_edit"), result.traceAgentIds.join(", ")),
+    bool("quick-edit-zero-model-calls", model.calls.length === 0, model.calls.join(", ")),
     bool("agent-artifact-created", result.artifacts.length > 0, artifactNames.join(", ")),
     bool("expected-artifact-name", artifactNames.includes("src/karo-agent-proof.txt"), artifactNames.join(", ")),
     bool("command-not-executed", true),
@@ -376,7 +378,8 @@ async function runWebsiteCreationScenario(): Promise<RuntimeScenario> {
     bool("agent-route-selected", state?.decision?.executionMode === "agent", state?.decision?.executionMode),
     bool("website-task-allows-file-changes", state?.decision?.allowFileChanges === true, String(state?.decision?.allowFileChanges)),
     bool("not-quick-edit", !traceAgents.includes("quick_edit"), traceAgents.join(", ")),
-    bool("full-agent-path-used", ["researcher", "coder", "reviewer", "boss"].every((agent) => traceAgents.includes(agent)), traceAgents.join(", ")),
+    bool("chunked-agent-path-used", ["researcher", "coder", "validator"].every((agent) => traceAgents.includes(agent)), traceAgents.join(", ")),
+    bool("reviewer-boss-skipped-after-deterministic-validation", !traceAgents.includes("reviewer") && !traceAgents.includes("boss"), traceAgents.join(", ")),
     bool("website-artifacts-created", artifactNames.length >= 2, artifactNames.join(", ")),
     bool(
       "website-artifacts-have-runnable-site-files",
@@ -386,7 +389,8 @@ async function runWebsiteCreationScenario(): Promise<RuntimeScenario> {
     ),
     bool("no-auto-apply", applyCalled === false),
     bool("command-not-executed", true),
-    bool("model-called", model.calls.length >= 3, model.calls.join(", ")),
+    bool("expected-model-call-budget", model.calls.length === 5, model.calls.join(", ")),
+    bool("deterministic-validation-passed", state?.deterministicValidation?.skipModelReview === true, state?.deterministicValidation?.status),
     bool("website-run-completed", state?.status === "completed", state?.status),
   ];
   return scenarioResult("one_prompt_website_creation", WEBSITE_PROMPT, assertions, {
@@ -652,18 +656,13 @@ class ProbeModelClient {
     if (this.mode === "website_success") {
       if (/Coder agent/i.test(systemPrompt)) {
         const userPrompt = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
-        const fileName = /src\/karo-demo-site\/styles\.css/i.test(userPrompt)
-          ? "src/karo-demo-site/styles.css"
-          : /src\/karo-demo-site\/script\.js/i.test(userPrompt)
-            ? "src/karo-demo-site/script.js"
-            : /src\/karo-demo-site\/README\.md/i.test(userPrompt)
-              ? "src/karo-demo-site/README.md"
-              : "src/karo-demo-site/index.html";
+        const targetFile = /Target file:\s*(src\/karo-demo-site\/(?:index\.html|styles\.css|script\.js|README\.md))/i.exec(userPrompt)?.[1];
+        const fileName = targetFile ?? "src/karo-demo-site/index.html";
         const contentByFile: Record<string, string> = {
           "src/karo-demo-site/index.html":
             '<!doctype html>\n<html lang="ru">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Minecraft JJK Mod</title>\n  <link rel="stylesheet" href="./styles.css">\n  <script defer src="./script.js"></script>\n</head>\n<body>\n  <main class="jjk-page">\n    <section class="hero">\n      <p class="eyebrow">Minecraft JJK Mod</p>\n      <h1>Dark anime combat for cursed-technique battles</h1>\n      <p class="lead">Hero, features, abilities, characters, energy, and FAQ sections are ready for a responsive preview.</p>\n    </section>\n    <section class="features"><h2>Features</h2><ul><li>Domain expansion inspired encounters</li><li>Ability loadouts</li><li>Responsive landing layout</li></ul></section>\n    <section class="abilities"><h2>Abilities</h2><p>Black Flash, Infinity, cursed tools, and team roles.</p></section>\n    <section class="energy"><h2>Characters / Energy</h2><p>Build around cursed energy roles and anime-style progression.</p></section>\n    <section class="faq"><h2>FAQ</h2><p>Works as a static demo page and can be opened after Apply Changes.</p></section>\n  </main>\n</body>\n</html>\n',
           "src/karo-demo-site/styles.css":
-            ':root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #07070b; color: #f5f3ff; }\nbody { margin: 0; background: radial-gradient(circle at top, #211334, #07070b 52%); }\n.jjk-page { min-height: 100vh; padding: clamp(24px, 5vw, 72px); display: grid; gap: 28px; }\n.hero { max-width: 920px; }\n.eyebrow { color: #a78bfa; text-transform: uppercase; letter-spacing: .08em; }\nh1 { font-size: clamp(42px, 8vw, 92px); line-height: .94; margin: 0; }\n.lead { color: #c9c3d9; font-size: clamp(18px, 2.2vw, 24px); max-width: 760px; }\nsection:not(.hero) { border: 1px solid #2a2438; border-radius: 18px; padding: 24px; background: rgba(17, 17, 26, .82); }\n@media (min-width: 860px) { .jjk-page { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero { grid-column: 1 / -1; } }\n',
+            ':root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #07070b; color: #f5f3ff; }\nbody { margin: 0; background: radial-gradient(circle at top, #211334, #07070b 52%); }\n.jjk-page { min-height: 100vh; padding: clamp(24px, 5vw, 72px); display: grid; gap: 28px; }\n.hero { max-width: 920px; }\n.eyebrow { color: #a78bfa; text-transform: uppercase; letter-spacing: .08em; }\nh1 { font-size: clamp(42px, 8vw, 92px); line-height: .94; margin: 0; }\n.lead { color: #c9c3d9; font-size: clamp(18px, 2.2vw, 24px); max-width: 760px; }\n.card, section:not(.hero) { border: 1px solid #2a2438; border-radius: 18px; padding: 24px; background: rgba(17, 17, 26, .82); }\n@media (min-width: 860px) { .jjk-page { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero { grid-column: 1 / -1; } }\n',
           "src/karo-demo-site/script.js":
             "document.querySelectorAll('a[href^=\"#\"]').forEach((link) => {\n  link.addEventListener('click', (event) => {\n    const target = document.querySelector(link.getAttribute('href'));\n    if (target) { event.preventDefault(); target.scrollIntoView({ behavior: 'smooth' }); }\n  });\n});\n",
           "src/karo-demo-site/README.md":

@@ -421,6 +421,8 @@ describe("DesktopOrchestratorTransport — happy path", () => {
     expect(state?.status).toBe("completed");
     expect(state?.participants).toEqual(["quick_edit"]);
     expect(state?.reviewCycles).toBe(0);
+    expect(state?.agentCoreEstimate?.mode).toBe("quick_edit");
+    expect(state?.agentCoreEstimate?.expectedModelCalls).toBe(0);
     expect(calls).toHaveLength(0);
 
     const artifacts = t.getArtifacts(taskId);
@@ -1470,7 +1472,7 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
 
   it("does not treat app preview wording as a required diff preview", async () => {
     const shell = buildShell();
-    const { client } = buildScriptedClient([
+    const { client, calls } = buildScriptedClient([
       { when: "researcher", response: { kind: "ok", text: "Use a small static site." } },
       {
         when: "coder",
@@ -1478,7 +1480,11 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
           kind: "ok",
           text: JSON.stringify({
             artifacts: [
-              { fileName: "src/karo-demo-site/index.html", content: "<main><section class=\"hero\">JJK landing</section></main>" },
+              {
+                fileName: "src/karo-demo-site/index.html",
+                content:
+                  "<main><section class=\"hero\">JJK landing</section><section class=\"abilities\">Abilities</section><section class=\"energy\">Characters and energy</section><section class=\"features\">Features</section><section class=\"faq\">FAQ</section></main>",
+              },
             ],
             summary: "Prepared HTML.",
           }),
@@ -1490,7 +1496,10 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
           kind: "ok",
           text: JSON.stringify({
             artifacts: [
-              { fileName: "src/karo-demo-site/styles.css", content: "body { background: #08070d; } .hero { min-height: 80vh; }" },
+              {
+                fileName: "src/karo-demo-site/styles.css",
+                content: "body { background: #08070d; } .hero { min-height: 80vh; } .card { border: 1px solid #2a2438; } @media (min-width: 800px) { main { display: grid; } }",
+              },
             ],
             summary: "Prepared CSS.",
           }),
@@ -1540,6 +1549,11 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     });
     await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
     expect(t.getTaskState(taskId)?.status).toBe("completed");
+    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder", "coder", "coder"]);
+    expect(t.getTaskState(taskId)?.agentCoreEstimate?.expectedModelCalls).toBe(5);
+    expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
+    expect(t.getTaskState(taskId)?.deterministicValidation?.skipModelReview).toBe(true);
+    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "coder", "validator", "finalizer"]);
     expect(t.getFinalReport(taskId)?.outstandingIssues ?? []).not.toContain(
       "No diff preview was generated for the requested show-changes-before-apply workflow.",
     );
@@ -1864,7 +1878,10 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
       expect(state?.decision?.intent).toBe("casual_chat");
       expect(state?.decision?.allowFileChanges).toBe(false);
       expect(state?.decision?.requiresContextEngine).toBe(false);
+      expect(state?.agentCoreEstimate?.mode).toBe("chat");
+      expect(state?.agentCoreEstimate?.expectedModelCalls).toBeLessThanOrEqual(1);
       expect(t.getArtifacts(taskId)).toHaveLength(0);
+      expect(calls.length).toBeLessThanOrEqual(1);
       expect(calls.map((c) => c.which)).not.toContain("researcher");
       expect(calls.map((c) => c.which)).not.toContain("coder");
       expect(calls.map((c) => c.which)).not.toContain("reviewer");

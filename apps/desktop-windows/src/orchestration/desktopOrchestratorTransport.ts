@@ -55,6 +55,10 @@ import { API_KEY_SECRET_PREFIX, type ApiKeyMetadata } from "../ui/desktopApiKeyS
 import { ChatModelClient, type ChatMessage } from "./modelClient.js";
 import { randomUuid, sha256Hex } from "./webcrypto.js";
 import { runDecisionEngine, runDecisionEngineSync } from "./decisionEngine.js";
+import {
+  estimateAgentCoreExecution,
+  validateStagedArtifactsDeterministically,
+} from "./agentCore.js";
 import { getPresetForModel } from "./promptPresets.js";
 import { buildTokenUsageBreakdown, estimateTokens } from "./tokenEstimator.js";
 import {
@@ -887,7 +891,9 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       hasActiveProject,
     });
     const quickEditPlan =
-      decision.allowFileChanges === true || input.mode === "manual" ? parseQuickEditPlan(input.prompt) : null;
+      decision.allowFileChanges === true || input.mode === "manual"
+        ? parseQuickEditPlan(input.prompt)
+        : null;
     const participants =
       quickEditPlan !== null ? ["quick_edit"] : this.resolveParticipantsForDecision(input, decision);
     const apiKey =
@@ -918,6 +924,13 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         : [],
       maxContextTokens: currentPreset.contextBudgetMultiplier * 128_000,
     });
+    const agentCoreEstimate = estimateAgentCoreExecution({
+      prompt: input.prompt,
+      decision,
+      quickEditAvailable: quickEditPlan !== null,
+      contextTokensEstimate: breakdown.selectedFilesTokens,
+      selectedFilesEstimate: 0,
+    });
 
     const initialState: TaskStateSnapshot = {
       id: taskId,
@@ -936,6 +949,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       testRunLogContent: "",
       isExplainOnly,
       decision,
+      agentCoreEstimate,
       clarificationState,
       currentContextUsage: breakdown,
       commandPermissionMode: "smart_approval",
@@ -1058,6 +1072,14 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         userPrompt: resolvedPrompt,
         maxContextTokens: currentPreset.contextBudgetMultiplier * 128_000,
       });
+      const quickEditPlan = newDecision.allowFileChanges === true ? parseQuickEditPlan(resolvedPrompt) : null;
+      const agentCoreEstimate = estimateAgentCoreExecution({
+        prompt: resolvedPrompt,
+        decision: newDecision,
+        quickEditAvailable: quickEditPlan !== null,
+        contextTokensEstimate: breakdown.selectedFilesTokens,
+        selectedFilesEstimate: 0,
+      });
 
       internal.state = {
         ...internal.state,
@@ -1071,6 +1093,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
           resolved: true,
         },
         currentContextUsage: breakdown,
+        agentCoreEstimate,
         isExplainOnly,
         originalPrompt: resolvedPrompt, // обновляем рабочий prompt
         updatedAt: this.clock().toISOString(),
@@ -1750,7 +1773,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       });
 
       const quickEditPlan =
-        (allowFileChanges || input.mode === "manual") && !requiresContextEngineForDecision
+        (allowFileChanges || input.mode === "manual")
           ? parseQuickEditPlan(originalPrompt)
           : null;
       if (quickEditPlan !== null) {
@@ -1845,11 +1868,22 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
             selectedFiles: internal.contextFilesForUsage ?? [],
             maxContextTokens: currentPreset.contextBudgetMultiplier * 128_000,
           });
+          const agentCoreEstimate =
+            activeDecision !== undefined
+              ? estimateAgentCoreExecution({
+                  prompt: originalPrompt,
+                  decision: activeDecision,
+                  quickEditAvailable: false,
+                  contextTokensEstimate: contextUsage.selectedFilesTokens,
+                  selectedFilesEstimate: contextPackage.selectedFilesCount,
+                })
+              : internal.state.agentCoreEstimate;
 
           internal.state = {
             ...internal.state,
             contextSummary,
             currentContextUsage: contextUsage,
+            ...(agentCoreEstimate !== undefined ? { agentCoreEstimate } : {}),
           };
           this.notifyState(taskId);
           this.persistTaskRun(taskId);
@@ -2072,6 +2106,37 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       let currentArtifactVersion = coderOutput.version;
       let currentContent = coderOutput.content;
       let currentFileName = coderOutput.fileName;
+
+      const preReviewAcceptanceIssues = this.collectAcceptanceIssues(taskId, originalPrompt);
+      if (preReviewAcceptanceIssues.length > 0) {
+        this.markStoppedLimit(taskId, preReviewAcceptanceIssues);
+        return;
+      }
+
+      const deterministicValidation = this.runDeterministicValidation(taskId, originalPrompt);
+      if (deterministicValidation.status === "failed") {
+        this.markStoppedLimit(taskId, deterministicValidation.issues);
+        return;
+      }
+      if (deterministicValidation.skipModelReview) {
+        internal.state = {
+          ...internal.state,
+          participants: isStaticWebsiteCreationPrompt(originalPrompt)
+            ? ["researcher", "coder", "validator", "finalizer"]
+            : internal.state.participants,
+          updatedAt: this.clock().toISOString(),
+        };
+        this.notifyState(taskId);
+        this.markCompleted(taskId, {
+          kind: "approved",
+          verdict: BOSS_VERDICT_RUSSIAN.approved,
+          notes: [
+            deterministicValidation.reason,
+            "Deterministic validation passed, so Karo skipped model Reviewer/Boss calls for this run.",
+          ],
+        });
+        return;
+      }
 
       // ---------- Reviewer / Fixer loop ----------
       let turn = 0;
@@ -3257,6 +3322,54 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       issues.push(DIFF_REQUIRED_ISSUE);
     }
     return issues;
+  }
+
+  private runDeterministicValidation(taskId: TaskId, originalPrompt: string) {
+    const internal = this.tasks.get(taskId);
+    if (internal === undefined) {
+      return {
+        status: "failed" as const,
+        skipModelReview: false,
+        issues: ["Task state was not found for deterministic validation."],
+        checkedSignals: [],
+        reason: "Task state missing.",
+      };
+    }
+    const artifacts = this.collectArtifactValidationInputs(taskId);
+    this.publishTrace(taskId, "validator", { kind: "status", status: "started" });
+    const validation = validateStagedArtifactsDeterministically({
+      prompt: originalPrompt,
+      artifacts,
+    });
+    internal.state = {
+      ...internal.state,
+      deterministicValidation: validation,
+      updatedAt: this.clock().toISOString(),
+    };
+    this.notifyState(taskId);
+    this.publishTrace(taskId, "validator", {
+      kind: "thought",
+      text:
+        validation.status === "passed"
+          ? `Deterministic validation passed: ${validation.checkedSignals.join(", ")}.`
+          : `Deterministic validation needs review: ${validation.issues.join("; ") || validation.reason}`,
+    });
+    this.publishTrace(taskId, "validator", {
+      kind: "status",
+      status: validation.status === "failed" ? "error" : "finished",
+    });
+    return validation;
+  }
+
+  private collectArtifactValidationInputs(taskId: TaskId): Array<{ fileName: string; content: string }> {
+    const artifacts: Array<{ fileName: string; content: string }> = [];
+    for (const meta of this.getArtifacts(taskId)) {
+      const version = this.getArtifactVersion(taskId, meta.id, meta.latestVersion);
+      if (version !== null) {
+        artifacts.push({ fileName: version.fileName, content: version.content });
+      }
+    }
+    return artifacts;
   }
 
   private normalizeBossRejection(

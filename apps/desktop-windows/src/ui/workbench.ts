@@ -2085,7 +2085,17 @@ export function mountWorkspaceShell(
       const pipelineBar = doc.createElement("div");
       pipelineBar.className = "kw-pipeline-bar";
 
-      const pipelineAgents: BuiltinAgentRole[] = ["researcher", "coder", "reviewer", "fixer", "boss"];
+      const canonicalPipelineAgents: BuiltinAgentRole[] = ["researcher", "coder", "reviewer", "fixer", "boss"];
+      const participantPipelineAgents = taskState.participants.filter(
+        (agentId): agentId is BuiltinAgentRole =>
+          agentId === "researcher" ||
+          agentId === "coder" ||
+          agentId === "reviewer" ||
+          agentId === "fixer" ||
+          agentId === "boss",
+      );
+      const pipelineAgents =
+        participantPipelineAgents.length > 0 ? participantPipelineAgents : canonicalPipelineAgents;
       for (let i = 0; i < pipelineAgents.length; i++) {
         const agentId = pipelineAgents[i]!;
         const agentStatus = getAgentStatusInPipeline(agentId, taskState.status, groups);
@@ -7701,6 +7711,8 @@ function readableAgentName(agentId: AgentId): string {
   const known = BUILTIN_AGENTS.find((a) => a.id === agentId);
   if (known !== undefined) return known.displayName;
   if (agentId === "quick_edit") return "Quick Edit";
+  if (agentId === "validator") return "Deterministic Validator";
+  if (agentId === "finalizer") return "Finalizer";
   if (agentId === "orchestrator") return "Orchestrator";
   return agentId;
 }
@@ -7719,6 +7731,10 @@ function agentInitials(agentId: AgentId): string {
       return "B";
     case "quick_edit":
       return "QE";
+    case "validator":
+      return "V";
+    case "finalizer":
+      return "F";
     case "orchestrator":
       return "O";
     default:
@@ -7740,6 +7756,10 @@ function agentRoleLine(agentId: AgentId): string {
       return "Summarizes result and next steps";
     case "quick_edit":
       return "Prepares deterministic staged changes";
+    case "validator":
+      return "Runs cheap deterministic checks before model review";
+    case "finalizer":
+      return "Summarizes result and next steps";
     case "orchestrator":
       return "Routes to Chat, Plan, Agent, Safety, or Quick Edit";
     default:

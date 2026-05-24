@@ -79,6 +79,7 @@ export const ALL_SCENARIOS: ReadonlyArray<readonly [string, ScenarioFn]> = [
   ["composer", runScenarioComposer],
   ["context_popover", runScenarioContextPopover],
   ["casual_chat", runScenarioCasualChat],
+  ["chat_mode_readonly", runScenarioChatModeReadonly],
   ["clarification", runScenarioClarification],
   ["plan_mode", runScenarioPlanMode],
   ["project_explain", runScenarioProjectExplain],
@@ -344,6 +345,28 @@ export async function runScenarioCasualChat(ctx: KaroAutomationContext): Promise
       await assertNotVisible(ctx, { selector: ".kw-chat-final", name: "no-final-report" }),
     );
     bag.screenshots.push((await karoScreenshot(ctx, { name: "casual-chat" })).path);
+  });
+}
+
+export async function runScenarioChatModeReadonly(ctx: KaroAutomationContext): Promise<ScenarioResult> {
+  return runScenario(ctx, "chat_mode_readonly", async (bag) => {
+    await ctx.openApp();
+    await resetToNewChat(ctx);
+    await karoClick(ctx, { testId: TEST_IDS.composerModeChat });
+    await sendLocalMessage(ctx, "\u0441\u043e\u0437\u0434\u0430\u0439 \u0444\u0430\u0439\u043b src/chat-mode-should-not-write.txt \u0441 \u0442\u0435\u043a\u0441\u0442\u043e\u043c hello");
+    await waitForAssistantSettled(ctx, 4_000);
+    const text = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
+    bag.assertions.push(
+      {
+        name: "chat-mode-refuses-file-changes",
+        passed: /Chat Mode is read-only/i.test(text ?? "") && /Agent Mode|Auto Mode/i.test(text ?? ""),
+        details: text ?? "",
+      },
+      await assertNotVisible(ctx, { selector: ".kw-pipeline-bar", name: "chat-mode-no-agent-pipeline" }),
+      await assertNotVisible(ctx, { selector: ".kw-chat-final", name: "chat-mode-no-final-report" }),
+      await assertNotVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "chat-mode-no-apply" }),
+    );
+    bag.screenshots.push((await karoScreenshot(ctx, { name: "chat-mode-readonly" })).path);
   });
 }
 

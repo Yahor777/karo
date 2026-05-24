@@ -855,6 +855,133 @@ describe("workbench ??? chat workbench", () => {
     expect(serialized).toContain("second question");
   });
 
+  it("new chat does not leak previous conversation history into Chat Mode payload", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = { kind: "ok", text: "noted" };
+    mountWorkspaceShell(root, opts);
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "remember the word watermelon";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    root.querySelector<HTMLButtonElement>(".kw-sidebar-new-chat")!.click();
+    await flush();
+    opts.chatModelClient.nextResponse = { kind: "ok", text: "I only see this chat." };
+    const secondPrompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    secondPrompt.value = "what was the previous message in this chat?";
+    secondPrompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(opts.chatModelClient.calls).toHaveLength(2);
+    const serialized = opts.chatModelClient.calls[1]!.messages
+      .map((message) => `${message.role}:${message.content}`)
+      .join("\n");
+    expect(serialized).toContain("what was the previous message");
+    expect(serialized).not.toContain("watermelon");
+  });
+
+  it("Chat Mode file-change request is blocked without model call or artifacts", async () => {
+    const opts = buildOptions();
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-chat"]')!.click();
+    await flush();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "\u0441\u043e\u0437\u0434\u0430\u0439 \u0444\u0430\u0439\u043b src/chat-mode-should-not-write.txt \u0441 \u0442\u0435\u043a\u0441\u0442\u043e\u043c hello";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(opts.transport.createCalls).toHaveLength(0);
+    expect(opts.chatModelClient.calls).toHaveLength(0);
+    const text = root.textContent ?? "";
+    expect(text).toContain("Chat Mode is read-only");
+    expect(text).toContain("Agent Mode");
+    expect(root.querySelector(".kw-chat-final")).toBeNull();
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("Chat Mode project question uses read-only Context Engine payload", async () => {
+    const built = buildShell();
+    built.reads.set("recentProject", {
+      path: "D:\\projects\\karo",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    });
+    built.shell.shell_build_task_context = vi.fn(async () => ({
+      projectRoot: "D:\\projects\\karo",
+      prompt: "what handles Apply Changes?",
+      fileTreeSummary: [],
+      selectedFiles: [
+        {
+          relativePath: "apps/desktop-windows/src/shell/nativeBindings.ts",
+          content: "export const shellApplyChanges = 'apply changes native binding';",
+          sizeBytes: 64,
+          score: 42,
+          reason: ["apply changes target"],
+          truncated: false,
+        },
+        {
+          relativePath: "apps/desktop-windows/src/orchestration/desktopOrchestratorTransport.ts",
+          content: "export class DesktopOrchestratorTransport {}",
+          sizeBytes: 64,
+          score: 40,
+          reason: ["transport"],
+          truncated: false,
+        },
+      ],
+      ignoredSummary: {
+        ignoredDirs: 0,
+        ignoredFiles: 0,
+        ignoredLargeFiles: 0,
+        ignoredBinaryFiles: 0,
+        ignoredSecretFiles: 0,
+      },
+      tokenBudgetHint: 50000,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      warnings: [],
+      scannedFilesCount: 12,
+      selectedFilesCount: 2,
+    }));
+    const chat = new FakeChatModelClient();
+    chat.nextResponse = { kind: "ok", text: "Apply Changes is handled by native bindings and transport." };
+    mountWorkspaceShell(root, {
+      session: SAMPLE_SESSION,
+      metadata: SAMPLE_METADATA,
+      desktopShell: built.shell,
+      transport: new FakeTransport(),
+      chatModelClient: chat,
+      onSignOut: vi.fn(),
+    });
+    await flush();
+    (root as any)._karoState.project = {
+      path: "D:\\projects\\karo",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    };
+    root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-chat"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "what handles Apply Changes?";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(built.shell.shell_build_task_context).toHaveBeenCalledWith(
+      "D:\\projects\\karo",
+      "what handles Apply Changes?",
+      expect.objectContaining({ maxFiles: 8, includeContent: true }),
+    );
+    const serialized = chat.calls[0]!.messages.map((message) => message.content).join("\n");
+    expect(serialized).toContain("nativeBindings.ts");
+    expect(serialized).toContain("desktopOrchestratorTransport.ts");
+    expect(root.querySelector("[data-testid='chat-readonly-context']")?.textContent).toContain("2 files");
+    expect(root.querySelector(".kw-chat-final")).toBeNull();
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
   it("agent tasks include a short conversation summary without mixing chats", async () => {
     const opts = buildOptions();
     opts.chatModelClient.nextResponse = { kind: "ok", text: "first answer" };

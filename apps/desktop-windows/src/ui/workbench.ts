@@ -31,7 +31,12 @@ import type {
   Session,
 } from "@ai-agent-orchestrator/shared-core";
 
-import type { DesktopShell, TerminalProfile } from "../shell/types.js";
+import type {
+  BuildTaskContextOptions,
+  DesktopShell,
+  TaskContextPackage,
+  TerminalProfile,
+} from "../shell/types.js";
 import type {
   ArtifactVersion,
   ArtifactMetadata,
@@ -170,6 +175,19 @@ interface ChatMessageView {
   readonly intent?: IntentKind;
   readonly pending?: boolean;
   readonly error?: boolean;
+  readonly chatContext?: ChatReadOnlyContextView;
+}
+
+interface ChatReadOnlyContextView {
+  readonly profile: "project_explain" | "apply_changes_explain" | "security_review";
+  readonly selectedFilesCount: number;
+  readonly scannedFilesCount: number;
+  readonly selectedFiles: readonly string[];
+  readonly warnings: readonly string[];
+}
+
+interface ChatReadOnlyContext extends ChatReadOnlyContextView {
+  readonly modelContext: string;
 }
 
 interface RunView {
@@ -1589,6 +1607,9 @@ export function mountWorkspaceShell(
       } else {
         body.append(renderMarkdownBlock(doc, message.text));
       }
+      if (message.chatContext !== undefined) {
+        body.append(buildChatReadOnlyContextSummary(doc, message.chatContext));
+      }
       if (looksSilentlyTruncated(message.text)) {
         const notice = doc.createElement("div");
         notice.className = "kw-truncation-notice";
@@ -1614,6 +1635,33 @@ export function mountWorkspaceShell(
     }
     wrap.append(author, body);
     return wrap;
+  }
+
+  function buildChatReadOnlyContextSummary(doc: Document, context: ChatReadOnlyContextView): HTMLElement {
+    const details = doc.createElement("details");
+    details.className = "kw-chat-readonly-context";
+    details.dataset["testid"] = "chat-readonly-context";
+    const summary = doc.createElement("summary");
+    summary.textContent = `Read-only context · ${String(context.selectedFilesCount)} files · ${context.profile}`;
+    details.append(summary);
+    if (context.selectedFiles.length > 0) {
+      const list = doc.createElement("ul");
+      list.className = "kw-context-file-list";
+      for (const file of context.selectedFiles.slice(0, 8)) {
+        const item = doc.createElement("li");
+        item.className = "kw-context-file-item";
+        item.textContent = file;
+        list.append(item);
+      }
+      details.append(list);
+    }
+    if (context.warnings.length > 0) {
+      const warn = doc.createElement("p");
+      warn.className = "kw-context-warning";
+      warn.textContent = context.warnings.join(" ");
+      details.append(warn);
+    }
+    return details;
   }
 
   function buildContextUsedBlock(doc: Document, summary: any): HTMLElement {
@@ -3162,6 +3210,23 @@ export function mountWorkspaceShell(
       ].join("\n");
     }
 
+    function buildChatModeFileChangeRefusal(promptText: string): string {
+      const trimmed = compactUiText(promptText, 180);
+      return [
+        "Chat Mode is read-only, so I did not create, modify, stage, or apply any files.",
+        "",
+        `Request that needs file changes: ${trimmed}`,
+        "",
+        "Use Agent Mode or Auto Mode for file changes. Karo will prepare staged artifacts first, and Apply Changes is still required before anything is written to disk.",
+      ].join("\n");
+    }
+
+    function isExplicitFileChangePrompt(promptText: string): boolean {
+      const text = promptText.toLowerCase();
+      return /\b(create|write|modify|change|edit|fix|delete|remove|add|implement|refactor|generate)\b/iu.test(text) ||
+        /\u0441\u043e\u0437\u0434\u0430\u0439|\u0437\u0430\u043f\u0438\u0448\u0438|\u0438\u0437\u043c\u0435\u043d\u0438|\u0438\u0441\u043f\u0440\u0430\u0432\u044c|\u0434\u043e\u0431\u0430\u0432\u044c|\u0443\u0434\u0430\u043b\u0438|\u0440\u0435\u0430\u043b\u0438\u0437\u0443\u0439|\u043d\u0430\u043f\u0438\u0448\u0438/iu.test(text);
+    }
+
     async function handleComposerSubmit(): Promise<void> {
       if (textarea.value.trim().length === 0) {
         status.textContent = "Prompt cannot be empty.";
@@ -3205,6 +3270,22 @@ export function mountWorkspaceShell(
         textarea.value = "";
         status.textContent = "Safety system blocked automatic command execution.";
         status.dataset["state"] = "warn";
+        renderRoute();
+        return;
+      }
+      if (mode === "chat" && isExplicitFileChangePrompt(promptText)) {
+        appendChatMessage({ role: "user", text: promptText, intent, kind: "chat" });
+        appendChatMessage({
+          role: "assistant",
+          text: buildChatModeFileChangeRefusal(promptText),
+          mode: "chat",
+          badgeMode: "chat",
+          intent,
+          kind: "chat",
+        });
+        textarea.value = "";
+        status.textContent = "Chat Mode is read-only. No file changes were staged.";
+        status.dataset["state"] = "info";
         renderRoute();
         return;
       }
@@ -3295,6 +3376,7 @@ export function mountWorkspaceShell(
             : `Chat model call failed: ${answer.error}. Проверь модель/API key.`,
           pending: false,
           error: !answer.ok,
+          ...(answer.ok && answer.context !== undefined ? { chatContext: answer.context } : {}),
         });
         status.textContent = answer.ok ? "Answered in Chat Mode." : "Chat model call failed.";
         status.dataset["state"] = answer.ok ? "success" : "error";
@@ -3577,21 +3659,22 @@ export function mountWorkspaceShell(
   async function runChatMode(
     prompt: string,
     activeComposerMode?: ComposerMode,
-  ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; text: string; context?: ChatReadOnlyContext } | { ok: false; error: string }> {
     if (state.metadata.modelId === undefined || state.metadata.modelId.length === 0) {
       return { ok: false, error: "model_not_found: pick a model in the Models tab first" };
     }
     try {
-      const [apiKey, webContext] = await Promise.all([
+      const [apiKey, webContext, readOnlyContext] = await Promise.all([
         resolveApiKeyForUi(),
         buildWebContextForPrompt(prompt),
+        buildReadOnlyChatContext(prompt),
       ]);
       const request = chatModelClient.chat({
         provider: state.metadata.provider,
         modelId: state.metadata.modelId,
         ...(state.metadata.baseUrl !== undefined ? { baseUrl: state.metadata.baseUrl } : {}),
         apiKey,
-        messages: buildChatMessages(prompt, webContext, activeComposerMode),
+        messages: buildChatMessages(prompt, webContext, activeComposerMode, readOnlyContext),
         maxTokens: 4096,
         temperature: 0.4,
       });
@@ -3599,7 +3682,13 @@ export function mountWorkspaceShell(
         activeComposerMode === "plan"
           ? await withTimeout(request, PLAN_MODE_TIMEOUT_MS, "plan_timeout: Plan Mode did not finish in time. Try reducing context or switching model.")
           : await request;
-      if (response.kind === "ok") return { ok: true, text: stripModePreamble(response.text) };
+      if (response.kind === "ok") {
+        return {
+          ok: true,
+          text: stripModePreamble(response.text),
+          ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+        };
+      }
       pushLog("error", `chat model failed: ${response.providerCode}: ${response.providerMessage}`);
       return { ok: false, error: `${response.providerCode}: ${response.providerMessage}` };
     } catch (err) {
@@ -3652,10 +3741,100 @@ export function mountWorkspaceShell(
     }
   }
 
+  async function buildReadOnlyChatContext(prompt: string): Promise<ChatReadOnlyContext | undefined> {
+    const profile = inferReadOnlyChatContextProfile(prompt);
+    if (profile === null || state.project === null) return undefined;
+    if (options.desktopShell.shell_build_task_context === undefined) return undefined;
+    try {
+      const pkg = await options.desktopShell.shell_build_task_context(
+        state.project.path,
+        prompt,
+        chatContextOptionsForProfile(profile),
+      );
+      state.lastContextBuildCalled = true;
+      state.lastContextProjectRoot = pkg.projectRoot;
+      state.lastContextNormalizedRoot = pkg.projectRoot;
+      state.lastContextFileCount = pkg.scannedFilesCount;
+      state.lastContextSelectedFiles = pkg.selectedFiles.map((file) => file.relativePath);
+      state.lastContextError = null;
+      state.lastContextWarnings = [...pkg.warnings];
+      return formatReadOnlyChatContext(profile, pkg);
+    } catch (err) {
+      state.lastContextBuildCalled = true;
+      state.lastContextError = describeError(err);
+      state.lastContextWarnings = [state.lastContextError];
+      pushLog("warn", `read-only chat context failed: ${state.lastContextError}`);
+      return undefined;
+    }
+  }
+
+  function inferReadOnlyChatContextProfile(
+    prompt: string,
+  ): ChatReadOnlyContextView["profile"] | null {
+    const text = prompt.toLowerCase();
+    if (isSecurityLikeChatPrompt(text)) return "security_review";
+    if (isApplyChangesLikeChatPrompt(text)) return "apply_changes_explain";
+    if (isProjectAwareChatPrompt(text)) return "project_explain";
+    return null;
+  }
+
+  function isSecurityLikeChatPrompt(text: string): boolean {
+    return /\b(security|safe|secret|api key|credential|token|steal|stolen|leak|privacy)\b/iu.test(text) ||
+      /\u0431\u0435\u0437\u043e\u043f\u0430\u0441|\u0441\u0435\u043a\u0440\u0435\u0442|\u043a\u043b\u044e\u0447|\u0442\u043e\u043a\u0435\u043d|\u0443\u043a\u0440\u0430\u0434|\u0443\u0442\u0435\u0447/iu.test(text);
+  }
+
+  function isApplyChangesLikeChatPrompt(text: string): boolean {
+    return /\b(apply changes|apply|staging|staged|artifact|artifacts|nativebindings|desktoporchestratortransport|workbench)\b/iu.test(text) ||
+      /\u043f\u0440\u0438\u043c\u0435\u043d|\u0441\u0442\u0435\u0439\u0434\u0436|\u0430\u0440\u0442\u0435\u0444\u0430\u043a\u0442/iu.test(text);
+  }
+
+  function isProjectAwareChatPrompt(text: string): boolean {
+    return /\b(project|repo|repository|codebase|architecture|source|file|files|component|module|how does this work)\b/iu.test(text) ||
+      /\u043f\u0440\u043e\u0435\u043a\u0442|\u043a\u043e\u0434|\u0444\u0430\u0439\u043b|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442|\u043a\u043e\u043c\u043f\u043e\u043d\u0435\u043d\u0442/iu.test(text);
+  }
+
+  function chatContextOptionsForProfile(profile: ChatReadOnlyContextView["profile"]): BuildTaskContextOptions {
+    if (profile === "security_review") {
+      return { maxFiles: 10, maxTotalChars: 70_000, includeContent: true, includeFileTree: true };
+    }
+    if (profile === "apply_changes_explain") {
+      return { maxFiles: 8, maxTotalChars: 50_000, includeContent: true, includeFileTree: true };
+    }
+    return { maxFiles: 8, maxTotalChars: 45_000, includeContent: true, includeFileTree: true };
+  }
+
+  function formatReadOnlyChatContext(
+    profile: ChatReadOnlyContextView["profile"],
+    pkg: TaskContextPackage,
+  ): ChatReadOnlyContext {
+    const selectedFiles = pkg.selectedFiles.map((file) => file.relativePath);
+    const fileBlocks = pkg.selectedFiles.map((file) =>
+      [
+        `### ${file.relativePath}`,
+        `Score: ${file.score.toFixed(1)}${file.truncated ? " (truncated)" : ""}`,
+        compactUiText(file.content, 2_400),
+      ].join("\n"),
+    );
+    return {
+      profile,
+      selectedFilesCount: pkg.selectedFilesCount,
+      scannedFilesCount: pkg.scannedFilesCount,
+      selectedFiles,
+      warnings: [...pkg.warnings],
+      modelContext: [
+        `Context profile: ${profile}`,
+        `Selected files: ${String(pkg.selectedFilesCount)} / scanned ${String(pkg.scannedFilesCount)}`,
+        ...fileBlocks,
+        pkg.warnings.length > 0 ? `Warnings: ${pkg.warnings.join("; ")}` : "",
+      ].filter((line) => line.length > 0).join("\n\n"),
+    };
+  }
+
   function buildChatMessages(
     prompt: string,
     webContext: string,
     activeComposerMode?: ComposerMode,
+    readOnlyContext?: ChatReadOnlyContext,
   ): readonly ChatMessage[] {
     let systemInstruction =
       "Ты KARO, AI Agent Orchestrator в desktop IDE-like приложении. Сейчас режим Chat Mode. " +
@@ -3700,7 +3879,13 @@ export function mountWorkspaceShell(
     return [
       { role: "system", content: systemInstruction },
       ...buildConversationHistoryMessages(prompt),
-      { role: "user", content: `User request:\n${prompt}\n\nWeb context:\n${webContext}` },
+      {
+        role: "user",
+        content:
+          `User request:\n${prompt}\n\n` +
+          `Web context:\n${webContext}\n\n` +
+          `Read-only project context:\n${readOnlyContext?.modelContext ?? "No project files were read for this chat response."}`,
+      },
     ];
   }
 

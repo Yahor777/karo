@@ -606,6 +606,21 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
       },
       await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "apply-available-after-quick-edit-artifact" }),
     );
+    await karoClick(ctx, { testId: TEST_IDS.rightTabUsage });
+    await waitShort(ctx);
+    const usageText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
+    bag.assertions.push(
+      {
+        name: "quick-edit-usage-shows-zero-model-call-contract",
+        passed: /Expected model calls/i.test(usageText ?? "") && /0 max 0/i.test(usageText ?? ""),
+        details: usageText ?? "",
+      },
+      {
+        name: "quick-edit-usage-shows-none-context-profile",
+        passed: /Context profile\s*none/i.test(usageText ?? ""),
+        details: usageText ?? "",
+      },
+    );
     bag.screenshots.push((await karoScreenshot(ctx, { name: "agent-route-guardrails" })).path);
   });
 }

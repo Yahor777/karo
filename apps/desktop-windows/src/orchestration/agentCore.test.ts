@@ -36,6 +36,8 @@ describe("Agent Core v1", () => {
     expect(estimate.mode).toBe("quick_edit");
     expect(estimate.expectedModelCalls).toBe(0);
     expect(estimate.allowsArtifacts).toBe(true);
+    expect(estimate.requiresProjectContext).toBe(false);
+    expect(estimate.contextProfile).toBe("none");
     expect(estimate.avoidedFullPipelineModelCalls).toBeGreaterThan(0);
     expect(estimate.fallbackCountsAsSuccess).toBe(false);
   });
@@ -50,7 +52,21 @@ describe("Agent Core v1", () => {
     expect(estimate.mode).toBe("chat");
     expect(estimate.expectedModelCalls).toBeLessThanOrEqual(1);
     expect(estimate.requiresProjectContext).toBe(false);
+    expect(estimate.contextProfile).toBe("casual_chat");
     expect(estimate.allowsArtifacts).toBe(false);
+  });
+
+  it("profiles conversation memory without project context", () => {
+    const estimate = estimateAgentCoreExecution({
+      prompt: "what did i write above?",
+      decision: decision({ intent: "casual_chat", executionMode: "chat" }),
+      quickEditAvailable: false,
+    });
+
+    expect(estimate.mode).toBe("chat");
+    expect(estimate.contextProfile).toBe("conversation_memory");
+    expect(estimate.requiresProjectContext).toBe(false);
+    expect(estimate.expectedContextTokens).toBe(0);
   });
 
   it("estimates Plan Mode as structured read-only work without artifacts", () => {
@@ -63,8 +79,67 @@ describe("Agent Core v1", () => {
     expect(estimate.mode).toBe("plan");
     expect(estimate.expectedModelCalls).toBe(1);
     expect(estimate.allowsArtifacts).toBe(false);
+    expect(estimate.contextProfile).toBe("ui_work");
     expect(estimate.stages.map((stage) => stage.id)).toContain("context_analyst");
     expect(estimate.stages.map((stage) => stage.id)).toContain("finalizer");
+  });
+
+  it("profiles Apply Changes explanations as targeted read-only context", () => {
+    const estimate = estimateAgentCoreExecution({
+      prompt: "Explain how Apply Changes and staged artifacts work",
+      decision: decision({
+        intent: "explain_project",
+        executionMode: "chat",
+        requiresContextEngine: true,
+        expectedOutput: "explanation",
+      }),
+      quickEditAvailable: false,
+      selectedFilesEstimate: 6,
+      contextTokensEstimate: 12_000,
+    });
+
+    expect(estimate.mode).toBe("read_only_context");
+    expect(estimate.contextProfile).toBe("apply_changes_explain");
+    expect(estimate.allowsArtifacts).toBe(false);
+    expect(estimate.expectedContextTokens).toBe(12_000);
+  });
+
+  it("profiles security review as read-only security context", () => {
+    const estimate = estimateAgentCoreExecution({
+      prompt: "review project security and command execution",
+      decision: decision({
+        intent: "security_review",
+        executionMode: "chat",
+        requiresContextEngine: true,
+        expectedOutput: "analysis",
+        riskLevel: "high",
+      }),
+      quickEditAvailable: false,
+    });
+
+    expect(estimate.mode).toBe("read_only_context");
+    expect(estimate.contextProfile).toBe("security_review");
+    expect(estimate.riskLevel).toBe("high");
+    expect(estimate.recoveryPolicy).toContain("never fake completion");
+  });
+
+  it("keeps dangerous command routing commandless and deterministic", () => {
+    const estimate = estimateAgentCoreExecution({
+      prompt: "git clean -fdx",
+      decision: decision({
+        intent: "run_command",
+        executionMode: "chat",
+        allowCommands: false,
+        expectedOutput: "command_result",
+        riskLevel: "destructive",
+      }),
+      quickEditAvailable: false,
+    });
+
+    expect(estimate.mode).toBe("safety");
+    expect(estimate.allowsCommands).toBe(false);
+    expect(estimate.expectedModelCalls).toBe(0);
+    expect(estimate.contextProfile).toBe("none");
   });
 
   it("estimates website generation as chunked coding with deterministic validation before reviewer", () => {
@@ -75,7 +150,9 @@ describe("Agent Core v1", () => {
     });
 
     expect(estimate.mode).toBe("agent");
+    expect(estimate.contextProfile).toBe("website_creation");
     expect(estimate.expectedModelCalls).toBe(5);
+    expect(estimate.recoveryPolicy).toContain("explicit emergency fallback");
     expect(estimate.stages.map((stage) => stage.id)).toEqual([
       "router",
       "context_curator",

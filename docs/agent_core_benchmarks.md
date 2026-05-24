@@ -4,6 +4,11 @@ Karo wins only when the correct mode uses the minimum necessary context and mode
 
 Fallback is not a success path. It is an explicit emergency recovery option after a real generation failure.
 
+The detailed scorecard and machine-readable contract live in:
+
+- `docs/agent_core_scorecard.md`
+- `apps/desktop-windows/src/orchestration/agentBenchmarks.ts`
+
 ## Mode Contracts
 
 ### Chat

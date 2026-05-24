@@ -6792,7 +6792,7 @@ export function mountWorkspaceShell(
       wrap.append(agentSection);
     }
 
-    if (taskState?.decision !== undefined || (taskState?.providerDiagnostics?.length ?? 0) > 0) {
+    if (taskState?.decision !== undefined || taskState?.agentCoreEstimate !== undefined || (taskState?.providerDiagnostics?.length ?? 0) > 0) {
       const modeSection = doc.createElement("div");
       const modeTitle = doc.createElement("h4");
       modeTitle.textContent = "Mode and model calls";
@@ -6803,6 +6803,7 @@ export function mountWorkspaceShell(
       modeSection.append(modeTitle);
 
       const decision = taskState?.decision;
+      const estimate = taskState?.agentCoreEstimate;
       const diagnostics = taskState?.providerDiagnostics ?? [];
       const modelCalls = diagnostics.length;
       const elapsedMs = diagnostics.reduce((sum: number, diagnostic: any) => sum + (diagnostic.elapsedMs ?? 0), 0);
@@ -6815,14 +6816,17 @@ export function mountWorkspaceShell(
       table.style.borderCollapse = "collapse";
       table.style.fontSize = "12px";
       const metrics = [
-        { label: "Mode selected", value: decision?.executionMode ?? "unknown" },
-        { label: "Route reason", value: decision?.reasoningSummary ?? "No route decision recorded." },
+        { label: "Mode selected", value: estimate?.mode ?? decision?.executionMode ?? "unknown" },
+        { label: "Route reason", value: estimate?.routeReasonUser ?? decision?.reasoningSummary ?? "No route decision recorded." },
+        { label: "Context profile", value: estimate?.contextProfile ?? "unknown" },
+        { label: "Expected model calls", value: estimate !== undefined ? `${String(estimate.expectedModelCalls)} max ${String(estimate.maxExpectedModelCalls)}` : "unknown" },
         { label: "Selected files", value: String(taskState?.contextSummary?.selectedFilesCount ?? 0) },
         { label: "Context tokens", value: String(breakdown.selectedFilesTokens + breakdown.projectContextTokens) },
         { label: "Model calls", value: String(modelCalls) },
         { label: "Elapsed model time", value: elapsedMs > 0 ? `${(elapsedMs / 1000).toFixed(1)}s` : "n/a" },
         { label: "Artifacts", value: String(artifactsCount) },
         { label: "Fallback used", value: fallbackUsed ? "yes" : "no" },
+        { label: "Recovery policy", value: estimate?.recoveryPolicy ?? "n/a" },
       ];
       for (const metric of metrics) {
         const tr = doc.createElement("tr");

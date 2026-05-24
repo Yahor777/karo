@@ -1,4 +1,5 @@
 import type {
+  AgentContextProfile,
   AgentCoreEstimate,
   AgentCoreStageEstimate,
   DeterministicValidationSummary,
@@ -36,40 +37,57 @@ const WEBSITE_CHUNK_COUNT = 4;
 export function estimateAgentCoreExecution(input: AgentCoreEstimateInput): AgentCoreEstimate {
   const contextTokensEstimate = input.contextTokensEstimate ?? 0;
   const selectedFilesEstimate = input.selectedFilesEstimate ?? 0;
+  const contextProfile = inferContextProfile(input);
   const base = {
     contextTokensEstimate,
+    expectedContextTokens: contextTokensEstimate,
     selectedFilesEstimate,
     requiresProjectContext: input.decision.requiresContextEngine,
+    allowsCommands: false,
+    riskLevel: input.decision.riskLevel,
+    contextProfile,
     fallbackCountsAsSuccess: false as const,
   };
 
   if (input.decision.executionMode === "clarify") {
+    const routeReason = "The router needs user clarification before spending model calls.";
     return {
       ...base,
       mode: "clarify",
-      routeReason: "The router needs user clarification before spending model calls.",
+      routeReason,
+      routeReasonUser: "I need one clarification before choosing Chat, Plan, or Agent.",
+      routeReasonInternal: routeReason,
       expectedModelCalls: 0,
       maxExpectedModelCalls: 0,
       baselineSingleModelCalls: 1,
       avoidedFullPipelineModelCalls: FULL_AGENT_PIPELINE_EXPECTED_CALLS,
+      requiresProjectContext: false,
       allowsArtifacts: false,
       timeoutRisk: "low",
+      timeoutPolicy: "No provider call is made before clarification.",
+      recoveryPolicy: "Ask the user to narrow scope; do not run an agent pipeline.",
       stages: [stage("router", "Route clarification", false, true)],
       warnings: [],
     };
   }
 
   if (input.decision.intent === "run_command" && input.decision.riskLevel === "destructive") {
+    const routeReason = "Dangerous command detected; Karo must produce a Safety Check without executing it.";
     return {
       ...base,
       mode: "safety",
-      routeReason: "Dangerous command detected; Karo must produce a Safety Check without executing it.",
+      routeReason,
+      routeReasonUser: "This looks dangerous, so I will explain the risk and suggest a dry run instead of executing it.",
+      routeReasonInternal: routeReason,
       expectedModelCalls: 0,
       maxExpectedModelCalls: 0,
       baselineSingleModelCalls: 1,
       avoidedFullPipelineModelCalls: FULL_AGENT_PIPELINE_EXPECTED_CALLS,
+      requiresProjectContext: false,
       allowsArtifacts: false,
       timeoutRisk: "low",
+      timeoutPolicy: "No provider call is required for the command safety block.",
+      recoveryPolicy: "Keep command blocked; offer a safe dry-run command or explicit approval path.",
       stages: [
         stage("router", "Route dangerous command", false, true),
         stage("safety_check", "Produce Safety Check", false, true),
@@ -79,16 +97,22 @@ export function estimateAgentCoreExecution(input: AgentCoreEstimateInput): Agent
   }
 
   if (input.quickEditAvailable) {
+    const routeReason = "The request is a deterministic single-file edit; no model call is needed.";
     return {
       ...base,
       mode: "quick_edit",
-      routeReason: "The request is a deterministic single-file edit; no model call is needed.",
+      routeReason,
+      routeReasonUser: "This is a simple deterministic edit, so I can stage it without using a model.",
+      routeReasonInternal: routeReason,
       expectedModelCalls: 0,
       maxExpectedModelCalls: 0,
       baselineSingleModelCalls: 1,
       avoidedFullPipelineModelCalls: FULL_AGENT_PIPELINE_EXPECTED_CALLS,
+      requiresProjectContext: false,
       allowsArtifacts: true,
       timeoutRisk: "low",
+      timeoutPolicy: "No provider timeout is possible because no model call is made.",
+      recoveryPolicy: "Regenerate the deterministic staged artifact if validation fails.",
       stages: [
         stage("router", "Detect Quick Edit", false, true),
         stage("deterministic_validator", "Validate path and content", false, true),
@@ -99,16 +123,22 @@ export function estimateAgentCoreExecution(input: AgentCoreEstimateInput): Agent
   }
 
   if (!input.decision.allowFileChanges && !input.decision.requiresContextEngine) {
+    const routeReason = "Conversational task; use current chat history and avoid project scanning.";
     return {
       ...base,
       mode: "chat",
-      routeReason: "Conversational task; use current chat history and avoid project scanning.",
+      routeReason,
+      routeReasonUser: "This is a chat request, so I will answer from the current conversation without scanning the project.",
+      routeReasonInternal: routeReason,
       expectedModelCalls: 1,
       maxExpectedModelCalls: 1,
       baselineSingleModelCalls: 1,
       avoidedFullPipelineModelCalls: FULL_AGENT_PIPELINE_EXPECTED_CALLS - 1,
+      requiresProjectContext: false,
       allowsArtifacts: false,
       timeoutRisk: "low",
+      timeoutPolicy: "Single short provider call with conversation history under budget.",
+      recoveryPolicy: "Retry the same answer request or switch model; never create artifacts from Chat Mode.",
       stages: [
         stage("router", "Route to Chat", false, true),
         stage("chat_assistant", "Answer from conversation context", true, false),
@@ -118,16 +148,21 @@ export function estimateAgentCoreExecution(input: AgentCoreEstimateInput): Agent
   }
 
   if (input.decision.executionMode === "plan") {
+    const routeReason = "Planning request; produce a structured read-only plan without staged artifacts.";
     return {
       ...base,
       mode: "plan",
-      routeReason: "Planning request; produce a structured read-only plan without staged artifacts.",
+      routeReason,
+      routeReasonUser: "This is planning work, so I will produce a structured read-only plan before any file changes.",
+      routeReasonInternal: `${routeReason} Context profile: ${contextProfile}.`,
       expectedModelCalls: 1,
       maxExpectedModelCalls: 1,
       baselineSingleModelCalls: 1,
       avoidedFullPipelineModelCalls: FULL_AGENT_PIPELINE_EXPECTED_CALLS - 1,
       allowsArtifacts: false,
       timeoutRisk: "medium",
+      timeoutPolicy: "One bounded planning call; timeout becomes a recoverable Plan error, not success.",
+      recoveryPolicy: "Retry plan, reduce context, or switch to Chat for clarification; do not stage files.",
       stages: [
         stage("router", "Route to Plan", false, true),
         stage("context_analyst", "Select minimal context", false, true),
@@ -140,16 +175,21 @@ export function estimateAgentCoreExecution(input: AgentCoreEstimateInput): Agent
   }
 
   if (!input.decision.allowFileChanges && input.decision.requiresContextEngine) {
+    const routeReason = "Read-only project analysis; use targeted Context Engine files and create no artifacts.";
     return {
       ...base,
       mode: "read_only_context",
-      routeReason: "Read-only project analysis; use targeted Context Engine files and create no artifacts.",
+      routeReason,
+      routeReasonUser: "This needs project context, but it is read-only, so I will select targeted files and not stage changes.",
+      routeReasonInternal: `${routeReason} Context profile: ${contextProfile}; selected files estimate: ${selectedFilesEstimate}.`,
       expectedModelCalls: 1,
       maxExpectedModelCalls: 1,
       baselineSingleModelCalls: 1,
       avoidedFullPipelineModelCalls: FULL_AGENT_PIPELINE_EXPECTED_CALLS - 1,
       allowsArtifacts: false,
       timeoutRisk: contextTokensEstimate > 48_000 ? "high" : "medium",
+      timeoutPolicy: "One analysis call; high context estimates should reduce context before retry.",
+      recoveryPolicy: "Preserve selected files, offer retry/reduced context/switch model, and never fake completion.",
       stages: [
         stage("router", "Route read-only analysis", false, true),
         stage("context_analyst", "Select targeted files", false, true),
@@ -162,16 +202,21 @@ export function estimateAgentCoreExecution(input: AgentCoreEstimateInput): Agent
 
   if (isStaticWebsiteCreationPrompt(input.prompt)) {
     const expectedModelCalls = 1 + WEBSITE_CHUNK_COUNT;
+    const routeReason = "Static website creation benefits from chunked file generation and deterministic validation.";
     return {
       ...base,
       mode: "agent",
-      routeReason: "Static website creation benefits from chunked file generation and deterministic validation.",
+      routeReason,
+      routeReasonUser: "This is a website-building task, so I will use Agent Mode with minimal context, staged files, and validation before Apply.",
+      routeReasonInternal: `${routeReason} Generate one file at a time and do not let emergency fallback pass the benchmark.`,
       expectedModelCalls,
       maxExpectedModelCalls: expectedModelCalls + WEBSITE_CHUNK_COUNT,
       baselineSingleModelCalls: 1,
       avoidedFullPipelineModelCalls: 2,
       allowsArtifacts: true,
       timeoutRisk: "medium",
+      timeoutPolicy: "Chunked Coder gets a longer per-file timeout; failed files can retry with reduced context.",
+      recoveryPolicy: "Preserve partial artifacts, retry failed file, reduce context once, then require explicit emergency fallback.",
       stages: [
         stage("router", "Route website task", false, true),
         stage("context_curator", "Keep context minimal for new site", false, true),
@@ -186,16 +231,21 @@ export function estimateAgentCoreExecution(input: AgentCoreEstimateInput): Agent
     };
   }
 
+  const routeReason = "File-changing task; use full pipeline only where deterministic checks are insufficient.";
   return {
     ...base,
     mode: "agent",
-    routeReason: "File-changing task; use full pipeline only where deterministic checks are insufficient.",
+    routeReason,
+    routeReasonUser: "This requires file changes, so I will stage artifacts in Agent Mode and wait for Apply Changes.",
+    routeReasonInternal: `${routeReason} Expected model calls depend on deterministic validation and targeted repair needs.`,
     expectedModelCalls: 4,
     maxExpectedModelCalls: FULL_AGENT_PIPELINE_EXPECTED_CALLS,
     baselineSingleModelCalls: 1,
     avoidedFullPipelineModelCalls: 0,
     allowsArtifacts: true,
     timeoutRisk: contextTokensEstimate > 64_000 ? "high" : "medium",
+    timeoutPolicy: "Planner/Coder calls are bounded; review/fix stages use shorter timeouts and can be skipped.",
+    recoveryPolicy: "Preserve staged artifacts, retry failed stage, reduce context once, and avoid fallback success.",
     stages: [
       stage("router", "Route file-changing task", false, true),
       stage("context_curator", "Find minimal relevant context", false, true),
@@ -274,6 +324,52 @@ export function isStaticWebsiteCreationPrompt(prompt: string): boolean {
     text.includes("персонаж") ||
     text.includes("карточ");
   return asksForSite && asksToCreate && staticSignals;
+}
+
+function inferContextProfile(input: AgentCoreEstimateInput): AgentContextProfile {
+  const text = input.prompt.toLowerCase();
+
+  if (
+    input.quickEditAvailable ||
+    (input.decision.intent === "run_command" && input.decision.riskLevel === "destructive") ||
+    input.decision.executionMode === "clarify"
+  ) {
+    return "none";
+  }
+
+  if (isStaticWebsiteCreationPrompt(input.prompt)) return "website_creation";
+  if (input.decision.intent === "security_review") return "security_review";
+  if (isApplyChangesQuestion(text)) return "apply_changes_explain";
+  if (isUiWorkPrompt(text)) return "ui_work";
+
+  if (!input.decision.requiresContextEngine && asksAboutConversationHistory(text)) {
+    return "conversation_memory";
+  }
+
+  if (!input.decision.requiresContextEngine && !input.decision.allowFileChanges) {
+    return "casual_chat";
+  }
+
+  if (input.decision.requiresContextEngine || input.decision.intent === "explain_project") {
+    return "project_explain";
+  }
+
+  return "project_explain";
+}
+
+function isApplyChangesQuestion(text: string): boolean {
+  return /\b(apply changes|apply|staging|staged|artifact|artifacts|nativebindings|desktoporchestratortransport|workbench)\b/iu.test(text) ||
+    /\u043f\u0440\u0438\u043c\u0435\u043d|\u0441\u0442\u0435\u0439\u0434\u0436|\u0430\u0440\u0442\u0435\u0444\u0430\u043a\u0442/iu.test(text);
+}
+
+function isUiWorkPrompt(text: string): boolean {
+  return /\b(ui|ux|interface|composer|sidebar|right panel|inspector|workbench|main\.css|playwright|mcp|scenario)\b/iu.test(text) ||
+    /\u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441|\u043a\u043e\u043c\u043f\u043e\u0437\u0435\u0440|\u0441\u0430\u0439\u0434\u0431\u0430\u0440/iu.test(text);
+}
+
+function asksAboutConversationHistory(text: string): boolean {
+  return /\b(above|previous|earlier|before|history|last message|what did i write)\b/iu.test(text) ||
+    /\u0447\u0442\u043e\s+\u044f\s+\u043f\u0438\u0441\u0430\u043b|\u0432\u044b\u0448\u0435|\u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449/iu.test(text);
 }
 
 function validateStaticWebsiteArtifacts(

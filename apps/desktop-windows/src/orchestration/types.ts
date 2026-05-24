@@ -461,6 +461,16 @@ export type AgentCoreMode =
   | "safety"
   | "clarify";
 
+export type AgentContextProfile =
+  | "casual_chat"
+  | "conversation_memory"
+  | "project_explain"
+  | "apply_changes_explain"
+  | "security_review"
+  | "website_creation"
+  | "ui_work"
+  | "none";
+
 export type AgentCoreStageId =
   | "router"
   | "chat_assistant"
@@ -485,15 +495,23 @@ export interface AgentCoreStageEstimate {
 export interface AgentCoreEstimate {
   readonly mode: AgentCoreMode;
   readonly routeReason: string;
+  readonly routeReasonUser: string;
+  readonly routeReasonInternal: string;
   readonly expectedModelCalls: number;
   readonly maxExpectedModelCalls: number;
   readonly baselineSingleModelCalls: number;
   readonly avoidedFullPipelineModelCalls: number;
+  readonly expectedContextTokens: number;
   readonly contextTokensEstimate: number;
   readonly selectedFilesEstimate: number;
+  readonly contextProfile: AgentContextProfile;
   readonly requiresProjectContext: boolean;
+  readonly allowsCommands: boolean;
+  readonly riskLevel: TaskRiskLevel;
   readonly allowsArtifacts: boolean;
   readonly timeoutRisk: "low" | "medium" | "high";
+  readonly timeoutPolicy: string;
+  readonly recoveryPolicy: string;
   readonly fallbackCountsAsSuccess: false;
   readonly stages: readonly AgentCoreStageEstimate[];
   readonly warnings: readonly string[];

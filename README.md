@@ -1,92 +1,57 @@
 # Karo
 
-Karo is a Windows-first desktop AI coding workbench built with Tauri, TypeScript, and Rust. The MVP checkpoint is focused on a chat-first workflow: ask questions, inspect a local project, create a plan, request file changes through an agent pipeline, review staged changes, apply them intentionally, and run a safe preview command.
+**Karo is an experimental local-first AI coding workbench for chat, planning, agent orchestration, staged changes, and safe preview.**
 
-Karo is not a finished IDE yet. It is a product checkpoint with a real local runtime, a real Context Engine, a staged artifact flow, safety checks for dangerous commands, and MCP/Playwright GUI automation.
+Karo is currently an MVP/alpha checkpoint. It is not a finished IDE, but the repository now contains a working Tauri desktop runtime, a local Context Engine, staged artifact review, command safety checks, a safe terminal MVP, static preview/open flow, and MCP/Playwright GUI automation.
 
-## MVP status
+The goal is simple: give a developer a chat-first coding workspace where a good prompt can become reviewable file changes without handing a model unrestricted shell or filesystem access.
 
-### Working
+## Why Karo
+
+Most AI coding tools still feel like a single model sitting next to your editor. That works for small answers, but it breaks down when the task needs local project context, planning, file changes, review, safe command handling, and a way to inspect the result.
+
+Karo experiments with an orchestration-first workflow:
+
+- **Chat** for normal conversation and project questions.
+- **Plan** for read-only implementation strategy.
+- **Agent** for file-changing tasks through staged artifacts.
+- **Auto** to route between Chat, Plan, Agent, and Safety Check.
+- **Quick Edit** for deterministic small file tasks without a model call.
+- **Apply Changes** so file writes are explicit, reviewable, and not automatic.
+- **Preview** so applied static HTML or allowlisted dev commands can be opened safely.
+
+## Features
 
 - Chat / Plan / Agent / Auto routing.
 - Conversation persistence, New chat, and chat switching.
-- Quick Edit for trivial create-file tasks without model/API usage.
-- Multi-agent Agent runs for larger coding tasks.
 - Local Context Engine for project explain and security review.
-- Staged artifact flow with Apply Changes required before file writes.
-- Command Policy for dangerous commands such as `git clean -fdx`.
-- Safe MVP Terminal backend through a command allowlist.
-- Static `index.html` preview after Apply Changes, plus Preview command detection and Preview run through the safe terminal backend.
+- Staged artifacts and diffs before file writes.
+- Apply Changes flow for intentional workspace modifications.
+- Quick Edit for trivial create-file tasks without API/model usage.
+- Safety Check for dangerous commands such as `git clean -fdx`.
+- Safe MVP terminal runner with command allowlist and project-root validation.
+- Static `index.html` preview/open flow after Apply Changes.
+- Preview command detection for package scripts and safe preview runs.
 - MCP/Playwright renderer GUI checks.
 - Dev/test Tauri runtime bridge proof for native Context Engine behavior.
 
-### Experimental
+## Demo
 
-- Terminal profiles and command execution are limited to a safe MVP allowlist.
-- Preview opens applied static HTML files or external/local URLs detected from terminal output; embedded preview is not implemented.
-- Plan Mode is read-only planning, not a full planner-agent pipeline yet.
-- Web/tool policy is constrained by settings and safety policy.
-- Model capability metadata is a mix of provider catalog, known tables, and conservative heuristics.
+Screenshots coming soon. Curated screenshots should be added manually; generated `e2e-artifacts`, runtime reports, and local screenshots are intentionally ignored.
 
-### Not ready
+## Quick Start
 
-- Native WebView2 click automation.
-- Unrestricted shell access.
-- Fully interactive IDE terminal/PTY.
-- Autonomous image generation without explicit user approval.
-- Broad marketplace or "free model of the day" flows.
+Prerequisites:
 
-## MVP acceptance scenarios
-
-1. Ordinary chat: `привет как дела`
-   - Expected: normal assistant response, no agent pipeline, no artifacts, no Final Report.
-
-2. Project explain: `Объясни как работает Apply Changes и какие файлы за это отвечают`
-   - Expected: Context Engine selects local files, response is read-only, no artifacts.
-
-3. Plan Mode: `сделай план улучшения UI`
-   - Expected: Plan Result, read-only, no artifacts.
-
-4. Quick Edit: `создай файл src/karo-test.txt с текстом hello`
-   - Expected: Quick Edit route, one staged artifact, no model call, no full agent pipeline, Apply required.
-
-5. Agent website task:
-   - Prompt: `Создай современный landing page для Minecraft JJK mod с hero, features, abilities, pricing, FAQ, responsive layout, dark anime style. Сделай так, чтобы это можно было запустить и посмотреть в preview.`
-   - Expected: Agent route, staged website files, no auto-apply, static preview/open flow or preview command available after apply.
-
-6. Safety Check: `git clean -fdx`
-   - Expected: command is not executed, response explains the risk and suggests `git clean -ndx`.
-
-7. New chat / switch chats
-   - Expected: a new conversation starts cleanly, and previous conversation history is restored correctly when switching back.
-
-## Repository layout
-
-```text
-apps/
-  desktop-windows/   Tauri desktop app and primary UI
-  web/               Secondary web shell
-  backend/           Backend services, artifacts, auth, traces
-
-packages/
-  shared-core/       Shared domain types and provider presets
-  shared-ui/         Shared UI screens/components
-  client-sdk/        Client SDK
-  validation/        Schemas and validation
-```
-
-## Development
+- Node.js 18.18+
+- pnpm 9
+- Rust stable
+- Windows is the primary tested desktop target today
 
 Install dependencies:
 
 ```powershell
 pnpm install
-```
-
-Run the desktop renderer during UI development:
-
-```powershell
-pnpm desktop:dev:renderer
 ```
 
 Run the Tauri desktop app:
@@ -95,7 +60,11 @@ Run the Tauri desktop app:
 pnpm desktop:dev
 ```
 
-## Verification
+Run the renderer only during UI development:
+
+```powershell
+pnpm desktop:dev:renderer
+```
 
 Run the TypeScript/Vitest suite:
 
@@ -111,67 +80,122 @@ cargo check
 cargo test
 ```
 
-Run renderer GUI automation:
+## Project Status
+
+### Working
+
+- Chat / Plan / Agent / Auto routing.
+- Conversation persistence and chat switching.
+- Quick Edit for deterministic small create-file tasks.
+- Multi-agent Agent runs for larger coding tasks.
+- Local Context Engine for project explain and security review.
+- Staged artifact review and Apply Changes.
+- Command Policy and Safety Check for destructive commands.
+- Safe terminal MVP runner through an allowlist.
+- Static HTML preview/open flow after Apply Changes.
+- MCP/Playwright renderer GUI checks.
+- Tauri runtime proof for native Context Engine behavior.
+
+### Experimental
+
+- Terminal profiles and command execution are limited to a safe MVP allowlist.
+- Preview opens applied static HTML files or external/local URLs; embedded preview is not implemented.
+- Plan Mode is read-only planning, not a full planner-agent pipeline yet.
+- Web/tool policy is constrained by settings and safety policy.
+- Model capability metadata combines provider catalog data, known tables, and conservative heuristics.
+
+### Not Ready
+
+- Native WebView2 click automation.
+- Unrestricted shell access.
+- Fully interactive IDE terminal/PTY.
+- Embedded browser preview.
+- Autonomous image generation without explicit user approval.
+- Marketplace or "free model of the day" flows.
+
+## Architecture
+
+```text
+apps/
+  desktop-windows/   Tauri desktop app, renderer UI, native bridge, MCP GUI checks
+  web/               Secondary web shell
+  backend/           Backend services, artifacts, auth, traces
+
+packages/
+  shared-core/       Shared domain types and provider presets
+  shared-ui/         Shared UI screens/components
+  client-sdk/        Client SDK
+  validation/        Schemas and validation
+
+docs/                Architecture, MCP automation, UX notes, benchmark criteria
+```
+
+Core pieces:
+
+- **Context Engine**: selects relevant local files for explain/security/agent workflows while ignoring generated/runtime artifacts.
+- **Decision Engine**: routes prompts to Chat, Plan, Agent, Quick Edit, or Safety Check.
+- **Artifact pipeline**: stages proposed file changes before Apply Changes writes to disk.
+- **Safe Terminal MVP**: runs only allowlisted commands inside the project root.
+- **MCP GUI automation**: exercises renderer workflows, responsive layout, preview states, and product guardrails.
+
+More detail:
+
+- [Architecture overview](docs/architecture_overview.md)
+- [MVP acceptance checklist](docs/mvp_acceptance.md)
+- [Roadmap](docs/roadmap.md)
+- [MCP GUI automation](docs/karo_mcp_gui_automation.md)
+
+## Verification
+
+Run the main checks:
+
+```powershell
+pnpm test
+pnpm --filter @ai-agent-orchestrator/desktop-windows exec tsc --noEmit
+```
+
+Run Rust checks:
+
+```powershell
+cd apps/desktop-windows/src-tauri
+cargo check
+cargo test
+```
+
+Run GUI automation:
 
 ```powershell
 pnpm --filter @ai-agent-orchestrator/desktop-windows gui:check
 pnpm --filter @ai-agent-orchestrator/desktop-windows gui:check:headed
 ```
 
-Run the desktop process smoke and the real Tauri runtime proof:
+Run desktop smoke and real Tauri runtime proof:
 
 ```powershell
 pnpm --filter @ai-agent-orchestrator/desktop-windows gui:check:desktop
 pnpm --filter @ai-agent-orchestrator/desktop-windows gui:check:tauri-runtime
 ```
 
-The runtime proof is dev/test-only. It proves native Context Engine selection, command-safety behavior, Quick Edit/Agent artifact behavior, and the website-creation staged artifact path without exposing secrets or executing arbitrary shell commands.
+The runtime proof is dev/test-only. It verifies native Context Engine selection, dangerous-command safety, Quick Edit/Agent artifact behavior, and the one-prompt website staged-artifact path without exposing secrets or executing arbitrary shell commands.
 
-## MCP GUI automation
+## Security Model
 
-Karo includes a local MCP/Playwright automation layer under:
+- Do not commit API keys or generated reports.
+- Use `.env.example` for documentation only; real `.env*` files are ignored.
+- File changes are staged first and require Apply Changes.
+- Destructive commands are blocked by Command Policy.
+- Preview and terminal commands run through a safe MVP allowlist.
+- Generated runtime files such as `.karo/`, `e2e-artifacts/`, reports, screenshots, and `karo-before-*.patch` are ignored.
 
-```text
-apps/desktop-windows/mcp/
-```
+See [SECURITY.md](SECURITY.md) for reporting guidance.
 
-Run the MCP server:
+## Roadmap
 
-```powershell
-pnpm --filter @ai-agent-orchestrator/desktop-windows mcp:ui
-```
+- Embedded preview for web apps.
+- Stronger terminal/PTY support with explicit permissions.
+- One-prompt website creation benchmark hardening.
+- More polished agent activity UI.
+- Web version connected to GitHub repositories.
+- Cloud sandbox execution after local safety primitives are mature.
 
-Generated screenshots and reports are written under:
-
-```text
-apps/desktop-windows/e2e-artifacts/
-```
-
-Those files are runtime artifacts and should not be committed.
-
-## Secrets
-
-Karo reads provider keys from the configured local secret storage or environment variables used by smoke tests. Do not commit API keys or generated reports. `FIREWORKS_API_KEY` may be used for a tiny provider smoke check, but the key must never be printed, persisted, or included in screenshots/reports.
-
-Use `.env.example` as documentation only. Real `.env*` files are ignored.
-
-## Git hygiene
-
-Do not commit:
-
-- `apps/desktop-windows/e2e-artifacts/`
-- `karo-before-*.patch`
-- `.karo/staging/`
-- `.env`, `.env.local`, `.env.*.local`
-- screenshots, generated reports, or local runtime artifacts
-- `chat_response.txt`
-- `context-engine-check.txt`
-- `.codex/` autogenerated local environment files, unless intentionally reviewed
-
-Before checkpointing, run:
-
-```powershell
-git diff --check
-git status --short
-git diff --stat
-```
+See [docs/roadmap.md](docs/roadmap.md) for more detail.

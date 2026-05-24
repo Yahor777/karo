@@ -23,5 +23,6 @@ The source of truth for these benchmark constraints lives in:
 
 Router and Context Curator runtime rules are documented in `docs/router_context_curator.md`.
 Chat Mode read-only behavior is documented in `docs/chat_mode_contract.md`.
+Plan Mode read-only planning behavior is documented in `docs/plan_mode_agents.md`.
 
 Those tests enforce the non-negotiables: Quick Edit has zero model calls, Chat has at most one call, Plan/Security are read-only, dangerous commands cannot execute, and fallback cannot pass website generation.

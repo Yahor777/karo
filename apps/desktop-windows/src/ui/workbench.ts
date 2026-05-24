@@ -162,6 +162,7 @@ const WEB_PAGE_TEXT_PREVIEW_CHARS = 6_000;
 type ComposerMode = "auto" | "chat" | "plan" | "agent";
 type IntentKind = "casual_message" | "question" | "assist_request" | "coding_task" | "unclear_task";
 type ResolvedWorkMode = "chat" | "plan" | "assist" | "agent";
+type ReadOnlyContextProfile = "project_explain" | "apply_changes_explain" | "security_review" | "ui_work";
 
 interface ChatMessageView {
   readonly id: string;
@@ -179,7 +180,7 @@ interface ChatMessageView {
 }
 
 interface ChatReadOnlyContextView {
-  readonly profile: "project_explain" | "apply_changes_explain" | "security_review";
+  readonly profile: ReadOnlyContextProfile;
   readonly selectedFilesCount: number;
   readonly scannedFilesCount: number;
   readonly selectedFiles: readonly string[];
@@ -188,6 +189,21 @@ interface ChatReadOnlyContextView {
 
 interface ChatReadOnlyContext extends ChatReadOnlyContextView {
   readonly modelContext: string;
+}
+
+interface StructuredPlanView {
+  readonly goal: string;
+  readonly assumptions: readonly string[];
+  readonly fileAreas: readonly string[];
+  readonly implementationSteps: readonly string[];
+  readonly risks: readonly string[];
+  readonly tests: readonly string[];
+  readonly estimatedComplexity: string;
+  readonly expectedBudget: string;
+  readonly suggestedExecutionMode: string;
+  readonly acceptanceCriteria: readonly string[];
+  readonly whatNotToDoYet: readonly string[];
+  readonly repairedFromText: boolean;
 }
 
 interface RunView {
@@ -3400,13 +3416,14 @@ export function mountWorkspaceShell(
         startBtn.disabled = true;
         status.textContent = "Calling planning model...";
         status.dataset["state"] = "info";
-        const answer = await runAssistMode(promptText, "plan");
+        const answer = await runPlanMode(promptText);
         updateChatMessage(assistantId, {
           text: answer.ok
-            ? formatPlanResult(answer.text)
-            : `Plan model call failed: ${answer.error}. Проверь модель/API key.`,
+            ? answer.text
+            : buildPlanFailureMessage(promptText, answer.error, answer.context),
           pending: false,
           error: !answer.ok,
+          ...(answer.context !== undefined ? { chatContext: answer.context } : {}),
         });
         status.textContent = answer.ok
           ? "Plan Mode completed without file changes."
@@ -3696,6 +3713,64 @@ export function mountWorkspaceShell(
     }
   }
 
+  async function runPlanMode(
+    prompt: string,
+  ): Promise<{ ok: true; text: string; context?: ChatReadOnlyContext } | { ok: false; error: string; context?: ChatReadOnlyContext }> {
+    if (state.metadata.modelId === undefined || state.metadata.modelId.length === 0) {
+      return { ok: false, error: "model_not_found: pick a model in the Models tab first" };
+    }
+    let readOnlyContext: ChatReadOnlyContext | undefined;
+    try {
+      const [apiKey, webContext, planContext] = await Promise.all([
+        resolveApiKeyForUi(),
+        buildWebContextForPrompt(prompt),
+        buildReadOnlyPlanContext(prompt),
+      ]);
+      readOnlyContext = planContext;
+      const request = chatModelClient.chat({
+        provider: state.metadata.provider,
+        modelId: state.metadata.modelId,
+        ...(state.metadata.baseUrl !== undefined ? { baseUrl: state.metadata.baseUrl } : {}),
+        apiKey,
+        messages: buildPlanMessages(prompt, webContext, planContext),
+        maxTokens: 4096,
+        temperature: 0.25,
+      });
+      const response = await withTimeout(
+        request,
+        PLAN_MODE_TIMEOUT_MS,
+        "plan_timeout: Plan Mode did not finish in time. Try Retry Plan, reduced context, or a different model.",
+      );
+      if (response.kind !== "ok") {
+        pushLog("error", `plan model failed: ${response.providerCode}: ${response.providerMessage}`);
+        return {
+          ok: false,
+          error: `${response.providerCode}: ${response.providerMessage}`,
+          ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+        };
+      }
+      const structured = buildStructuredPlanView(prompt, response.text);
+      if (structured === null) {
+        return {
+          ok: false,
+          error: "plan_parse_failed: model output was not a usable structured plan after one local repair attempt",
+          ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+        };
+      }
+      return {
+        ok: true,
+        text: renderStructuredPlanResult(prompt, structured, readOnlyContext),
+        ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: describeError(err),
+        ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+      };
+    }
+  }
+
   async function runAssistMode(
     prompt: string,
     activeComposerMode?: ComposerMode,
@@ -3768,12 +3843,51 @@ export function mountWorkspaceShell(
     }
   }
 
+  async function buildReadOnlyPlanContext(prompt: string): Promise<ChatReadOnlyContext | undefined> {
+    const profile = inferPlanContextProfile(prompt);
+    if (profile === null || state.project === null) return undefined;
+    if (options.desktopShell.shell_build_task_context === undefined) return undefined;
+    try {
+      const pkg = await options.desktopShell.shell_build_task_context(
+        state.project.path,
+        prompt,
+        planContextOptionsForProfile(profile),
+      );
+      state.lastContextBuildCalled = true;
+      state.lastContextProjectRoot = pkg.projectRoot;
+      state.lastContextNormalizedRoot = pkg.projectRoot;
+      state.lastContextFileCount = pkg.scannedFilesCount;
+      state.lastContextSelectedFiles = pkg.selectedFiles.map((file) => file.relativePath);
+      state.lastContextError = null;
+      state.lastContextWarnings = [...pkg.warnings];
+      return formatReadOnlyChatContext(profile, pkg);
+    } catch (err) {
+      state.lastContextBuildCalled = true;
+      state.lastContextError = describeError(err);
+      state.lastContextWarnings = [state.lastContextError];
+      pushLog("warn", `read-only plan context failed: ${state.lastContextError}`);
+      return undefined;
+    }
+  }
+
   function inferReadOnlyChatContextProfile(
     prompt: string,
-  ): ChatReadOnlyContextView["profile"] | null {
+  ): ReadOnlyContextProfile | null {
     const text = prompt.toLowerCase();
     if (isSecurityLikeChatPrompt(text)) return "security_review";
     if (isApplyChangesLikeChatPrompt(text)) return "apply_changes_explain";
+    if (isProjectAwareChatPrompt(text)) return "project_explain";
+    return null;
+  }
+
+  function inferPlanContextProfile(prompt: string): ReadOnlyContextProfile | null {
+    const text = prompt.toLowerCase();
+    if (isSecurityLikeChatPrompt(text)) return "security_review";
+    if (isApplyChangesLikeChatPrompt(text)) return "apply_changes_explain";
+    const uiSpecific =
+      /\b(karo|ui|ux|interface|workbench|agent activity|composer|sidebar|inspector|timeline|mcp|playwright)\b/iu.test(text) ||
+      /\u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441|\u0432\u043e\u0440\u043a\u0431\u0435\u043d\u0447|\u043a\u043e\u043c\u043f\u043e\u0437\u0435\u0440|\u0441\u0430\u0439\u0434\u0431\u0430\u0440|\u0442\u0430\u0439\u043c\u043b\u0430\u0439\u043d|\u0430\u0433\u0435\u043d\u0442/iu.test(text);
+    if (uiSpecific) return "ui_work";
     if (isProjectAwareChatPrompt(text)) return "project_explain";
     return null;
   }
@@ -3793,7 +3907,7 @@ export function mountWorkspaceShell(
       /\u043f\u0440\u043e\u0435\u043a\u0442|\u043a\u043e\u0434|\u0444\u0430\u0439\u043b|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442|\u043a\u043e\u043c\u043f\u043e\u043d\u0435\u043d\u0442/iu.test(text);
   }
 
-  function chatContextOptionsForProfile(profile: ChatReadOnlyContextView["profile"]): BuildTaskContextOptions {
+  function chatContextOptionsForProfile(profile: ReadOnlyContextProfile): BuildTaskContextOptions {
     if (profile === "security_review") {
       return { maxFiles: 10, maxTotalChars: 70_000, includeContent: true, includeFileTree: true };
     }
@@ -3803,8 +3917,15 @@ export function mountWorkspaceShell(
     return { maxFiles: 8, maxTotalChars: 45_000, includeContent: true, includeFileTree: true };
   }
 
+  function planContextOptionsForProfile(profile: ReadOnlyContextProfile): BuildTaskContextOptions {
+    if (profile === "ui_work") {
+      return { maxFiles: 8, maxTotalChars: 48_000, includeContent: true, includeFileTree: true };
+    }
+    return chatContextOptionsForProfile(profile);
+  }
+
   function formatReadOnlyChatContext(
-    profile: ChatReadOnlyContextView["profile"],
+    profile: ReadOnlyContextProfile,
     pkg: TaskContextPackage,
   ): ChatReadOnlyContext {
     const selectedFiles = pkg.selectedFiles.map((file) => file.relativePath);
@@ -3885,6 +4006,39 @@ export function mountWorkspaceShell(
           `User request:\n${prompt}\n\n` +
           `Web context:\n${webContext}\n\n` +
           `Read-only project context:\n${readOnlyContext?.modelContext ?? "No project files were read for this chat response."}`,
+      },
+    ];
+  }
+
+  function buildPlanMessages(
+    prompt: string,
+    webContext: string,
+    readOnlyContext?: ChatReadOnlyContext,
+  ): readonly ChatMessage[] {
+    const language = isLikelyRussian(prompt) ? "Russian" : "the user's language";
+    let systemInstruction =
+      "You are KARO in Plan Mode. Plan Mode is read-only: never create artifacts, never modify files, never show Apply Changes as available, and never run the Agent file-changing pipeline. " +
+      "Use one structured planning call. Expose public planning stages only; do not reveal hidden chain-of-thought. " +
+      "If context is missing, state the assumption instead of inventing facts. " +
+      `Write visible user-facing content in ${language}. ` +
+      "Return a machine-readable JSON object only, with these keys: goal, assumptions, relevantFileAreas, implementationSteps, risks, tests, estimatedComplexity, expectedModelCallsContextBudget, suggestedExecutionMode, acceptanceCriteria, whatNotToDoYet. " +
+      "All list fields must be arrays of short strings. suggestedExecutionMode must be Chat, Plan, Agent, Quick Edit, or Safety.";
+    const customSystemPrompt = localStorage.getItem("karo.systemPrompt")?.trim();
+    if (customSystemPrompt !== undefined && customSystemPrompt.length > 0) {
+      systemInstruction += `\n\nUser custom system prompt override:\n${customSystemPrompt}`;
+    }
+    return [
+      { role: "system", content: systemInstruction },
+      ...buildConversationHistoryMessages(prompt),
+      {
+        role: "user",
+        content:
+          `User planning request:\n${prompt}\n\n` +
+          `Selected model: ${state.metadata.modelId ?? "not selected"}\n` +
+          `Project path: ${state.project?.path ?? "not selected"}\n\n` +
+          `Plan context profile: ${readOnlyContext?.profile ?? "none"}\n` +
+          `Read-only project context:\n${readOnlyContext?.modelContext ?? "No project files were read for this plan."}\n\n` +
+          `External capability note:\n${webContext}`,
       },
     ];
   }
@@ -7362,57 +7516,226 @@ function formatComposerModeLabel(mode: ComposerMode): string {
 
 function shouldRouteToPlan(prompt: string): boolean {
   const text = prompt.toLowerCase();
-  return /(план|спланир|архитектур|roadmap|design|designer|продумай|спроектир|разбей на этап|implementation strategy|test plan|risk analysis|как лучше реализовать|переделки ui)/iu.test(text);
+  return /(план|спланир|архитектур|roadmap|design|designer|продумай|спроектир|разбей на этап|implementation strategy|test plan|risk analysis|как лучше реализовать|переделки ui)/iu.test(text) ||
+    /\u043f\u043b\u0430\u043d|\u0441\u043f\u043b\u0430\u043d\u0438\u0440|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442|\u043f\u0440\u043e\u0434\u0443\u043c\u0430\u0439|\u0441\u043f\u0440\u043e\u0435\u043a\u0442\u0438\u0440|\u0440\u0430\u0437\u0431\u0435\u0439\s+\u043d\u0430\s+\u044d\u0442\u0430\u043f|\u043a\u0430\u043a\s+\u043b\u0443\u0447\u0448\u0435\s+\u0440\u0435\u0430\u043b\u0438\u0437|\u0440\u0438\u0441\u043a|\u0442\u0435\u0441\u0442-\u043f\u043b\u0430\u043d/iu.test(text);
 }
 
-function formatPlanResult(answer: string): string {
+function buildStructuredPlanView(prompt: string, answer: string): StructuredPlanView | null {
   const trimmed = answer.trim();
-  const body =
-    /^#{1,3}\s*Plan Result/im.test(trimmed) || /Plan Result/i.test(trimmed.slice(0, 80))
-      ? trimmed
-      : `## Plan Result\n\n${trimmed}`;
-  const requiredSections = [
-    {
-      heading: "Goal",
-      fallback: "Turn the request into a safe, reviewable implementation path without changing files in Plan Mode.",
-    },
-    {
-      heading: "Assumptions",
-      fallback: "The current answer is a read-only plan. Any file changes must be run later through Agent Mode and Apply Changes.",
-    },
-    {
-      heading: "File areas",
-      fallback: "Use project context when available; otherwise verify target files before implementation.",
-    },
-    {
-      heading: "Implementation steps",
-      fallback: "Follow the plan above as the first draft of the implementation sequence.",
-    },
-    {
-      heading: "Risks",
-      fallback: "Watch for unclear scope, missing project context, failing tests, and changes that should be split smaller.",
-    },
-    {
-      heading: "Tests",
-      fallback: "Run the smallest relevant unit, type, GUI, and runtime checks before applying or publishing the work.",
-    },
-    {
-      heading: "Estimated complexity",
-      fallback: "Medium by default; reduce to low only when the target files and behavior are fully known.",
-    },
-    {
-      heading: "Suggested mode for execution",
-      fallback: "Use Agent Mode only when you are ready to create staged file changes. Stay in Chat or Plan for questions and design review.",
-    },
-  ];
-  const additions: string[] = [];
-  for (const section of requiredSections) {
-    const pattern = new RegExp(`^#{1,4}\\s*${section.heading}\\b`, "im");
-    if (!pattern.test(body)) {
-      additions.push(`### ${section.heading}\n${section.fallback}`);
+  if (trimmed.length < 8) return null;
+  const parsed = parsePlanJson(trimmed);
+  if (parsed !== null) return parsed;
+  if (/^[{[]/u.test(trimmed)) return null;
+  return repairPlanFromText(prompt, trimmed);
+}
+
+function parsePlanJson(text: string): StructuredPlanView | null {
+  const candidates = [
+    text,
+    text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1],
+    text.match(/<plan_json>\s*([\s\S]*?)\s*<\/plan_json>/iu)?.[1],
+  ].filter((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0);
+  for (const candidate of candidates) {
+    try {
+      const value = JSON.parse(candidate.trim()) as Record<string, unknown>;
+      const view = structuredPlanFromRecord(value, false);
+      if (view !== null) return view;
+    } catch {
+      // Try the next extraction candidate; invalid JSON does not become a fake plan.
     }
   }
-  return [body, ...additions].join("\n\n");
+  return null;
+}
+
+function structuredPlanFromRecord(value: Record<string, unknown>, repairedFromText: boolean): StructuredPlanView | null {
+  const goal = stringValue(value["goal"]);
+  const implementationSteps = stringArrayValue(value["implementationSteps"]);
+  if (goal.length === 0 || implementationSteps.length === 0) return null;
+  return {
+    goal,
+    assumptions: stringArrayValue(value["assumptions"]),
+    fileAreas: stringArrayValue(value["relevantFileAreas"] ?? value["fileAreas"]),
+    implementationSteps,
+    risks: stringArrayValue(value["risks"]),
+    tests: stringArrayValue(value["tests"]),
+    estimatedComplexity: stringValue(value["estimatedComplexity"]) || "medium",
+    expectedBudget: stringValue(value["expectedModelCallsContextBudget"]) || "One bounded planning call; context only if the request is project-specific.",
+    suggestedExecutionMode: stringValue(value["suggestedExecutionMode"]) || "Plan",
+    acceptanceCriteria: stringArrayValue(value["acceptanceCriteria"]),
+    whatNotToDoYet: stringArrayValue(value["whatNotToDoYet"]),
+    repairedFromText,
+  };
+}
+
+function repairPlanFromText(prompt: string, text: string): StructuredPlanView | null {
+  const lines = text.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) return null;
+  const projectSpecific = /\bkaro\b|ui|ux|project|repo|\u043f\u0440\u043e\u0435\u043a\u0442|\u043a\u043e\u0434|\u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441/iu.test(prompt);
+  const extractedSteps = extractPlanBullets(lines, ["step", "steps", "implementation", "phase", "phases", "шаг", "этап"]);
+  const steps = extractedSteps.length > 0 ? extractedSteps : lines.slice(0, 8);
+  if (steps.join(" ").length < 12) return null;
+  return {
+    goal: firstSentence(text) || "Create a safe read-only plan.",
+    assumptions: projectSpecific
+      ? ["Project-specific details should be verified against selected files before Agent execution."]
+      : ["This is a planning answer only; no project files were changed."],
+    fileAreas: projectSpecific ? ["Relevant files depend on the selected project context."] : ["No project files needed for this generic plan."],
+    implementationSteps: steps,
+    risks: extractPlanBullets(lines, ["risk", "risks", "риск"]).slice(0, 6),
+    tests: extractPlanBullets(lines, ["test", "tests", "verify", "провер", "тест"]).slice(0, 6),
+    estimatedComplexity: /large|hard|сложн|high/iu.test(text) ? "high" : "medium",
+    expectedBudget: "One structured planning model call; no artifacts and no commands.",
+    suggestedExecutionMode: /create|implement|change|fix|созда|реализ|измени|исправ/iu.test(prompt) ? "Agent" : "Plan",
+    acceptanceCriteria: ["The user can review the plan before any Agent run.", "No files are staged or applied by Plan Mode."],
+    whatNotToDoYet: ["Do not create artifacts in Plan Mode.", "Do not run command execution from Plan Mode."],
+    repairedFromText: true,
+  };
+}
+
+function renderStructuredPlanResult(
+  prompt: string,
+  plan: StructuredPlanView,
+  context?: ChatReadOnlyContext,
+): string {
+  const ru = isLikelyRussian(prompt);
+  const labels = ru
+    ? {
+        activity: "Публичные этапы Plan Mode",
+        goal: "Цель",
+        assumptions: "Предпосылки",
+        fileAreas: "Зоны файлов",
+        steps: "Шаги реализации",
+        risks: "Риски",
+        tests: "Проверки",
+        complexity: "Оценка сложности",
+        budget: "Бюджет модели/контекста",
+        mode: "Рекомендуемый режим выполнения",
+        acceptance: "Критерии приемки",
+        notYet: "Что пока не делать",
+        repair: "Примечание",
+      }
+    : {
+        activity: "Public Plan Mode stages",
+        goal: "Goal",
+        assumptions: "Assumptions",
+        fileAreas: "Relevant file areas",
+        steps: "Implementation steps",
+        risks: "Risks",
+        tests: "Tests / verification",
+        complexity: "Estimated complexity",
+        budget: "Expected model calls / context budget",
+        mode: "Suggested execution mode",
+        acceptance: "Acceptance criteria",
+        notYet: "What not to do yet",
+        repair: "Note",
+      };
+  const activity = ru
+    ? [
+        `Проверяю, нужен ли контекст проекта: ${context === undefined ? "не нужен или не выбран" : `выбрано ${String(context.selectedFilesCount)} файлов (${context.profile})`}.`,
+        "Составляю план: выполнен один структурированный provider call.",
+        "Проверяю риски: включены отдельным разделом плана.",
+        "Финализирую план: artifacts не создавались, Apply Changes недоступен.",
+      ]
+    : [
+        `Checking whether project context is needed: ${context === undefined ? "not needed or not selected" : `${String(context.selectedFilesCount)} files selected (${context.profile})`}.`,
+        "Building plan: one structured provider call was used.",
+        "Reviewing risks: captured as a separate plan section.",
+        "Finalizing plan: no artifacts were created and Apply Changes is unavailable.",
+      ];
+  return [
+    "## Plan Result",
+    section(labels.activity, activity),
+    section(labels.goal, [plan.goal]),
+    section(labels.assumptions, fallbackList(plan.assumptions, ru ? "Нет дополнительных предпосылок от модели." : "No additional model assumptions.")),
+    section(labels.fileAreas, fallbackList(plan.fileAreas, context === undefined ? (ru ? "Контекст проекта не использовался." : "Project context was not used.") : context.selectedFiles.join(", "))),
+    section(labels.steps, plan.implementationSteps),
+    section(labels.risks, fallbackList(plan.risks, ru ? "Явных рисков модель не указала; проверь scope и стоимость перед Agent Mode." : "No explicit model risks; verify scope and cost before Agent Mode.")),
+    section(labels.tests, fallbackList(plan.tests, ru ? "Подбери минимальные проверки перед запуском Agent Mode." : "Choose the smallest useful checks before Agent Mode.")),
+    section(labels.complexity, [plan.estimatedComplexity]),
+    section(labels.budget, [plan.expectedBudget]),
+    section(labels.mode, [plan.suggestedExecutionMode]),
+    section(labels.acceptance, fallbackList(plan.acceptanceCriteria, ru ? "План можно выполнить только после отдельного Agent/Quick Edit запуска." : "The plan can be executed only by a separate Agent/Quick Edit run.")),
+    section(labels.notYet, fallbackList(plan.whatNotToDoYet, ru ? "Не менять файлы в Plan Mode." : "Do not change files in Plan Mode.")),
+    ...(plan.repairedFromText ? [section(labels.repair, [ru ? "Модель не вернула JSON; Karo один раз структурировал ее текстовый ответ без создания artifacts." : "The model did not return JSON; Karo structured the text once without creating artifacts."])] : []),
+  ].join("\n\n");
+}
+
+function buildPlanFailureMessage(
+  prompt: string,
+  error: string,
+  context?: ChatReadOnlyContext,
+): string {
+  const ru = isLikelyRussian(prompt);
+  if (ru) {
+    return [
+      "## Plan Mode could not complete",
+      "",
+      `Ошибка: ${error}`,
+      "",
+      "Файлы не менялись, artifacts не создавались, Apply Changes недоступен.",
+      context !== undefined ? `Контекст был выбран до ошибки: ${String(context.selectedFilesCount)} файлов (${context.profile}).` : "Контекст проекта не использовался или не был выбран до ошибки.",
+      "",
+      "### Recovery options",
+      "- Retry Plan: повторить тот же planning prompt.",
+      "- Retry with reduced context: уменьшить выбранный контекст и повторить.",
+      "- Switch model: выбери другую text/code модель на странице Models, если текущая недоступна.",
+    ].join("\n");
+  }
+  return [
+    "## Plan Mode could not complete",
+    "",
+    `Error: ${error}`,
+    "",
+    "No files were changed, no artifacts were created, and Apply Changes is unavailable.",
+    context !== undefined ? `Context selected before failure: ${String(context.selectedFilesCount)} files (${context.profile}).` : "No project context was used or selected before the failure.",
+    "",
+    "### Recovery options",
+    "- Retry Plan: re-submit the same planning prompt.",
+    "- Retry with reduced context: reduce selected context and try again.",
+    "- Switch model: choose another text/code model on the Models page if this one is unavailable.",
+  ].join("\n");
+}
+
+function section(title: string, values: readonly string[]): string {
+  return [`### ${title}`, ...values.map((value) => `- ${value}`)].join("\n");
+}
+
+function fallbackList(values: readonly string[], fallback: string): readonly string[] {
+  return values.length > 0 ? values : [fallback];
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function stringArrayValue(value: unknown): readonly string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter((item) => item.length > 0).slice(0, 12);
+  }
+  if (typeof value === "string" && value.trim().length > 0) return [value.trim()];
+  return [];
+}
+
+function firstSentence(text: string): string {
+  return text.replace(/\s+/gu, " ").split(/(?<=[.!?])\s/u)[0]?.trim().slice(0, 220) ?? "";
+}
+
+function extractPlanBullets(lines: readonly string[], headings: readonly string[]): readonly string[] {
+  const lowered = headings.map((heading) => heading.toLowerCase());
+  const result: string[] = [];
+  let collecting = false;
+  for (const line of lines) {
+    const normalized = line.replace(/^#+\s*/u, "").toLowerCase();
+    if (lowered.some((heading) => normalized.includes(heading))) {
+      collecting = true;
+      continue;
+    }
+    if (collecting && /^#{1,4}\s/u.test(line)) break;
+    if (collecting) {
+      result.push(line.replace(/^[-*\d.)\s]+/u, "").trim());
+    }
+  }
+  return result.filter((item) => item.length > 0).slice(0, 10);
 }
 
 function detectPreviewCommand(): string {

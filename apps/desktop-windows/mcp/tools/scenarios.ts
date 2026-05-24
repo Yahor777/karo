@@ -411,20 +411,29 @@ export async function runScenarioPlanMode(ctx: KaroAutomationContext): Promise<S
       await assertVisible(ctx, { selector: `${byTestId(TEST_IDS.chatMessagePlan)}, ${byTestId(TEST_IDS.chatMessageAnalysis)}` }),
       await assertNotVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "plan-no-apply" }),
       await assertNotVisible(ctx, { selector: ".kw-pipeline-bar", name: "plan-no-agent-pipeline" }),
+      await assertNotVisible(ctx, { selector: ".kw-chat-final", name: "plan-no-final-report" }),
     );
     const planText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
-    const planFailedHonestly = /Plan model call failed|model_not_found|No encrypted API key/i.test(planText ?? "");
+    const planFailedHonestly = /Plan model call failed|Plan Mode could not complete|model_not_found|No encrypted API key/i.test(planText ?? "");
+    const hasEnglishSections =
+      /Plan Result/i.test(planText ?? "") &&
+      /Goal/i.test(planText ?? "") &&
+      /Assumptions/i.test(planText ?? "") &&
+      /Implementation steps/i.test(planText ?? "") &&
+      /Risks/i.test(planText ?? "") &&
+      /Tests/i.test(planText ?? "") &&
+      /Suggested mode/i.test(planText ?? "");
+    const hasRussianSections =
+      /Plan Result/i.test(planText ?? "") &&
+      /\u0426\u0435\u043b\u044c/u.test(planText ?? "") &&
+      /\u041f\u0440\u0435\u0434\u043f\u043e\u0441/u.test(planText ?? "") &&
+      /\u0428\u0430\u0433\u0438/u.test(planText ?? "") &&
+      /\u0420\u0438\u0441\u043a/u.test(planText ?? "") &&
+      /\u041f\u0440\u043e\u0432\u0435\u0440/u.test(planText ?? "") &&
+      /\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434/u.test(planText ?? "");
     bag.assertions.push({
       name: "plan-result-has-mode-contract-sections",
-      passed:
-        planFailedHonestly ||
-        (/Plan Result/i.test(planText ?? "") &&
-          /Goal/i.test(planText ?? "") &&
-          /Assumptions/i.test(planText ?? "") &&
-          /Implementation steps/i.test(planText ?? "") &&
-          /Risks/i.test(planText ?? "") &&
-          /Tests/i.test(planText ?? "") &&
-          /Suggested mode for execution/i.test(planText ?? "")),
+      passed: planFailedHonestly || hasEnglishSections || hasRussianSections,
       details: planText ?? "",
     });
     bag.screenshots.push((await karoScreenshot(ctx, { name: "plan-mode" })).path);

@@ -547,7 +547,22 @@ describe("workbench ??? chat workbench", () => {
 
   it("Plan Mode answers with a Plan Result and does not start the agent pipeline", async () => {
     const opts = buildOptions();
-    opts.chatModelClient.nextResponse = { kind: "ok", text: "Summary\nImplementation Phases\nTest Plan" };
+    opts.chatModelClient.nextResponse = {
+      kind: "ok",
+      text: JSON.stringify({
+        goal: "Улучшить UX Karo без изменения файлов в Plan Mode.",
+        assumptions: ["Нужен review текущего UI."],
+        relevantFileAreas: ["workbench.ts", "main.css"],
+        implementationSteps: ["Проверить composer", "Проверить right inspector", "Составить Agent task после ревью"],
+        risks: ["Scope может расползтись."],
+        tests: ["gui:check", "tsc"],
+        estimatedComplexity: "medium",
+        expectedModelCallsContextBudget: "One planning call.",
+        suggestedExecutionMode: "Agent",
+        acceptanceCriteria: ["План понятен пользователю."],
+        whatNotToDoYet: ["Не создавать artifacts в Plan Mode."],
+      }),
+    };
     mountWorkspaceShell(root, opts);
     root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
     const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
@@ -561,16 +576,241 @@ describe("workbench ??? chat workbench", () => {
       .map((el) => el.textContent ?? "")
       .join("\n");
     expect(answer).toContain("Plan Result");
-    expect(answer).toContain("Goal");
-    expect(answer).toContain("Assumptions");
-    expect(answer).toContain("File areas");
-    expect(answer).toContain("Implementation steps");
-    expect(answer).toContain("Risks");
-    expect(answer).toContain("Tests");
-    expect(answer).toContain("Estimated complexity");
-    expect(answer).toContain("Suggested mode for execution");
+    expect(answer).toContain("Цель");
+    expect(answer).toContain("Предпосылки");
+    expect(answer).toContain("Зоны файлов");
+    expect(answer).toContain("Шаги реализации");
+    expect(answer).toContain("Риски");
+    expect(answer).toContain("Проверки");
+    expect(answer).toContain("Оценка сложности");
+    expect(answer).toContain("Рекомендуемый режим");
     expect(opts.transport.createCalls).toHaveLength(0);
+    expect(opts.shell.readProjectSummary).not.toHaveBeenCalled();
     expect(root.querySelector(".kw-chat-final")).toBeNull();
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("generic Plan Mode does not read project context", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = {
+      kind: "ok",
+      text: JSON.stringify({
+        goal: "Build a one-week Python learning plan.",
+        assumptions: ["The learner can study daily."],
+        relevantFileAreas: [],
+        implementationSteps: ["Day 1: syntax", "Day 2: functions", "Day 3: small script"],
+        risks: ["Too much theory."],
+        tests: ["Write one runnable script."],
+        estimatedComplexity: "low",
+        expectedModelCallsContextBudget: "One planning call, no project context.",
+        suggestedExecutionMode: "Plan",
+        acceptanceCriteria: ["The learner has a daily checklist."],
+        whatNotToDoYet: ["Do not scan the local project."],
+      }),
+    };
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "составь план изучения Python на неделю";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(opts.chatModelClient.calls).toHaveLength(1);
+    expect(opts.shell.readProjectSummary).not.toHaveBeenCalled();
+    const userPayload = opts.chatModelClient.calls[0]!.messages.at(-1)!.content;
+    expect(userPayload).toContain("Plan context profile: none");
+    expect(root.querySelector("[data-testid='chat-readonly-context']")).toBeNull();
+    expect(opts.transport.createCalls).toHaveLength(0);
+  });
+
+  it("project-specific Plan Mode uses minimal read-only Context Engine", async () => {
+    const built = buildShell();
+    built.reads.set("recentProject", {
+      path: "D:\\projects\\karo",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    });
+    built.shell.shell_build_task_context = vi.fn(async () => ({
+      projectRoot: "D:\\projects\\karo",
+      prompt: "спланируй как переделать Agent Activity UI в Karo",
+      fileTreeSummary: [],
+      selectedFiles: [
+        {
+          relativePath: "apps/desktop-windows/src/ui/workbench.ts",
+          content: "function buildChatMessage() {}",
+          sizeBytes: 64,
+          score: 40,
+          reason: ["ui work"],
+          truncated: false,
+        },
+        {
+          relativePath: "apps/desktop-windows/src/ui/main.css",
+          content: ".kw-agent-card {}",
+          sizeBytes: 32,
+          score: 36,
+          reason: ["visual work"],
+          truncated: false,
+        },
+      ],
+      ignoredSummary: {
+        ignoredDirs: 0,
+        ignoredFiles: 0,
+        ignoredLargeFiles: 0,
+        ignoredBinaryFiles: 0,
+        ignoredSecretFiles: 0,
+      },
+      tokenBudgetHint: 48000,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      warnings: [],
+      scannedFilesCount: 20,
+      selectedFilesCount: 2,
+    }));
+    const chat = new FakeChatModelClient();
+    chat.nextResponse = {
+      kind: "ok",
+      text: JSON.stringify({
+        goal: "Спланировать Agent Activity UI.",
+        assumptions: ["Контекст выбран read-only."],
+        relevantFileAreas: ["workbench.ts", "main.css"],
+        implementationSteps: ["Описать карточки", "Проверить scroll", "Добавить GUI assertions"],
+        risks: ["Не показывать hidden chain-of-thought."],
+        tests: ["workbench.test.ts", "gui:check"],
+        estimatedComplexity: "medium",
+        expectedModelCallsContextBudget: "One planning call plus selected UI context.",
+        suggestedExecutionMode: "Agent",
+        acceptanceCriteria: ["План не создает artifacts."],
+        whatNotToDoYet: ["Не делать redesign."],
+      }),
+    };
+    mountWorkspaceShell(root, {
+      session: SAMPLE_SESSION,
+      metadata: SAMPLE_METADATA,
+      desktopShell: built.shell,
+      transport: new FakeTransport(),
+      chatModelClient: chat,
+      onSignOut: vi.fn(),
+    });
+    await flush();
+    (root as any)._karoState.project = {
+      path: "D:\\projects\\karo",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    };
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "спланируй как переделать Agent Activity UI в Karo";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(built.shell.shell_build_task_context).toHaveBeenCalledWith(
+      "D:\\projects\\karo",
+      "спланируй как переделать Agent Activity UI в Karo",
+      expect.objectContaining({ maxFiles: 8, includeContent: true }),
+    );
+    const payload = chat.calls[0]!.messages.at(-1)!.content;
+    expect(payload).toContain("Plan context profile: ui_work");
+    expect(payload).toContain("workbench.ts");
+    expect(root.querySelector("[data-testid='chat-readonly-context']")?.textContent).toContain("2 files");
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("Plan Mode provider timeout is an honest recovery state, not fake success", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = {
+      kind: "error",
+      providerCode: "provider_timeout",
+      providerMessage: "model timed out",
+    };
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "сделай план улучшения UI Karo";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    const text = root.textContent ?? "";
+    expect(text).toContain("Plan Mode could not complete");
+    expect(text).toContain("Retry Plan");
+    expect(text).toContain("provider_timeout");
+    expect(text).not.toContain("Artifacts staged");
+    expect(opts.transport.createCalls).toHaveLength(0);
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("Plan Mode missing API key is honest failure, not fake success", async () => {
+    const built = buildShell();
+    built.reads.delete("secret:apiKey:fireworks");
+    const opts = buildOptions({ desktopShell: built.shell });
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "сделай план улучшения UI Karo";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    const text = root.textContent ?? "";
+    expect(text).toContain("Plan Mode could not complete");
+    expect(text).toContain("API key");
+    expect(opts.chatModelClient.calls).toHaveLength(0);
+    expect(opts.transport.createCalls).toHaveLength(0);
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("Plan Mode invalid JSON does not become a fake plan", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = { kind: "ok", text: "{not valid json" };
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "сделай план рефакторинга";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    const text = root.textContent ?? "";
+    expect(text).toContain("Plan Mode could not complete");
+    expect(text).toContain("plan_parse_failed");
+    expect(text).not.toContain("Шаги реализации");
+    expect(opts.transport.createCalls).toHaveLength(0);
+  });
+
+  it("Auto routes planning prompts to Plan Mode without artifacts", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = {
+      kind: "ok",
+      text: JSON.stringify({
+        goal: "Plan recovery work.",
+        assumptions: ["No file changes yet."],
+        relevantFileAreas: [],
+        implementationSteps: ["Define states", "Add tests"],
+        risks: ["Timeouts need honest recovery."],
+        tests: ["unit tests"],
+        estimatedComplexity: "medium",
+        expectedModelCallsContextBudget: "One planning call.",
+        suggestedExecutionMode: "Agent",
+        acceptanceCriteria: ["Plan is reviewable."],
+        whatNotToDoYet: ["Do not stage files."],
+      }),
+    };
+    mountWorkspaceShell(root, opts);
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "спланируй как лучше реализовать recovery";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(opts.chatModelClient.calls).toHaveLength(1);
+    expect(opts.transport.createCalls).toHaveLength(0);
+    expect(root.querySelector('[data-testid="chat-message-plan"]')?.textContent).toContain("Plan Result");
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
   });
 
   it("New chat creates a new persisted conversation without deleting the previous messages", async () => {

@@ -1,0 +1,44 @@
+{
+  "name": "ai-agent-orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Desktop-first AI Agent Orchestrator (Windows primary, Web secondary). Monorepo root.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build": "tsc -b",
+    "build:clean": "tsc -b --clean",
+    "typecheck": "tsc -b --pretty",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "node scripts/print-dev-help.mjs",
+    "dev:desktop": "pnpm --filter @ai-agent-orchestrator/desktop-windows dev:renderer",
+    "dev:web": "pnpm --filter @ai-agent-orchestrator/web dev",
+    "dev:backend": "pnpm --filter @ai-agent-orchestrator/backend dev",
+    "desktop:dev": "pnpm --filter @ai-agent-orchestrator/desktop-windows dev",
+    "desktop:dev:renderer": "pnpm --filter @ai-agent-orchestrator/desktop-windows dev:renderer",
+    "desktop:build": "pnpm --filter @ai-agent-orchestrator/desktop-windows build:installer"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@types/node": "^20.16.11",
+    "@vitest/coverage-v8": "^2.1.3",
+    "eslint": "^9.13.0",
+    "eslint-config-prettier": "^9.1.0",
+    "fast-check": "^3.22.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.10.0",
+    "vitest": "^2.1.3"
+  }
+}

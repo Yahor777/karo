@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Strict CSP for the renderer. The Tauri runtime injects its own
+      script via the `__TAURI_INTERNALS__` global, which does not need
+      `unsafe-inline`. All renderer scripts are bundled by Vite into a
+      same-origin file (default Tauri dev/prod behaviour).
+
+      `connect-src` must allow Tauri 2's IPC protocols:
+        • `ipc:` / `tauri:` — the historical IPC schemes used on
+          mobile and the older custom-protocol bridge.
+        • `http://ipc.localhost` — the Windows IPC scheme used by
+          Tauri 2 by default. Without this entry every renderer-to-
+          Rust call (`encryptLocalSecret`, `writeLocalSetting`,
+          `shell_provider_probe`, …) is blocked by CSP and surfaces
+          to the UI as "save_failed: unknown error".
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: tauri: http://ipc.localhost"
+    />
+    <title>KARO — AI Agent Orchestrator</title>
+    <link rel="stylesheet" href="/src/ui/main.css" />
+  </head>
+  <body>
+    <div id="app" class="app-root"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

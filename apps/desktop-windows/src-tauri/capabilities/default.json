@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "Default capability set granted to the main window. Only the desktop shell IPC commands are exposed; agents and arbitrary UI code never get direct file system or shell access (see Requirement 1.6).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-save",
+    "notification:default"
+  ]
+}

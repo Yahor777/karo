@@ -1,0 +1,12 @@
+{
+  "name": "@ai-agent-orchestrator/client-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Client SDK used by the desktop and web apps to talk to the backend gateway.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@ai-agent-orchestrator/shared-core": "workspace:*",
+    "@ai-agent-orchestrator/validation": "workspace:*"
+  }
+}

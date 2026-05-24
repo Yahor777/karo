@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": [
+    "apps/**/src/**/*.ts",
+    "apps/**/src/**/*.tsx",
+    "apps/**/*.config.ts",
+    "apps/**/*.config.mts",
+    "packages/**/src/**/*.ts",
+    "packages/**/src/**/*.tsx",
+    "packages/**/*.config.ts",
+    "packages/**/*.config.mts",
+    "vitest.config.ts",
+    "*.config.ts",
+    "*.config.mts",
+    "*.config.mjs",
+    "*.config.cjs",
+    "*.config.js",
+    "eslint.config.mjs"
+  ],
+  "exclude": ["**/node_modules/**", "**/dist/**", "**/dist-types/**", "**/build/**", "**/out/**"]
+}

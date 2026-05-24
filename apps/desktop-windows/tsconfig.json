@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist/types",
+    "rootDir": "./src",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "vitest/globals"],
+    "composite": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../../packages/shared-core" },
+    { "path": "../../packages/shared-ui" },
+    { "path": "../../packages/client-sdk" },
+    { "path": "../../packages/validation" }
+  ],
+  "include": ["src/**/*"],
+  "exclude": ["dist", "src-tauri", "node_modules"]
+}

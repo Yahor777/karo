@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared-core" },
+    { "path": "./packages/validation" },
+    { "path": "./packages/agent-contracts" },
+    { "path": "./packages/client-sdk" },
+    { "path": "./packages/shared-ui" },
+    { "path": "./apps/backend" },
+    { "path": "./apps/desktop-windows" },
+    { "path": "./apps/web" }
+  ]
+}

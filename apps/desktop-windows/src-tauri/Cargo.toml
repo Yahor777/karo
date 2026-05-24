@@ -1,0 +1,42 @@
+[package]
+name = "ai-agent-orchestrator-desktop"
+version = "0.0.0"
+description = "AI Agent Orchestrator Windows Desktop App (Tauri shell)"
+edition = "2021"
+publish = false
+default-run = "ai-agent-orchestrator-desktop"
+
+[lib]
+name = "ai_agent_orchestrator_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+# Auto-update channel (task 20.2). The updater is wired in `lib.rs` and
+# configured under `plugins.updater` in `tauri.conf.json`. Real release
+# builds need a signed `latest.json` and `TAURI_PRIVATE_KEY` /
+# `TAURI_KEY_PASSWORD` env vars — see `RELEASING.md` for the full flow.
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+# HTTP client used by `shell_provider_probe` to validate API keys
+# directly from the native side. Validation MUST NOT happen in the
+# renderer/WebView because the WebView is subject to CORS and the
+# Tauri default isolation policy ("connect-src 'self' ipc: tauri:")
+# forbids outbound HTTPS to provider domains. Issuing the request
+# from Rust avoids both. `rustls-tls` keeps us off the system OpenSSL.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+tempfile = "3.8"
+
+[features]
+# This feature is used for production builds or when a dev server is not specified.
+custom-protocol = ["tauri/custom-protocol"]

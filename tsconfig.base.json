@@ -1,0 +1,50 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@ai-agent-orchestrator/shared-core": ["./packages/shared-core/src/index.ts"],
+      "@ai-agent-orchestrator/shared-core/*": ["./packages/shared-core/src/*"],
+      "@ai-agent-orchestrator/shared-ui": ["./packages/shared-ui/src/index.ts"],
+      "@ai-agent-orchestrator/shared-ui/*": ["./packages/shared-ui/src/*"],
+      "@ai-agent-orchestrator/client-sdk": ["./packages/client-sdk/src/index.ts"],
+      "@ai-agent-orchestrator/client-sdk/*": ["./packages/client-sdk/src/*"],
+      "@ai-agent-orchestrator/validation": ["./packages/validation/src/index.ts"],
+      "@ai-agent-orchestrator/validation/*": ["./packages/validation/src/*"],
+      "@ai-agent-orchestrator/agent-contracts": ["./packages/agent-contracts/src/index.ts"],
+      "@ai-agent-orchestrator/agent-contracts/*": ["./packages/agent-contracts/src/*"]
+    }
+  }
+}

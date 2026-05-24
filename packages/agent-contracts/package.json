@@ -1,0 +1,11 @@
+{
+  "name": "@ai-agent-orchestrator/agent-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contracts between the orchestrator and agents: messages, traces, tools and artifacts.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@ai-agent-orchestrator/shared-core": "workspace:*"
+  }
+}

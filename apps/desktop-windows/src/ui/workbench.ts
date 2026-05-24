@@ -2633,6 +2633,16 @@ export function mountWorkspaceShell(
       wrap.append(buildReadOnlyFailureRecovery(doc, report, taskState, () => setRightTab("usage")));
     }
 
+    if (!isExplainOnly && report.status === "error" && isCoderTimeoutReport(report, taskState)) {
+      wrap.append(
+        buildCoderTimeoutRecovery(doc, report, taskState, {
+          openChanges,
+          openLogs: () => setRightTab("logs"),
+          openModels: () => navigate("models"),
+        }),
+      );
+    }
+
     if (report.outstandingIssues !== undefined && report.outstandingIssues.length > 0) {
       const title = doc.createElement("h4");
       title.className = "kw-final-section-title";
@@ -5506,6 +5516,125 @@ export function mountWorkspaceShell(
     });
 
     actions.append(retry, switchModel, reduce, showFiles, copy);
+    card.append(title, body, actions);
+    return card;
+  }
+
+  function isCoderTimeoutReport(
+    report: FinalReportSummary,
+    taskState: TaskStateSnapshot | null | undefined,
+  ): boolean {
+    const issues = report.outstandingIssues?.join("\n") ?? "";
+    if (/Coder timed out|provider_timeout|Retry Coder/i.test(issues)) return true;
+    return (
+      taskState?.providerDiagnostics?.some(
+        (diagnostic) => diagnostic.agentId === "coder" && diagnostic.errorType === "provider_timeout",
+      ) ?? false
+    );
+  }
+
+  function buildCoderTimeoutRecovery(
+    doc: Document,
+    report: FinalReportSummary,
+    taskState: TaskStateSnapshot | null | undefined,
+    actionsIn: {
+      readonly openChanges: () => void;
+      readonly openLogs: () => void;
+      readonly openModels: () => void;
+    },
+  ): HTMLElement {
+    const latestCoderFailure = [...(taskState?.providerDiagnostics ?? [])]
+      .reverse()
+      .find((diagnostic) => diagnostic.agentId === "coder" && diagnostic.errorType !== undefined);
+    const card = doc.createElement("section");
+    card.className = "kw-recovery-card";
+    card.dataset["testid"] = "coder-timeout-recovery";
+    const title = doc.createElement("h4");
+    title.textContent = "Coder timed out";
+    const body = doc.createElement("p");
+    const elapsed =
+      latestCoderFailure !== undefined
+        ? ` Last call ran for ${String(Math.round(latestCoderFailure.elapsedMs / 1000))}s with an estimated ${String(latestCoderFailure.inputTokenEstimate)} input tokens.`
+        : "";
+    body.textContent =
+      "Karo kept the Researcher/Planner output and any staged draft files, but this run is not completed. Emergency fallback is available only as an explicit recovery choice, not as a success path." +
+      elapsed;
+    const actions = doc.createElement("div");
+    actions.className = "kw-recovery-actions";
+
+    const retry = doc.createElement("button");
+    retry.type = "button";
+    retry.className = "kw-button kw-button-secondary";
+    retry.textContent = "Retry Coder";
+    retry.disabled = true;
+    retry.title = "Retry wiring is planned; re-submit the prompt or use a smaller context for now.";
+
+    const reduce = doc.createElement("button");
+    reduce.type = "button";
+    reduce.className = "kw-button kw-button-secondary";
+    reduce.textContent = "Retry with reduced context";
+    reduce.disabled = true;
+    reduce.title = "Karo already attempted one reduced-context retry for the failed file.";
+
+    const switchModel = doc.createElement("button");
+    switchModel.type = "button";
+    switchModel.className = "kw-button kw-button-secondary";
+    switchModel.textContent = "Switch model";
+    switchModel.addEventListener("click", actionsIn.openModels);
+
+    const partial = doc.createElement("button");
+    partial.type = "button";
+    partial.className = "kw-button kw-button-secondary";
+    partial.textContent = "Continue from partial artifacts";
+    partial.disabled = report.finalArtifacts.length === 0;
+    partial.title =
+      report.finalArtifacts.length === 0
+        ? "No partial artifacts were staged before the timeout."
+        : "Open Changes to inspect the partial files that were staged before the timeout.";
+    partial.addEventListener("click", actionsIn.openChanges);
+
+    const emergency = doc.createElement("button");
+    emergency.type = "button";
+    emergency.className = "kw-button kw-button-secondary";
+    emergency.textContent = "Use emergency static scaffold";
+    emergency.disabled = true;
+    emergency.title = "Emergency scaffold requires an explicit user action; it is not auto-generated as success.";
+
+    const logs = doc.createElement("button");
+    logs.type = "button";
+    logs.className = "kw-button kw-button-secondary";
+    logs.textContent = "Show diagnostics";
+    logs.addEventListener("click", actionsIn.openLogs);
+
+    const copy = doc.createElement("button");
+    copy.type = "button";
+    copy.className = "kw-button kw-button-secondary";
+    copy.textContent = "Copy safe diagnostics";
+    copy.addEventListener("click", () => {
+      const diagnostics = taskState?.providerDiagnostics ?? [];
+      const lines = diagnostics.map((diagnostic) =>
+        [
+          `${diagnostic.stageName}: ${diagnostic.provider}/${diagnostic.modelId}`,
+          `tokens=${String(diagnostic.inputTokenEstimate)}`,
+          `contextFiles=${String(diagnostic.selectedFilesCount)}`,
+          `contextTokens=${String(diagnostic.contextTokens)}`,
+          `timeoutMs=${String(diagnostic.timeoutMs)}`,
+          `elapsedMs=${String(diagnostic.elapsedMs)}`,
+          `error=${diagnostic.errorType ?? "none"}`,
+          `artifactsCreated=${String(diagnostic.artifactsCreated)}`,
+        ].join(" | "),
+      );
+      void copyToClipboard(
+        [
+          `Prompt: ${report.originalPrompt}`,
+          `Status: ${report.status}`,
+          `Artifacts saved: ${String(report.finalArtifacts.length)}`,
+          lines.length > 0 ? lines.join("\n") : "Provider diagnostics: none",
+        ].join("\n"),
+      );
+    });
+
+    actions.append(retry, reduce, switchModel, partial, emergency, logs, copy);
     card.append(title, body, actions);
     return card;
   }

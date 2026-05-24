@@ -147,9 +147,27 @@ export interface TaskStateSnapshot {
   readonly isExplainOnly?: boolean | undefined;
   readonly tokenUsage?: TaskUsageSummary | undefined;
   readonly currentContextUsage?: TokenUsageBreakdown | undefined;
+  readonly providerDiagnostics?: readonly ProviderCallDiagnostic[] | undefined;
   readonly decision?: TaskDecision | undefined;
   readonly clarificationState?: ClarificationState | undefined;
   readonly commandPermissionMode?: CommandPermissionMode | undefined;
+}
+
+export interface ProviderCallDiagnostic {
+  readonly id: string;
+  readonly agentId: AgentId;
+  readonly stageName: string;
+  readonly provider: string;
+  readonly modelId: string;
+  readonly inputTokenEstimate: number;
+  readonly selectedFilesCount: number;
+  readonly contextTokens: number;
+  readonly timeoutMs: number;
+  readonly elapsedMs: number;
+  readonly errorType?: string | undefined;
+  readonly partialOutputReceived: boolean;
+  readonly artifactsCreated: boolean;
+  readonly createdAt: string;
 }
 
 export type SelectedContextFileSummary = {

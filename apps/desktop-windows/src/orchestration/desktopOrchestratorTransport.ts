@@ -79,6 +79,7 @@ import {
   type AgentTokenUsage,
   type TaskUsageSummary,
   type TaskDecision,
+  type ProviderCallDiagnostic,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -110,6 +111,10 @@ const CODER_SMALL_TASK_MAX_TOKENS = 3500;
 const CODER_MEDIUM_TASK_MAX_TOKENS = 5500;
 const CODER_MULTIFILE_TASK_MAX_TOKENS = 8000;
 const REPAIR_CONTEXT_PREVIEW_CHARS = 800;
+const MODEL_TIMEOUT_DEFAULT_MS = 60_000;
+const MODEL_TIMEOUT_WEBSITE_FILE_MS = 120_000;
+const MODEL_TIMEOUT_REVIEW_MS = 45_000;
+const MODEL_TIMEOUT_RESEARCH_MS = 75_000;
 const WEB_SEARCH_TOOL_MAX_ROUNDS = 2;
 const WEB_SEARCH_DEFAULT_LIMIT = 5;
 const WEB_SEARCH_MAX_LIMIT = 10;
@@ -180,6 +185,29 @@ function looksArchitecturalOrAmbiguous(prompt: string): boolean {
   return /(архитектур|рефактор|redesign|передел|улучш|fix|исправ|замени в проекте|analy[sz]e|security|безопас)/iu.test(prompt);
 }
 
+function modelTimeoutForAgent(agentId: AgentId, prompt: string): number {
+  if (agentId === "coder" && isStaticWebsiteCreationPrompt(prompt)) {
+    return MODEL_TIMEOUT_WEBSITE_FILE_MS;
+  }
+  if (agentId === "reviewer" || agentId === "fixer" || agentId === "boss") {
+    return MODEL_TIMEOUT_REVIEW_MS;
+  }
+  if (agentId === "researcher") {
+    return MODEL_TIMEOUT_RESEARCH_MS;
+  }
+  return MODEL_TIMEOUT_DEFAULT_MS;
+}
+
+function readableStageName(agentId: AgentId): string {
+  if (agentId === "researcher") return "Researcher";
+  if (agentId === "coder") return "Coder";
+  if (agentId === "reviewer") return "Reviewer";
+  if (agentId === "fixer") return "Fixer";
+  if (agentId === "boss") return "Finalizer";
+  if (agentId === "quick_edit") return "Quick Edit";
+  return agentId;
+}
+
 // ---------------------------------------------------------------------------
 // System prompts (kept short to stay within token budgets for MVP)
 // ---------------------------------------------------------------------------
@@ -215,7 +243,6 @@ type CoderRunResult = {
   readonly version: number;
   readonly content: string;
   readonly fileName: string;
-  readonly fallbackKind?: "static_website_template";
 };
 
 const CODER_SYSTEM_PROMPT = [
@@ -370,6 +397,7 @@ export interface DesktopOrchestratorTransportOptions {
       readonly messages: readonly ChatMessage[];
       readonly maxTokens?: number;
       readonly temperature?: number;
+      readonly timeoutMs?: number;
     }): Promise<
       | { readonly kind: "ok"; readonly text: string }
       | {
@@ -1421,10 +1449,14 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       readonly messages: readonly ChatMessage[];
       readonly maxTokens?: number;
       readonly temperature?: number;
+      readonly timeoutMs?: number;
     },
   ): Promise<{ readonly kind: "ok"; readonly text: string } | ProviderModelError> {
     const internal = this.tasks.get(taskId);
     const allowWebSearch = internal?.state?.decision?.allowWebSearch !== false;
+    const timeoutMs = request.timeoutMs ?? modelTimeoutForAgent(agentId, internal?.state.originalPrompt ?? "");
+    const startedAt = Date.now();
+    const artifactCountBefore = internal?.artifactMeta.size ?? 0;
 
     let messages: readonly ChatMessage[] = allowWebSearch
       ? addWebSearchToolProtocol(request.messages)
@@ -1438,11 +1470,20 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
           return m;
         });
 
-    let response = await this.modelClient.chat({ ...request, messages });
+    let response = await this.modelClient.chat({ ...request, messages, timeoutMs });
     for (let round = 0; round < (allowWebSearch ? WEB_SEARCH_TOOL_MAX_ROUNDS : 0); round += 1) {
-      if (response.kind !== "ok") return response;
+      if (response.kind !== "ok") {
+        this.recordProviderCallDiagnostic(taskId, {
+          agentId,
+          request: { ...request, messages, timeoutMs },
+          response,
+          startedAt,
+          artifactCountBefore,
+        });
+        return response;
+      }
       const toolRequest = parseWebSearchToolRequest(response.text);
-      if (toolRequest === null) return response;
+      if (toolRequest === null) break;
 
       const searchResult = await this.webSearch(toolRequest.query, toolRequest.limit);
       this.publishTrace(taskId, agentId, {
@@ -1460,17 +1501,89 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
           content: formatWebSearchToolResult(toolRequest, searchResult),
         },
       ];
-      response = await this.modelClient.chat({ ...request, messages });
+      response = await this.modelClient.chat({ ...request, messages, timeoutMs });
     }
 
     if (response.kind === "ok" && parseWebSearchToolRequest(response.text) !== null) {
-      return {
+      const loopError = {
         kind: "error",
         providerCode: "tool_loop_limit",
         providerMessage: `web_search tool loop exceeded ${String(WEB_SEARCH_TOOL_MAX_ROUNDS)} rounds`,
-      };
+      } as const;
+      this.recordProviderCallDiagnostic(taskId, {
+        agentId,
+        request: { ...request, messages, timeoutMs },
+        response: loopError,
+        startedAt,
+        artifactCountBefore,
+      });
+      return loopError;
     }
+    this.recordProviderCallDiagnostic(taskId, {
+      agentId,
+      request: { ...request, messages, timeoutMs },
+      response,
+      startedAt,
+      artifactCountBefore,
+    });
     return response;
+  }
+
+  private recordProviderCallDiagnostic(
+    taskId: TaskId,
+    input: {
+      readonly agentId: AgentId;
+      readonly request: {
+        readonly provider: string;
+        readonly modelId: string;
+        readonly messages: readonly ChatMessage[];
+        readonly timeoutMs: number;
+      };
+      readonly response: { readonly kind: "ok"; readonly text: string } | ProviderModelError;
+      readonly startedAt: number;
+      readonly artifactCountBefore: number;
+    },
+  ): void {
+    const internal = this.tasks.get(taskId);
+    if (internal === undefined) return;
+    const elapsedMs = Math.max(0, Date.now() - input.startedAt);
+    const contextTokens = internal.state.currentContextUsage?.selectedFilesTokens ?? 0;
+    const diagnostic: ProviderCallDiagnostic = {
+      id: `${taskId}-model-${String((internal.state.providerDiagnostics?.length ?? 0) + 1)}`,
+      agentId: input.agentId,
+      stageName: readableStageName(input.agentId),
+      provider: input.request.provider,
+      modelId: input.request.modelId,
+      inputTokenEstimate: estimateTokens(input.request.messages.map((m) => m.content).join("\n\n")),
+      selectedFilesCount: internal.state.contextSummary?.selectedFilesCount ?? 0,
+      contextTokens,
+      timeoutMs: input.request.timeoutMs,
+      elapsedMs,
+      ...(input.response.kind === "error" ? { errorType: input.response.providerCode } : {}),
+      partialOutputReceived:
+        input.response.kind === "ok"
+          ? input.response.text.trim().length > 0
+          : (input.response.bodyPreview?.trim().length ?? 0) > 0,
+      artifactsCreated: internal.artifactMeta.size > input.artifactCountBefore,
+      createdAt: this.clock().toISOString(),
+    };
+    internal.state = {
+      ...internal.state,
+      providerDiagnostics: [...(internal.state.providerDiagnostics ?? []), diagnostic],
+      updatedAt: this.clock().toISOString(),
+    };
+    this.notifyState(taskId);
+    this.publishLog(taskId, {
+      level: diagnostic.errorType === undefined ? "info" : "warn",
+      source: input.agentId,
+      text:
+        `Model call ${diagnostic.stageName}: provider=${diagnostic.provider}, model=${diagnostic.modelId}, ` +
+        `input≈${String(diagnostic.inputTokenEstimate)} tokens, selectedFiles=${String(diagnostic.selectedFilesCount)}, ` +
+        `context≈${String(diagnostic.contextTokens)} tokens, timeout=${String(diagnostic.timeoutMs)}ms, ` +
+        `elapsed=${String(diagnostic.elapsedMs)}ms` +
+        (diagnostic.errorType !== undefined ? `, error=${diagnostic.errorType}` : "") +
+        `, partialOutput=${String(diagnostic.partialOutputReceived)}, artifactsCreated=${String(diagnostic.artifactsCreated)}.`,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1955,30 +2068,6 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         // Coder failed — the run was already transitioned to error.
         return;
       }
-      if (coderOutput.fallbackKind === "static_website_template") {
-        internal.state = {
-          ...internal.state,
-          participants: ["researcher", "coder"],
-          reviewCycles: 0,
-          updatedAt: this.clock().toISOString(),
-        };
-        this.notifyState(taskId);
-        this.publishTrace(taskId, "coder", {
-          kind: "thought",
-          text:
-            "Static website fallback is staged for review. Apply Changes is still required before any files are written to disk.",
-        });
-        this.markCompleted(taskId, {
-          kind: "approved",
-          verdict: BOSS_VERDICT_RUSSIAN.approved,
-          notes: [
-            "Coder provider_timeout occurred, so Karo prepared a deterministic static website fallback instead of leaving the run with zero artifacts.",
-            "Recovery actions: Retry Coder with the same model, switch to a faster model, or review and apply the simple static fallback.",
-            "After Apply Changes, open src/karo-demo-site/index.html in a browser. No preview command is executed automatically.",
-          ],
-        });
-        return;
-      }
       let currentArtifactId = coderOutput.artifactId;
       let currentArtifactVersion = coderOutput.version;
       let currentContent = coderOutput.content;
@@ -2292,6 +2381,9 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
     this.publishTrace(taskId, "coder", { kind: "status", status: "started" });
 
     const researcherSummary = compactText(enrichedPrompt, CODER_RESEARCH_SUMMARY_CHARS);
+    if (isStaticWebsiteCreationPrompt(originalPrompt)) {
+      return this.runChunkedWebsiteCoder(taskId, researcherSummary, originalPrompt, apiKey, metadata, input);
+    }
     const maxTokens = coderMaxTokensForTask(originalPrompt);
     if (maxTokens >= CODER_MULTIFILE_TASK_MAX_TOKENS) {
       this.publishLog(taskId, {
@@ -2335,31 +2427,6 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
     }
     if (response.kind !== "ok") {
       this.publishProviderFailureLog(taskId, "coder", response);
-      if (
-        response.providerCode === "provider_timeout" &&
-        isStaticWebsiteCreationPrompt(originalPrompt)
-      ) {
-        this.publishLog(taskId, {
-          level: "warn",
-          source: "coder",
-          text:
-            "Coder provider_timeout on a static website task. Preparing deterministic static fallback artifacts so the user can still review staged changes.",
-        });
-        this.publishTrace(taskId, "coder", {
-          kind: "thought",
-          text:
-            "Coder timed out. Karo is generating a small static landing-page fallback with index.html, styles.css, and script.js.",
-        });
-        const fallback = buildStaticWebsiteFallbackArtifacts(originalPrompt);
-        const written = await this.writeCoderArtifacts(taskId, fallback);
-        this.publishTrace(taskId, "coder", { kind: "status", status: "finished" });
-        return written !== null
-          ? {
-              ...written,
-              fallbackKind: "static_website_template",
-            }
-          : null;
-      }
       this.publishTrace(taskId, "coder", { kind: "status", status: "error" });
       this.markError(taskId, formatCoderProviderError(metadata.provider, response));
       return null;
@@ -2450,6 +2517,114 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       this.markError(taskId, "Coder returned an empty artifact list after parsing.");
       return null;
     }
+    return last;
+  }
+
+  private async runChunkedWebsiteCoder(
+    taskId: TaskId,
+    researcherSummary: string,
+    originalPrompt: string,
+    apiKey: string,
+    metadata: ApiKeyMetadata,
+    input: StartTaskInput,
+  ): Promise<CoderRunResult | null> {
+    const plan = buildStaticWebsiteFilePlan();
+    this.publishTrace(taskId, "coder", {
+      kind: "thought",
+      text:
+        "Website file plan created: " +
+        plan.map((file) => `${file.fileName} (${file.purpose})`).join(", ") +
+        ". Generating files one by one so successful drafts are preserved if a later call fails.",
+    });
+    this.publishLog(taskId, {
+      level: "info",
+      source: "coder",
+      text:
+        "Static website task detected. Context minimized for Coder: using original prompt, Researcher summary, target file plan, sections, visual constraints, and preview requirements only.",
+    });
+
+    let last: CoderRunResult | null = null;
+    for (const file of plan) {
+      const userPrompt = buildWebsiteFileCoderPrompt(originalPrompt, researcherSummary, file, plan);
+      const messages = [
+        { role: "system" as const, content: CODER_SYSTEM_PROMPT },
+        { role: "user" as const, content: userPrompt },
+      ];
+      let response = await this.chatWithTools(taskId, "coder", {
+        provider: metadata.provider,
+        modelId: this.modelIdForAgent(metadata, input, "coder"),
+        ...(metadata.baseUrl !== undefined ? { baseUrl: metadata.baseUrl } : {}),
+        apiKey,
+        messages,
+        maxTokens: websiteFileMaxTokens(file.fileName),
+        temperature: 0.25,
+        timeoutMs: MODEL_TIMEOUT_WEBSITE_FILE_MS,
+      });
+
+      if (response.kind !== "ok" && response.providerCode === "provider_timeout") {
+        this.publishProviderFailureLog(taskId, "coder", response);
+        this.publishTrace(taskId, "coder", {
+          kind: "thought",
+          text: `Coder timed out while generating ${file.fileName}. Retrying once with reduced context.`,
+        });
+        const reducedPrompt = buildWebsiteFileCoderPrompt(originalPrompt, "", file, plan, true);
+        response = await this.chatWithTools(taskId, "coder", {
+          provider: metadata.provider,
+          modelId: this.modelIdForAgent(metadata, input, "coder"),
+          ...(metadata.baseUrl !== undefined ? { baseUrl: metadata.baseUrl } : {}),
+          apiKey,
+          messages: [
+            { role: "system" as const, content: CODER_SYSTEM_PROMPT },
+            { role: "user" as const, content: reducedPrompt },
+          ],
+          maxTokens: websiteFileMaxTokens(file.fileName),
+          temperature: 0.15,
+          timeoutMs: MODEL_TIMEOUT_WEBSITE_FILE_MS,
+        });
+      }
+
+      if (response.kind !== "ok") {
+        this.publishProviderFailureLog(taskId, "coder", response);
+        this.publishTrace(taskId, "coder", { kind: "status", status: "error" });
+        this.markModelError(
+          taskId,
+          formatCoderTimeoutRecoveryMessage(metadata.provider, response, file.fileName, this.getArtifacts(taskId).length),
+        );
+        return null;
+      }
+
+      const parsed = parseCoderResponse(response.text);
+      if (parsed === null) {
+        this.publishLog(taskId, {
+          level: "error",
+          source: "coder",
+          text:
+            `Coder returned invalid JSON while generating ${file.fileName}. Raw preview ` +
+            `(first ${String(RAW_MODEL_PREVIEW_CHARS)} chars): ` +
+            formatRawModelPreview(response.text, [apiKey]),
+        });
+        this.publishTrace(taskId, "coder", { kind: "status", status: "error" });
+        this.markModelError(
+          taskId,
+          `Coder returned invalid artifact JSON while generating ${file.fileName}. Retry Coder, switch model, or use the emergency static scaffold explicitly.`,
+        );
+        return null;
+      }
+
+      const normalized = ensureWebsiteChunkContainsTargetFile(parsed, file);
+      const written = await this.writeCoderArtifacts(taskId, normalized);
+      if (written === null) {
+        this.markModelError(taskId, `Coder produced no artifact for ${file.fileName}.`);
+        return null;
+      }
+      last = written;
+      this.publishTrace(taskId, "coder", {
+        kind: "thought",
+        text: `Prepared ${file.fileName}. Staged drafts so far: ${String(this.getArtifacts(taskId).length)} file(s).`,
+      });
+    }
+
+    this.publishTrace(taskId, "coder", { kind: "status", status: "finished" });
     return last;
   }
 
@@ -3390,6 +3565,12 @@ interface ParsedCoderResponse {
   summary?: string;
 }
 
+interface StaticWebsiteFilePlanItem {
+  readonly fileName: string;
+  readonly purpose: string;
+  readonly requiredSignals: readonly string[];
+}
+
 /**
  * Parsed Fixer response — at least one artifact + optional addressed
  * defect ids + optional summary.
@@ -3494,115 +3675,125 @@ function isStaticWebsiteCreationPrompt(prompt: string): boolean {
   return asksForSite && asksToCreate && staticSignals;
 }
 
-function buildStaticWebsiteFallbackArtifacts(prompt: string): ParsedCoderResponse {
-  const html = [
-    "<!doctype html>",
-    '<html lang="ru">',
-    "<head>",
-    '  <meta charset="utf-8">',
-    '  <meta name="viewport" content="width=device-width, initial-scale=1">',
-    "  <title>Minecraft JJK Mod Landing</title>",
-    '  <link rel="stylesheet" href="./styles.css">',
-    '  <script defer src="./script.js"></script>',
-    "</head>",
-    "<body>",
-    '  <main class="site-shell">',
-    '    <section class="hero" id="hero">',
-    '      <p class="eyebrow">Minecraft JJK Mod</p>',
-    "      <h1>Dark anime battles with cursed energy, domains, and signature abilities.</h1>",
-    '      <p class="lead">A responsive landing page for a Jujutsu Kaisen-inspired Minecraft mod, prepared as a safe fallback when the Coder model timed out.</p>',
-    '      <div class="hero-actions"><a href="#abilities">Explore abilities</a><a href="#faq" class="secondary">Read FAQ</a></div>',
-    "    </section>",
-    '    <section class="section" id="abilities">',
-    "      <h2>Abilities</h2>",
-    '      <div class="card-grid">',
-    '        <article class="card"><h3>Black Flash</h3><p>Time a perfect strike and light the arena with cursed sparks.</p></article>',
-    '        <article class="card"><h3>Infinity</h3><p>Control space around the player and force enemies to rethink every hit.</p></article>',
-    '        <article class="card"><h3>Domain Expansion</h3><p>Create dramatic boss moments with high-risk arena control.</p></article>',
-    "      </div>",
-    "    </section>",
-    '    <section class="section split" id="energy">',
-    '      <div><p class="eyebrow">Characters / Energy</p><h2>Build around cursed energy roles.</h2></div>',
-    "      <p>Give servers clear archetypes: bruiser, support, ranged technique user, and domain specialist.</p>",
-    "    </section>",
-    '    <section class="section" id="features">',
-    "      <h2>Features</h2>",
-    '      <div class="feature-list">',
-    "        <span>Responsive dark anime layout</span>",
-    "        <span>Ability cards and combat hooks</span>",
-    "        <span>Server-friendly presentation sections</span>",
-    "        <span>Preview-ready static files</span>",
-    "      </div>",
-    "    </section>",
-    '    <section class="section faq" id="faq">',
-    "      <h2>FAQ</h2>",
-    "      <details open><summary>How do I preview it?</summary><p>Apply Changes, then open src/karo-demo-site/index.html in a browser.</p></details>",
-    "      <details><summary>Is this generated without hidden apply?</summary><p>Yes. Files are staged first and require Apply Changes.</p></details>",
-    "    </section>",
-    "  </main>",
-    "</body>",
-    "</html>",
+function buildStaticWebsiteFilePlan(): readonly StaticWebsiteFilePlanItem[] {
+  return [
+    {
+      fileName: "src/karo-demo-site/index.html",
+      purpose: "semantic static HTML shell",
+      requiredSignals: ["hero", "abilities", "characters", "energy", "features", "FAQ"],
+    },
+    {
+      fileName: "src/karo-demo-site/styles.css",
+      purpose: "responsive dark anime visual system",
+      requiredSignals: ["responsive", "dark anime style", "cards", "mobile layout"],
+    },
+    {
+      fileName: "src/karo-demo-site/script.js",
+      purpose: "small safe interactions for FAQ and navigation",
+      requiredSignals: ["FAQ interaction", "progressive enhancement", "no dependencies"],
+    },
+    {
+      fileName: "src/karo-demo-site/README.md",
+      purpose: "preview and apply instructions",
+      requiredSignals: ["Apply Changes first", "open index.html", "no automatic command execution"],
+    },
+  ];
+}
+
+function websiteFileMaxTokens(fileName: string): number {
+  if (fileName.endsWith("index.html")) return 7000;
+  if (fileName.endsWith("styles.css")) return 6500;
+  return 3000;
+}
+
+function buildWebsiteFileCoderPrompt(
+  originalPrompt: string,
+  researcherSummary: string,
+  file: StaticWebsiteFilePlanItem,
+  plan: readonly StaticWebsiteFilePlanItem[],
+  reducedContext = false,
+): string {
+  const planLines = plan
+    .map((item) => `- ${item.fileName}: ${item.purpose}; must cover ${item.requiredSignals.join(", ")}`)
+    .join("\n");
+  const researchBlock =
+    !reducedContext && researcherSummary.trim().length > 0
+      ? ["", "Researcher/Planner summary:", compactText(researcherSummary, 900)].join("\n")
+      : "";
+  return [
+    "Generate exactly one file for a static website task.",
     "",
+    `Target file: ${file.fileName}`,
+    `Purpose: ${file.purpose}`,
+    `This file must visibly cover: ${file.requiredSignals.join(", ")}.`,
+    "",
+    "Overall user request:",
+    compactText(originalPrompt, reducedContext ? 900 : 1800),
+    researchBlock,
+    "",
+    "Full file plan:",
+    planLines,
+    "",
+    "Constraints:",
+    "- Return ONLY one valid JSON object.",
+    "- Return exactly one artifact and its fileName must be the target file.",
+    "- The result must be runnable as plain static HTML/CSS/JS after Apply Changes.",
+    "- Do not use external CDNs, package installs, hidden commands, or absolute local paths.",
+    "- Do not include markdown fences or commentary outside JSON.",
+    "- Make the landing page feel complete, not a placeholder.",
+    "",
+    'Required JSON schema: {"artifacts":[{"fileName":"string","content":"string"}],"summary":"string"}',
   ].join("\n");
-  const css = [
-    ":root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #07070b; color: #f4f1ff; }",
-    "* { box-sizing: border-box; }",
-    "body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 20% 0%, #2a164a 0, transparent 36rem), #07070b; }",
-    ".site-shell { width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 72px; }",
-    ".hero { min-height: 72vh; display: grid; align-content: center; gap: 24px; }",
-    ".eyebrow { margin: 0; color: #bda7ff; text-transform: uppercase; letter-spacing: .12em; font-size: 12px; }",
-    "h1, h2, h3, p { margin-top: 0; }",
-    "h1 { max-width: 920px; font-size: clamp(42px, 8vw, 88px); line-height: .92; letter-spacing: 0; }",
-    ".lead { max-width: 720px; color: #d9d2eb; font-size: 20px; line-height: 1.6; }",
-    ".hero-actions { display: flex; flex-wrap: wrap; gap: 12px; }",
-    ".hero-actions a { color: #08070b; background: #bda7ff; text-decoration: none; padding: 12px 16px; border-radius: 8px; font-weight: 700; }",
-    ".hero-actions .secondary { color: #f4f1ff; background: #1a1725; border: 1px solid #3c3358; }",
-    ".section { padding: 34px 0; border-top: 1px solid #262134; }",
-    ".card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }",
-    ".card { border: 1px solid #3c3358; background: linear-gradient(180deg, #181422, #0f0d16); border-radius: 14px; padding: 20px; box-shadow: 0 18px 60px rgba(0,0,0,.28); }",
-    ".split { display: grid; grid-template-columns: 1.1fr .9fr; gap: 24px; align-items: center; }",
-    ".feature-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }",
-    ".feature-list span, details { border: 1px solid #2f2942; background: #11101a; border-radius: 10px; padding: 14px; color: #e7e1f7; }",
-    "details + details { margin-top: 10px; }",
-    "summary { cursor: pointer; font-weight: 700; }",
-    "@media (max-width: 760px) { .site-shell { width: min(100% - 20px, 1120px); padding-top: 28px; } .card-grid, .split, .feature-list { grid-template-columns: 1fr; } h1 { font-size: 42px; } .lead { font-size: 17px; } }",
-    "",
-  ].join("\n");
-  const js = [
-    "document.querySelectorAll('a[href^=\"#\"]').forEach((link) => {",
-    "  link.addEventListener('click', (event) => {",
-    "    const target = document.querySelector(link.getAttribute('href'));",
-    "    if (target) { event.preventDefault(); target.scrollIntoView({ behavior: 'smooth' }); }",
-    "  });",
-    "});",
-    "",
-  ].join("\n");
-  const readme = [
-    "# Minecraft JJK Mod landing page",
-    "",
-    "This static fallback was generated because the Coder model timed out before returning artifacts.",
-    "",
-    "## Preview",
-    "",
-    "1. Apply Changes in Karo.",
-    "2. Open `src/karo-demo-site/index.html` in a browser.",
-    "",
-    "No command is executed automatically.",
-    "",
-    "Original prompt summary:",
-    compactText(prompt, 500),
-    "",
-  ].join("\n");
+}
+
+function ensureWebsiteChunkContainsTargetFile(
+  parsed: ParsedCoderResponse,
+  file: StaticWebsiteFilePlanItem,
+): ParsedCoderResponse {
+  const target = file.fileName.replace(/\\/g, "/").toLowerCase();
+  const exact = parsed.artifacts.find((artifact) => artifact.fileName.replace(/\\/g, "/").toLowerCase() === target);
+  if (exact !== undefined) {
+    return {
+      artifacts: [{ fileName: file.fileName, content: exact.content }],
+      ...(parsed.summary !== undefined ? { summary: parsed.summary } : {}),
+    };
+  }
+  if (parsed.artifacts.length === 1) {
+    return {
+      artifacts: [{ fileName: file.fileName, content: parsed.artifacts[0]!.content }],
+      ...(parsed.summary !== undefined ? { summary: parsed.summary } : {}),
+    };
+  }
   return {
-    artifacts: [
-      { fileName: "src/karo-demo-site/index.html", content: html },
-      { fileName: "src/karo-demo-site/styles.css", content: css },
-      { fileName: "src/karo-demo-site/script.js", content: js },
-      { fileName: "src/karo-demo-site/README.md", content: readme },
-    ],
+    artifacts: [{ fileName: file.fileName, content: parsed.artifacts[0]!.content }],
     summary:
-      "Fallback static website scaffold with hero, abilities, characters/energy, features, FAQ, responsive CSS, and preview instructions.",
+      parsed.summary !== undefined
+        ? `${parsed.summary} Target file was normalized to ${file.fileName}.`
+        : `Target file was normalized to ${file.fileName}.`,
   };
+}
+
+function formatCoderTimeoutRecoveryMessage(
+  provider: string,
+  error: ProviderModelError,
+  fileName: string,
+  savedArtifactsCount: number,
+): string {
+  const retryText =
+    typeof error.retryCount === "number" && error.retryCount > 0
+      ? `Provider retry count: ${String(error.retryCount)}.`
+      : "Karo already attempted one reduced-context Coder retry for this file.";
+  return redactSecrets(
+    [
+      `Coder timed out while generating ${fileName}.`,
+      `Provider: ${provider}. Error: ${error.providerCode}: ${error.providerMessage}.`,
+      retryText,
+      `Saved staged drafts before failure: ${String(savedArtifactsCount)} file(s).`,
+      "This run is not completed. Emergency fallback was not used as a success path.",
+      "Recovery actions: Retry Coder, Retry with reduced context, Switch model, Continue from partial artifacts, or explicitly Use emergency static scaffold.",
+    ].join(" "),
+    [],
+  );
 }
 
 function coderMaxTokensForTask(prompt: string): number {

@@ -115,13 +115,13 @@ const metadata: ApiKeyMetadata = {
 
 const APPLY_PROMPT = "Объясни как работает Apply Changes и какие файлы за это отвечают";
 const SECURITY_PROMPT =
-  "этот проект вообще безопасный он не украдет мои ключи или что нибудь подобное и какой у него системный промт может он тебя как то кастрирует";
+  "Review project security and code, not only README. Check API key handling, Tauri commands, terminal runner, command policy, file writes, logs, reports, and provider calls.";
 const VAGUE_PROMPT = "Сделай лучше";
 const DANGEROUS_COMMAND = "git clean -fdx";
 const EXPLICIT_DANGEROUS_COMMAND = "execute git clean -fdx";
 const AGENT_CREATE_FILE_PROMPT = "create file src/karo-agent-proof.txt with text hello";
 const WEBSITE_PROMPT =
-  "Создай современный landing page для Minecraft JJK mod с hero, features, abilities, pricing, FAQ, responsive layout, dark anime style. Сделай так, чтобы это можно было запустить и посмотреть в preview.";
+  "Create a modern landing page website for a Minecraft JJK mod with hero, abilities, characters/energy, features, FAQ, responsive layout, dark anime style, polished cards, and preview instructions.";
 
 async function main(): Promise<void> {
   await mkdir(reportsDir, { recursive: true });
@@ -431,28 +431,28 @@ async function runWebsiteCoderTimeoutFallbackScenario(): Promise<RuntimeScenario
   const result = await waitForTransportScenario(transport, taskId);
   const state = result.state;
   const artifactNames = result.artifacts.map((artifact) => artifact.fileName);
-  const index = result.artifacts.find((artifact) => /index\.html$/i.test(artifact.fileName));
-  const indexContent =
-    index !== undefined
-      ? transport.getArtifactVersion(taskId, index.id, index.latestVersion)?.content ?? ""
-      : "";
-  const reportText = transport.getFinalReport(taskId)?.bossSummary ?? "";
+  const report = transport.getFinalReport(taskId);
+  const reportText = [
+    report?.bossSummary ?? "",
+    ...(report?.outstandingIssues ?? []),
+    state?.errorReason ?? "",
+  ].join("\n");
   const assertions: Assertion[] = [
     bool("agent-route-selected", state?.decision?.executionMode === "agent", state?.decision?.executionMode),
-    bool("timeout-fallback-completed", state?.status === "completed", state?.status),
-    bool("fallback-created-index", artifactNames.includes("src/karo-demo-site/index.html"), artifactNames.join(", ")),
-    bool("fallback-created-styles", artifactNames.includes("src/karo-demo-site/styles.css"), artifactNames.join(", ")),
-    bool("fallback-created-script", artifactNames.includes("src/karo-demo-site/script.js"), artifactNames.join(", ")),
-    bool("fallback-has-hero-section", /class="hero"|id="hero"|<h1>/i.test(indexContent)),
-    bool("fallback-has-abilities-section", /abilities|способ/i.test(indexContent)),
-    bool("fallback-has-characters-energy-section", /energy|characters|персонаж/i.test(indexContent)),
-    bool("fallback-has-features-section", /features/i.test(indexContent)),
-    bool("fallback-has-faq-section", /faq/i.test(indexContent)),
+    bool("timeout-is-error-not-completed", state?.status === "error", state?.status),
+    bool("fallback-not-created-automatically", artifactNames.length === 0, artifactNames.join(", ")),
+    bool("benchmark-does-not-pass-on-fallback-only", report?.status !== "completed", report?.status),
+    bool("provider-diagnostics-recorded", (state?.providerDiagnostics?.length ?? 0) >= 2, String(state?.providerDiagnostics?.length ?? 0)),
+    bool(
+      "coder-timeout-diagnostic",
+      state?.providerDiagnostics?.some((diagnostic) => diagnostic.agentId === "coder" && diagnostic.errorType === "provider_timeout") === true,
+      JSON.stringify(state?.providerDiagnostics ?? []),
+    ),
     bool("no-auto-apply", applyCalled === false),
     bool("no-command-execution", true),
-    bool("recovery-actions-visible-in-report", /Retry Coder|switch to a faster model|fallback/i.test(reportText), reportText),
+    bool("recovery-actions-visible-in-report", /Retry Coder|Retry with reduced context|Switch model|emergency static scaffold/i.test(reportText), reportText),
   ];
-  return scenarioResult("one_prompt_website_coder_timeout_fallback", WEBSITE_PROMPT, assertions, {
+  return scenarioResult("one_prompt_website_coder_timeout_recovery", WEBSITE_PROMPT, assertions, {
     taskMode: state?.decision?.executionMode,
     intent: state?.decision?.intent,
     requiresContextEngine: state?.decision?.requiresContextEngine,
@@ -462,7 +462,7 @@ async function runWebsiteCoderTimeoutFallbackScenario(): Promise<RuntimeScenario
       `status=${state?.status ?? "unknown"}`,
       `artifacts=${artifactNames.join(", ") || "none"}`,
       `trace=${result.traceAgentIds.join(", ") || "none"}`,
-      "provider_timeout=fallback scaffold staged; Apply Changes required before opening index.html",
+      "provider_timeout=recovery state only; fallback scaffold requires explicit user action and does not count as benchmark success",
     ],
   });
 }
@@ -651,27 +651,29 @@ class ProbeModelClient {
     }
     if (this.mode === "website_success") {
       if (/Coder agent/i.test(systemPrompt)) {
+        const userPrompt = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
+        const fileName = /src\/karo-demo-site\/styles\.css/i.test(userPrompt)
+          ? "src/karo-demo-site/styles.css"
+          : /src\/karo-demo-site\/script\.js/i.test(userPrompt)
+            ? "src/karo-demo-site/script.js"
+            : /src\/karo-demo-site\/README\.md/i.test(userPrompt)
+              ? "src/karo-demo-site/README.md"
+              : "src/karo-demo-site/index.html";
+        const contentByFile: Record<string, string> = {
+          "src/karo-demo-site/index.html":
+            '<!doctype html>\n<html lang="ru">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Minecraft JJK Mod</title>\n  <link rel="stylesheet" href="./styles.css">\n  <script defer src="./script.js"></script>\n</head>\n<body>\n  <main class="jjk-page">\n    <section class="hero">\n      <p class="eyebrow">Minecraft JJK Mod</p>\n      <h1>Dark anime combat for cursed-technique battles</h1>\n      <p class="lead">Hero, features, abilities, characters, energy, and FAQ sections are ready for a responsive preview.</p>\n    </section>\n    <section class="features"><h2>Features</h2><ul><li>Domain expansion inspired encounters</li><li>Ability loadouts</li><li>Responsive landing layout</li></ul></section>\n    <section class="abilities"><h2>Abilities</h2><p>Black Flash, Infinity, cursed tools, and team roles.</p></section>\n    <section class="energy"><h2>Characters / Energy</h2><p>Build around cursed energy roles and anime-style progression.</p></section>\n    <section class="faq"><h2>FAQ</h2><p>Works as a static demo page and can be opened after Apply Changes.</p></section>\n  </main>\n</body>\n</html>\n',
+          "src/karo-demo-site/styles.css":
+            ':root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #07070b; color: #f5f3ff; }\nbody { margin: 0; background: radial-gradient(circle at top, #211334, #07070b 52%); }\n.jjk-page { min-height: 100vh; padding: clamp(24px, 5vw, 72px); display: grid; gap: 28px; }\n.hero { max-width: 920px; }\n.eyebrow { color: #a78bfa; text-transform: uppercase; letter-spacing: .08em; }\nh1 { font-size: clamp(42px, 8vw, 92px); line-height: .94; margin: 0; }\n.lead { color: #c9c3d9; font-size: clamp(18px, 2.2vw, 24px); max-width: 760px; }\nsection:not(.hero) { border: 1px solid #2a2438; border-radius: 18px; padding: 24px; background: rgba(17, 17, 26, .82); }\n@media (min-width: 860px) { .jjk-page { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero { grid-column: 1 / -1; } }\n',
+          "src/karo-demo-site/script.js":
+            "document.querySelectorAll('a[href^=\"#\"]').forEach((link) => {\n  link.addEventListener('click', (event) => {\n    const target = document.querySelector(link.getAttribute('href'));\n    if (target) { event.preventDefault(); target.scrollIntoView({ behavior: 'smooth' }); }\n  });\n});\n",
+          "src/karo-demo-site/README.md":
+            "# Minecraft JJK landing page\n\nStatic demo created by the Karo Agent workflow. Apply Changes first, then open `src/karo-demo-site/index.html` from Preview.\n",
+        };
         return {
           kind: "ok",
           text: JSON.stringify({
-            artifacts: [
-              {
-                fileName: "src/karo-demo-site/index.html",
-                content:
-                  '<!doctype html>\n<html lang="ru">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Minecraft JJK Mod</title>\n  <link rel="stylesheet" href="./styles.css">\n</head>\n<body>\n  <main class="jjk-page">\n    <section class="hero">\n      <p class="eyebrow">Minecraft JJK Mod</p>\n      <h1>Dark anime combat for cursed-technique battles</h1>\n      <p class="lead">Hero, features, abilities, pricing, and FAQ sections are ready for a responsive preview.</p>\n    </section>\n    <section class="features"><h2>Features</h2><ul><li>Domain expansion inspired encounters</li><li>Ability loadouts</li><li>Responsive landing layout</li></ul></section>\n    <section class="abilities"><h2>Abilities</h2><p>Black Flash, Infinity, cursed tools, and team roles.</p></section>\n    <section class="pricing"><h2>Pricing</h2><p>Community, Server, and Creator tiers.</p></section>\n    <section class="faq"><h2>FAQ</h2><p>Works as a static demo page and can be wired into the app preview.</p></section>\n  </main>\n</body>\n</html>\n',
-              },
-              {
-                fileName: "src/karo-demo-site/styles.css",
-                content:
-                  ':root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #07070b; color: #f5f3ff; }\nbody { margin: 0; background: radial-gradient(circle at top, #211334, #07070b 52%); }\n.jjk-page { min-height: 100vh; padding: clamp(24px, 5vw, 72px); display: grid; gap: 28px; }\n.hero { max-width: 920px; }\n.eyebrow { color: #a78bfa; text-transform: uppercase; letter-spacing: .08em; }\nh1 { font-size: clamp(42px, 8vw, 92px); line-height: .94; margin: 0; }\n.lead { color: #c9c3d9; font-size: clamp(18px, 2.2vw, 24px); max-width: 760px; }\nsection:not(.hero) { border: 1px solid #2a2438; border-radius: 18px; padding: 24px; background: rgba(17, 17, 26, .82); }\n@media (min-width: 860px) { .jjk-page { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero { grid-column: 1 / -1; } }\n',
-              },
-              {
-                fileName: "src/karo-demo-site/README.md",
-                content:
-                  "# Minecraft JJK landing page\n\nStatic demo created by the Karo Agent workflow. Apply Changes first, then run the project preview command from Karo Preview.\n",
-              },
-            ],
-            summary: "Created a responsive dark anime landing page demo with HTML, CSS, and a README.",
+            artifacts: [{ fileName, content: contentByFile[fileName] ?? "" }],
+            summary: `Created ${fileName} for the responsive dark anime landing page demo.`,
           }),
         };
       }

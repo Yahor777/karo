@@ -378,7 +378,7 @@ async function runWebsiteCreationScenario(): Promise<RuntimeScenario> {
     bool("agent-route-selected", state?.decision?.executionMode === "agent", state?.decision?.executionMode),
     bool("website-task-allows-file-changes", state?.decision?.allowFileChanges === true, String(state?.decision?.allowFileChanges)),
     bool("not-quick-edit", !traceAgents.includes("quick_edit"), traceAgents.join(", ")),
-    bool("chunked-agent-path-used", ["researcher", "coder", "validator"].every((agent) => traceAgents.includes(agent)), traceAgents.join(", ")),
+    bool("chunked-agent-path-used", ["researcher", "planner", "coder", "validator", "finalizer"].every((agent) => traceAgents.includes(agent)), traceAgents.join(", ")),
     bool("reviewer-boss-skipped-after-deterministic-validation", !traceAgents.includes("reviewer") && !traceAgents.includes("boss"), traceAgents.join(", ")),
     bool("website-artifacts-created", artifactNames.length >= 2, artifactNames.join(", ")),
     bool(

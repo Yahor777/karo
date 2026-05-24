@@ -1557,10 +1557,93 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     expect(t.getTaskState(taskId)?.agentCoreEstimate?.expectedModelCalls).toBe(5);
     expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
     expect(t.getTaskState(taskId)?.deterministicValidation?.skipModelReview).toBe(true);
-    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "coder", "validator", "finalizer"]);
+    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "planner", "coder", "validator", "finalizer"]);
+    expect(t.getFinalReport(taskId)?.bossSummary).toContain("Apply Changes is still required");
+    expect(t.getFinalReport(taskId)?.bossSummary).toContain("Fallback used: no");
     expect(t.getFinalReport(taskId)?.outstandingIssues ?? []).not.toContain(
       "No diff preview was generated for the requested show-changes-before-apply workflow.",
     );
+    expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort()).toEqual([
+      "src/karo-demo-site/README.md",
+      "src/karo-demo-site/index.html",
+      "src/karo-demo-site/script.js",
+      "src/karo-demo-site/styles.css",
+    ]);
+  });
+
+  it("uses targeted deterministic repair for a missing website FAQ instead of broad model review", async () => {
+    const shell = buildShell();
+    const { client, calls } = buildScriptedClient([
+      { when: "researcher", response: { kind: "ok", text: "Use a small static site." } },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/index.html",
+                content:
+                  "<main><section class=\"hero\">JJK landing</section><section class=\"abilities\">Abilities</section><section class=\"energy\">Characters and energy</section><section class=\"features\">Features</section></main>",
+              },
+            ],
+            summary: "Prepared HTML without FAQ.",
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/styles.css",
+                content: "body { background: #08070d; } .card { border: 1px solid #2a2438; } @media (min-width: 800px) { main { display: grid; } }",
+              },
+            ],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/script.js", content: "document.documentElement.dataset.ready = 'true';\n" }],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/README.md", content: "# Preview\n\nApply Changes, then open index.html.\n" }],
+          }),
+        },
+      },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const { taskId } = await t.createAndRunTask({
+      prompt: "Create a modern landing page website with hero, abilities, characters, energy, features, FAQ, responsive cards, and preview.",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+    });
+
+    await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
+    expect(t.getTaskState(taskId)?.status).toBe("completed");
+    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder", "coder", "coder"]);
+    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "planner", "coder", "validator", "fixer", "finalizer"]);
+    expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
+
+    const indexMeta = t.getArtifacts(taskId).find((artifact) => artifact.fileName === "src/karo-demo-site/index.html");
+    expect(indexMeta?.latestVersion).toBe(2);
+    const fixedIndex = indexMeta ? t.getArtifactVersion(taskId, indexMeta.id, indexMeta.latestVersion)?.content ?? "" : "";
+    expect(fixedIndex).toContain("faq");
     expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort()).toEqual([
       "src/karo-demo-site/README.md",
       "src/karo-demo-site/index.html",

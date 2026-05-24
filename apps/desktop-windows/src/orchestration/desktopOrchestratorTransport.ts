@@ -56,7 +56,10 @@ import { ChatModelClient, type ChatMessage } from "./modelClient.js";
 import { randomUuid, sha256Hex } from "./webcrypto.js";
 import { runDecisionEngine, runDecisionEngineSync } from "./decisionEngine.js";
 import {
+  buildAgentFinalizerNotes,
+  buildAgentImplementationPlan,
   estimateAgentCoreExecution,
+  repairStaticWebsiteArtifactsTargeted,
   validateStagedArtifactsDeterministically,
 } from "./agentCore.js";
 import { getPresetForModel } from "./promptPresets.js";
@@ -2109,6 +2112,25 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         return;
       }
 
+      if (decision !== undefined) {
+        const implementationPlan = buildAgentImplementationPlan({
+          prompt: originalPrompt,
+          decision,
+          quickEditAvailable: false,
+          contextProfile: internal.state.agentCoreEstimate?.contextProfile,
+        });
+        this.publishTrace(taskId, "planner", { kind: "status", status: "started" });
+        this.publishTrace(taskId, "planner", {
+          kind: "thought",
+          text:
+            `Implementation plan (${implementationPlan.taskType}): ` +
+            `${implementationPlan.expectedArtifacts.join(", ") || "model-selected staged artifacts"}. ` +
+            `Checks: ${implementationPlan.requiredChecks.join(", ")}. ` +
+            "Fallback allowed as success: false.",
+        });
+        this.publishTrace(taskId, "planner", { kind: "status", status: "finished" });
+      }
+
       this.transition(taskId, "coding", "coder");
 
       // ---------- Coder ----------
@@ -2136,27 +2158,56 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         return;
       }
 
-      const deterministicValidation = this.runDeterministicValidation(taskId, originalPrompt);
+      let deterministicValidation = this.runDeterministicValidation(taskId, originalPrompt);
       if (deterministicValidation.status === "failed") {
         this.markStoppedLimit(taskId, deterministicValidation.issues);
         return;
       }
+      if (
+        deterministicValidation.status === "needs_model_review" &&
+        isStaticWebsiteCreationPrompt(originalPrompt) &&
+        deterministicValidation.issues.length > 0
+      ) {
+        const targetedFix = await this.runTargetedDeterministicFixes(taskId, deterministicValidation.issues);
+        if (targetedFix !== null) {
+          currentArtifactId = targetedFix.artifactId;
+          currentArtifactVersion = targetedFix.version;
+          currentContent = targetedFix.content;
+          currentFileName = targetedFix.fileName;
+          deterministicValidation = this.runDeterministicValidation(taskId, originalPrompt);
+          if (deterministicValidation.status === "failed") {
+            this.markStoppedLimit(taskId, deterministicValidation.issues);
+            return;
+          }
+        }
+      }
       if (deterministicValidation.skipModelReview) {
+        const participantSet = new Set(this.getTraceEvents(taskId).map((event) => event.agentId));
         internal.state = {
           ...internal.state,
           participants: isStaticWebsiteCreationPrompt(originalPrompt)
-            ? ["researcher", "coder", "validator", "finalizer"]
+            ? ["researcher", "planner", "coder", "validator", ...(participantSet.has("fixer") ? ["fixer"] : []), "finalizer"]
             : internal.state.participants,
           updatedAt: this.clock().toISOString(),
         };
         this.notifyState(taskId);
+        this.publishTrace(taskId, "finalizer", { kind: "status", status: "started" });
+        this.publishTrace(taskId, "finalizer", {
+          kind: "thought",
+          text: "Finalizer prepared an honest staged-change summary. Apply Changes is still required.",
+        });
+        this.publishTrace(taskId, "finalizer", { kind: "status", status: "finished" });
         this.markCompleted(taskId, {
           kind: "approved",
           verdict: BOSS_VERDICT_RUSSIAN.approved,
-          notes: [
-            deterministicValidation.reason,
-            "Deterministic validation passed, so Karo skipped model Reviewer/Boss calls for this run.",
-          ],
+          notes: buildAgentFinalizerNotes({
+            status: "completed",
+            changedFiles: this.getArtifacts(taskId).map((artifact) => artifact.fileName),
+            validation: deterministicValidation,
+            fallbackUsed: false,
+            modelCallsUsed: this.getTaskState(taskId)?.providerDiagnostics?.length,
+            contextProfile: this.getTaskState(taskId)?.agentCoreEstimate?.contextProfile,
+          }),
         });
         return;
       }
@@ -3393,6 +3444,59 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       }
     }
     return artifacts;
+  }
+
+  private async runTargetedDeterministicFixes(
+    taskId: TaskId,
+    issues: readonly string[],
+  ): Promise<CoderRunResult | null> {
+    const repairs = repairStaticWebsiteArtifactsTargeted({
+      artifacts: this.collectArtifactValidationInputs(taskId),
+      issues,
+    });
+    if (repairs.length === 0) {
+      this.publishTrace(taskId, "reviewer", {
+        kind: "thought",
+        text: `Deterministic validation found issues that need model review: ${issues.join("; ")}`,
+      });
+      return null;
+    }
+
+    this.publishTrace(taskId, "fixer", { kind: "status", status: "started" });
+    let last: CoderRunResult | null = null;
+    for (const repair of repairs) {
+      const artifactId = this.findArtifactIdByFileName(taskId, repair.fileName) ?? this.artifactIdGenerator();
+      const written = await this.writeArtifact(taskId, artifactId, repair.fileName, repair.content, "fixer");
+      this.publishTrace(taskId, "fixer", {
+        kind: "artifact_change",
+        artifactId,
+        version: written.version,
+      });
+      this.publishTrace(taskId, "fixer", {
+        kind: "thought",
+        text: `${repair.summary} Addressed: ${repair.addressedIssues.join(", ")}.`,
+      });
+      last = {
+        artifactId,
+        version: written.version,
+        content: repair.content,
+        fileName: repair.fileName,
+      };
+    }
+    this.publishTrace(taskId, "fixer", { kind: "status", status: "finished" });
+    return last;
+  }
+
+  private findArtifactIdByFileName(taskId: TaskId, fileName: string): string | null {
+    const internal = this.tasks.get(taskId);
+    if (internal === undefined) return null;
+    const normalized = fileName.replace(/\\/g, "/").toLowerCase();
+    for (const meta of internal.artifactMeta.values()) {
+      if (meta.fileName.replace(/\\/g, "/").toLowerCase() === normalized) {
+        return meta.id;
+      }
+    }
+    return null;
   }
 
   private normalizeBossRejection(

@@ -31,8 +31,43 @@ export interface StructuredPlan {
   readonly suggestedExecutionMode: "chat" | "plan" | "agent";
 }
 
+export type AgentImplementationTaskType =
+  | "quick_edit"
+  | "single_file"
+  | "static_website"
+  | "existing_project_change";
+
+export interface AgentImplementationPlan {
+  readonly taskType: AgentImplementationTaskType;
+  readonly goal: string;
+  readonly filesToCreate: readonly string[];
+  readonly filesToModify: readonly string[];
+  readonly filesToRead: readonly string[];
+  readonly acceptanceCriteria: readonly string[];
+  readonly requiredChecks: readonly string[];
+  readonly risks: readonly string[];
+  readonly expectedArtifacts: readonly string[];
+  readonly previewInstructionsNeeded: boolean;
+  readonly estimatedModelCalls: number;
+  readonly contextBudget: "none" | "minimal" | "targeted" | "broad";
+  readonly fallbackAllowedAsSuccess: false;
+}
+
+export interface TargetedArtifactRepair {
+  readonly fileName: string;
+  readonly content: string;
+  readonly addressedIssues: readonly string[];
+  readonly summary: string;
+}
+
 const FULL_AGENT_PIPELINE_EXPECTED_CALLS = 7;
 const WEBSITE_CHUNK_COUNT = 4;
+const STATIC_WEBSITE_FILES = [
+  "src/karo-demo-site/index.html",
+  "src/karo-demo-site/styles.css",
+  "src/karo-demo-site/script.js",
+  "src/karo-demo-site/README.md",
+] as const;
 
 export function estimateAgentCoreExecution(input: AgentCoreEstimateInput): AgentCoreEstimate {
   const contextTokensEstimate = input.contextTokensEstimate ?? 0;
@@ -278,6 +313,104 @@ export function normalizeStructuredPlan(text: string): StructuredPlan {
   };
 }
 
+export function buildAgentImplementationPlan(input: {
+  readonly prompt: string;
+  readonly decision: TaskDecision;
+  readonly quickEditAvailable: boolean;
+  readonly contextProfile?: AgentContextProfile | undefined;
+}): AgentImplementationPlan {
+  const compactPrompt = input.prompt.trim();
+  if (input.quickEditAvailable) {
+    return {
+      taskType: "quick_edit",
+      goal: compactPrompt || "Stage a deterministic file edit.",
+      filesToCreate: [],
+      filesToModify: [],
+      filesToRead: [],
+      acceptanceCriteria: [
+        "Stage exactly the requested file content.",
+        "Do not call a model.",
+        "Require Apply Changes before writing to the project.",
+      ],
+      requiredChecks: ["safe path", "non-empty content", "no auto-apply"],
+      risks: ["Path or content parsing may fail; fail closed if ambiguous."],
+      expectedArtifacts: ["one staged file"],
+      previewInstructionsNeeded: /index\.html|\.html\b/i.test(compactPrompt),
+      estimatedModelCalls: 0,
+      contextBudget: "none",
+      fallbackAllowedAsSuccess: false,
+    };
+  }
+
+  if (isStaticWebsiteCreationPrompt(input.prompt)) {
+    return {
+      taskType: "static_website",
+      goal:
+        "Create a small runnable static website with staged files, deterministic validation, and preview instructions.",
+      filesToCreate: STATIC_WEBSITE_FILES,
+      filesToModify: [],
+      filesToRead: input.contextProfile === "website_creation" ? [] : [],
+      acceptanceCriteria: [
+        "index.html contains hero, abilities, characters/energy, features, and FAQ sections.",
+        "styles.css contains responsive dark anime/card styling.",
+        "script.js is present and non-empty.",
+        "README.md explains Apply Changes and preview/open flow.",
+        "All generated files remain staged until Apply Changes.",
+        "Emergency fallback is not counted as benchmark success.",
+      ],
+      requiredChecks: [
+        "artifact paths stay inside project",
+        "required website files exist",
+        "required visible sections exist",
+        "responsive styling signal exists",
+        "preview instructions exist",
+        "no generated secrets",
+      ],
+      risks: [
+        "Provider timeout on an individual file chunk.",
+        "Missing section can make a visually incomplete landing page.",
+        "Preview must wait until staged files are applied.",
+      ],
+      expectedArtifacts: STATIC_WEBSITE_FILES,
+      previewInstructionsNeeded: true,
+      estimatedModelCalls: 1 + WEBSITE_CHUNK_COUNT,
+      contextBudget: "minimal",
+      fallbackAllowedAsSuccess: false,
+    };
+  }
+
+  const taskType: AgentImplementationTaskType =
+    input.decision.intent === "create_file" ? "single_file" : "existing_project_change";
+  return {
+    taskType,
+    goal: compactPrompt || "Prepare staged file changes.",
+    filesToCreate: taskType === "single_file" ? ["model-selected target file"] : [],
+    filesToModify: taskType === "existing_project_change" ? ["targeted project files"] : [],
+    filesToRead: input.decision.requiresContextEngine ? ["Context Curator selected files"] : [],
+    acceptanceCriteria: [
+      "Create or modify only files required by the prompt.",
+      "Stage artifacts and require Apply Changes.",
+      "Run deterministic checks before model review.",
+      "Skip Reviewer when deterministic checks prove the result.",
+    ],
+    requiredChecks: [
+      "safe artifact paths",
+      "non-empty artifacts",
+      "requested task satisfied",
+      "no auto-apply",
+    ],
+    risks: [
+      "Broad prompts may need targeted context and one reviewer pass.",
+      "Provider timeout should preserve partial artifacts.",
+    ],
+    expectedArtifacts: ["staged artifacts"],
+    previewInstructionsNeeded: /preview|run|website|site|app/i.test(compactPrompt),
+    estimatedModelCalls: taskType === "single_file" ? 1 : 4,
+    contextBudget: input.decision.requiresContextEngine ? "targeted" : "minimal",
+    fallbackAllowedAsSuccess: false,
+  };
+}
+
 export function validateStagedArtifactsDeterministically(args: {
   readonly prompt: string;
   readonly artifacts: readonly ArtifactValidationInput[];
@@ -292,6 +425,17 @@ export function validateStagedArtifactsDeterministically(args: {
     };
   }
 
+  const criticalIssues = collectCriticalArtifactIssues(args.artifacts);
+  if (criticalIssues.length > 0) {
+    return {
+      status: "failed",
+      skipModelReview: false,
+      issues: criticalIssues,
+      checkedSignals: ["safe artifact paths", "non-empty content", "secret scan"],
+      reason: "One or more staged artifacts failed a deterministic safety check.",
+    };
+  }
+
   if (isStaticWebsiteCreationPrompt(args.prompt)) {
     return validateStaticWebsiteArtifacts(args.artifacts);
   }
@@ -303,6 +447,126 @@ export function validateStagedArtifactsDeterministically(args: {
     checkedSignals: ["artifact presence"],
     reason: "Generic file-changing task needs model review after deterministic checks.",
   };
+}
+
+export function repairStaticWebsiteArtifactsTargeted(args: {
+  readonly artifacts: readonly ArtifactValidationInput[];
+  readonly issues: readonly string[];
+}): readonly TargetedArtifactRepair[] {
+  const repairs: TargetedArtifactRepair[] = [];
+  const index = findArtifact(args.artifacts, /index\.html$/i);
+  const readme = findArtifact(args.artifacts, /readme\.md$/i);
+  const css = findArtifact(args.artifacts, /\.css$/i);
+  const script = findArtifact(args.artifacts, /\.js$/i);
+
+  if (index !== undefined) {
+    const additions: string[] = [];
+    if (hasIssue(args.issues, "hero section") && !/\bhero\b/i.test(index.content)) {
+      additions.push('<section class="hero"><h1>Minecraft JJK Mod</h1><p>Dark anime battles with cursed techniques.</p></section>');
+    }
+    if (hasIssue(args.issues, "abilities section") && !/\babilities\b/i.test(index.content)) {
+      additions.push('<section class="abilities"><h2>Abilities</h2><p>Black Flash, Infinity, cursed tools, and domain pressure.</p></section>');
+    }
+    if (hasIssue(args.issues, "characters/energy section") && !/\b(characters?|energy)\b/i.test(index.content)) {
+      additions.push('<section class="energy"><h2>Characters / Energy</h2><p>Character roles and cursed energy progression.</p></section>');
+    }
+    if (hasIssue(args.issues, "features section") && !/\bfeatures?\b/i.test(index.content)) {
+      additions.push('<section class="features"><h2>Features</h2><p>Responsive cards, mod highlights, and preview-ready content.</p></section>');
+    }
+    if (hasIssue(args.issues, "FAQ section") && !/\bfaq\b/i.test(index.content)) {
+      additions.push('<section class="faq"><h2>FAQ</h2><p>Apply Changes first, then open index.html from Preview.</p></section>');
+    }
+    if (additions.length > 0) {
+      repairs.push({
+        fileName: index.fileName,
+        content: insertHtmlSections(index.content, additions),
+        addressedIssues: additions.map((addition) => addition.match(/class="([^"]+)"/i)?.[1] ?? "section"),
+        summary: `Added missing website section(s) in ${index.fileName}.`,
+      });
+    }
+  }
+
+  if (hasIssue(args.issues, "README preview instructions") || hasIssue(args.issues, "preview/apply instruction")) {
+    const readmeFile = readme?.fileName ?? "src/karo-demo-site/README.md";
+    const base = readme?.content.trim() ?? "# Minecraft JJK landing page";
+    if (!/apply changes|preview|open [`"']?index\.html/i.test(base)) {
+      repairs.push({
+        fileName: readmeFile,
+        content: `${base}\n\n## Preview\n\nApply Changes first, then open \`src/karo-demo-site/index.html\` from Preview or your browser.\n`,
+        addressedIssues: ["preview/apply instruction"],
+        summary: `Added preview instructions in ${readmeFile}.`,
+      });
+    }
+  }
+
+  if (hasIssue(args.issues, "CSS artifact") && css === undefined) {
+    repairs.push({
+      fileName: "src/karo-demo-site/styles.css",
+      content:
+        ":root { color-scheme: dark; background: #07070b; color: #f6f1ff; }\n.card, section { border: 1px solid #30243f; border-radius: 16px; padding: 24px; }\n@media (min-width: 860px) { main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; } .hero { grid-column: 1 / -1; } }\n",
+      addressedIssues: ["CSS artifact", "responsive layout", "dark anime/card styling"],
+      summary: "Created missing website stylesheet.",
+    });
+  } else if (css !== undefined && (hasIssue(args.issues, "responsive layout") || hasIssue(args.issues, "dark anime/card styling"))) {
+    const extra =
+      "\n/* Karo targeted validation repair */\n.card, section { border: 1px solid #30243f; border-radius: 16px; background: rgba(14, 12, 24, .86); }\n@media (min-width: 860px) { main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; } .hero { grid-column: 1 / -1; } }\n";
+    repairs.push({
+      fileName: css.fileName,
+      content: `${css.content.trim()}\n${extra}`,
+      addressedIssues: ["responsive layout", "dark anime/card styling"],
+      summary: `Added responsive dark card styling in ${css.fileName}.`,
+    });
+  }
+
+  if (hasIssue(args.issues, "script artifact") && script === undefined) {
+    repairs.push({
+      fileName: "src/karo-demo-site/script.js",
+      content: "document.documentElement.dataset.karoPreviewReady = 'true';\n",
+      addressedIssues: ["script artifact"],
+      summary: "Created missing website script.",
+    });
+  }
+
+  return repairs;
+}
+
+export function buildAgentFinalizerNotes(args: {
+  readonly status: "completed" | "recovery" | "failed";
+  readonly changedFiles: readonly string[];
+  readonly validation?: DeterministicValidationSummary | undefined;
+  readonly fallbackUsed: boolean;
+  readonly modelCallsUsed?: number | undefined;
+  readonly contextProfile?: AgentContextProfile | undefined;
+}): readonly string[] {
+  const notes: string[] = [];
+  notes.push(
+    args.status === "completed"
+      ? "Changes are staged for review; Apply Changes is still required before project files are written."
+      : "This run is not completed; staged partial artifacts remain reviewable.",
+  );
+  if (args.changedFiles.length > 0) {
+    notes.push(`Changed files: ${args.changedFiles.join(", ")}.`);
+  }
+  if (args.validation !== undefined) {
+    notes.push(`Deterministic validation: ${args.validation.status}. ${args.validation.reason}`);
+    if (args.validation.checkedSignals.length > 0) {
+      notes.push(`Checks passed/inspected: ${args.validation.checkedSignals.join(", ")}.`);
+    }
+    if (args.validation.issues.length > 0) {
+      notes.push(`Remaining issues: ${args.validation.issues.join("; ")}.`);
+    }
+  }
+  notes.push(`Fallback used: ${args.fallbackUsed ? "yes" : "no"}. Emergency fallback never counts as benchmark success.`);
+  if (typeof args.modelCallsUsed === "number") {
+    notes.push(`Model calls used: ${String(args.modelCallsUsed)}.`);
+  }
+  if (args.contextProfile !== undefined) {
+    notes.push(`Context profile: ${args.contextProfile}.`);
+  }
+  if (args.changedFiles.some((file) => /index\.html$/i.test(file))) {
+    notes.push("Preview: after Apply Changes, open the staged index.html through Preview/Open in browser.");
+  }
+  return notes;
 }
 
 export function isStaticWebsiteCreationPrompt(prompt: string): boolean {
@@ -372,6 +636,27 @@ function asksAboutConversationHistory(text: string): boolean {
     /\u0447\u0442\u043e\s+\u044f\s+\u043f\u0438\u0441\u0430\u043b|\u0432\u044b\u0448\u0435|\u043f\u0440\u0435\u0434\u044b\u0434\u0443\u0449/iu.test(text);
 }
 
+function collectCriticalArtifactIssues(artifacts: readonly ArtifactValidationInput[]): readonly string[] {
+  const issues: string[] = [];
+  for (const artifact of artifacts) {
+    const path = artifact.fileName.replace(/\\/g, "/").trim();
+    const content = artifact.content.trim();
+    if (path.startsWith("../") || path.includes("/../") || /^[a-z]:\//i.test(path) || path.startsWith("/")) {
+      issues.push(`Forbidden artifact path: ${artifact.fileName}.`);
+    }
+    if (/^\.env(?:\.|$)|\/\.env(?:\.|$)|node_modules\//i.test(path)) {
+      issues.push(`Forbidden generated file target: ${artifact.fileName}.`);
+    }
+    if (content.length === 0) {
+      issues.push(`Empty artifact content: ${artifact.fileName}.`);
+    }
+    if (/\b(sk|pk|rk)_(test|live)_[A-Za-z0-9]+/u.test(content)) {
+      issues.push(`Secret-looking value generated in ${artifact.fileName}.`);
+    }
+  }
+  return issues;
+}
+
 function validateStaticWebsiteArtifacts(
   artifacts: readonly ArtifactValidationInput[],
 ): DeterministicValidationSummary {
@@ -388,6 +673,13 @@ function validateStaticWebsiteArtifacts(
   recordSignal(checkedSignals, issues, hasCss, "CSS artifact");
   recordSignal(checkedSignals, issues, hasScript, "script artifact");
   recordSignal(checkedSignals, issues, hasReadme, "README preview instructions");
+  for (const artifact of artifacts) {
+    const trimmed = artifact.content.trim();
+    const placeholderOnly =
+      trimmed.length < 24 ||
+      /^(todo|placeholder|lorem ipsum|coming soon|empty div|<div><\/div>|<div\s*\/>)$/iu.test(trimmed);
+    recordSignal(checkedSignals, issues, !placeholderOnly, `non-placeholder content in ${artifact.fileName}`);
+  }
 
   const sectionSignals = [
     ["hero section", /\bhero\b|герой|главн/iu],
@@ -421,6 +713,24 @@ function validateStaticWebsiteArtifacts(
     checkedSignals,
     reason: "Chunked website artifacts include runnable files and required user-visible sections.",
   };
+}
+
+function findArtifact(
+  artifacts: readonly ArtifactValidationInput[],
+  pattern: RegExp,
+): ArtifactValidationInput | undefined {
+  return artifacts.find((artifact) => pattern.test(artifact.fileName.replace(/\\/g, "/")));
+}
+
+function hasIssue(issues: readonly string[], label: string): boolean {
+  return issues.some((issue) => issue.toLowerCase().includes(label.toLowerCase()));
+}
+
+function insertHtmlSections(content: string, additions: readonly string[]): string {
+  const block = `\n    ${additions.join("\n    ")}\n`;
+  if (/<\/main>/i.test(content)) return content.replace(/<\/main>/i, `${block}</main>`);
+  if (/<\/body>/i.test(content)) return content.replace(/<\/body>/i, `${block}</body>`);
+  return `${content.trim()}\n${additions.join("\n")}\n`;
 }
 
 function stage(

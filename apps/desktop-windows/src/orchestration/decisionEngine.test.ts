@@ -65,15 +65,32 @@ describe("Decision Engine", () => {
   it("classifies bare destructive commands as command intent", () => {
     const decision = decide("git clean -fdx");
     expect(decision.intent).toBe("run_command");
-    expect(decision.allowCommands).toBe(true);
+    expect(decision.allowCommands).toBe(false);
     expect(decision.riskLevel).toBe("destructive");
   });
 
   it("classifies explicit destructive command execution requests as destructive command intent", () => {
     const decision = decide("execute git clean -fdx");
     expect(decision.intent).toBe("run_command");
-    expect(decision.allowCommands).toBe(true);
+    expect(decision.allowCommands).toBe(false);
     expect(decision.riskLevel).toBe("destructive");
+  });
+
+  it("routes common Russian casual prompts to chat without project context", () => {
+    for (const prompt of ["привет кто ты", "как дела", "что ты умеешь"]) {
+      const decision = decide(prompt);
+      expect(decision.intent).toBe("casual_chat");
+      expect(decision.executionMode).toBe("chat");
+      expect(decision.requiresContextEngine).toBe(false);
+      expect(decision.allowFileChanges).toBe(false);
+    }
+  });
+
+  it("routes common Russian file prompts to Agent file changes", () => {
+    const decision = decide("создай файл src/hello.txt с текстом hello");
+    expect(decision.executionMode).toBe("agent");
+    expect(decision.allowFileChanges).toBe(true);
+    expect(decision.expectedOutput).toBe("artifacts");
   });
 
   it("keeps one-prompt website creation in Agent mode even when the prompt asks for preview", () => {

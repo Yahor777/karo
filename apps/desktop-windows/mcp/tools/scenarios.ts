@@ -620,6 +620,11 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
         passed: /Context profile\s*none/i.test(usageText ?? ""),
         details: usageText ?? "",
       },
+      {
+        name: "quick-edit-usage-shows-no-command-permission",
+        passed: /Allows commands\s*false/i.test(usageText ?? ""),
+        details: usageText ?? "",
+      },
     );
     bag.screenshots.push((await karoScreenshot(ctx, { name: "agent-route-guardrails" })).path);
   });

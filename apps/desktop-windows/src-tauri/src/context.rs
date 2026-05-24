@@ -101,7 +101,8 @@ const BLOCKED_BINARY_EXTENSIONS: &[&str] = &[
 // Ignored directories
 const IGNORED_DIRS: &[&str] = &[
     "node_modules", ".git", "dist", "build", "target", ".next", ".nuxt", "out", "coverage",
-    ".turbo", ".cache", "vendor", ".idea", ".vscode", "logs", "tmp", "temp", "e2e-artifacts"
+    ".turbo", ".cache", "vendor", ".idea", ".vscode", "logs", "tmp", "temp", "e2e-artifacts",
+    ".karo", ".codex", ".antigravitycli", "screenshots", "reports"
 ];
 
 // Sensitive/Secret files
@@ -113,7 +114,7 @@ const SENSITIVE_FILE_PATTERNS: &[&str] = &[
 
 pub fn is_ignored_directory(name: &str) -> bool {
     let lower = name.to_lowercase();
-    IGNORED_DIRS.contains(&lower.as_str()) || name == ".karo"
+    IGNORED_DIRS.contains(&lower.as_str())
 }
 
 pub fn is_sensitive_file(name: &str) -> bool {
@@ -127,6 +128,29 @@ pub fn is_sensitive_file(name: &str) -> bool {
         }
     }
     false
+}
+
+pub fn is_generated_runtime_file(relative_path: &str) -> bool {
+    let lower = relative_path.to_lowercase();
+    let name = Path::new(&lower)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    name == "chat_response.txt"
+        || name == "context-engine-check.txt"
+        || (name.starts_with("karo-before-") && name.ends_with(".patch"))
+        || lower.contains("/e2e-artifacts/")
+        || lower.starts_with("e2e-artifacts/")
+        || lower.contains("/.karo/")
+        || lower.starts_with(".karo/")
+        || lower.contains("/.codex/")
+        || lower.starts_with(".codex/")
+        || lower.contains("/.antigravitycli/")
+        || lower.starts_with(".antigravitycli/")
+        || lower.contains("/screenshots/")
+        || lower.starts_with("screenshots/")
+        || lower.contains("/reports/")
+        || lower.starts_with("reports/")
 }
 
 pub fn is_lockfile(name: &str) -> bool {
@@ -202,6 +226,11 @@ fn walk_project(
 
             if is_sensitive_file(&name) {
                 ignored.ignored_secret_files += 1;
+                continue;
+            }
+
+            if is_generated_runtime_file(&rel_path) {
+                ignored.ignored_files += 1;
                 continue;
             }
 
@@ -499,6 +528,38 @@ pub fn score_file(
             entry.reason.push("README demoted for code-focused security review".to_string());
         }
     }
+
+    let is_ui_work_query =
+        lower_prompt.contains("ui")
+            || lower_prompt.contains("ux")
+            || lower_prompt.contains("interface")
+            || lower_prompt.contains("composer")
+            || lower_prompt.contains("sidebar")
+            || lower_prompt.contains("right panel")
+            || lower_prompt.contains("inspector")
+            || lower_prompt.contains("workbench")
+            || lower_prompt.contains("mcp")
+            || lower_prompt.contains("playwright")
+            || lower_prompt.contains("РёРЅС‚РµСЂС„РµР№СЃ")
+            || lower_prompt.contains("РєРѕРјРїРѕР·РµСЂ")
+            || lower_prompt.contains("СЃР°Р№РґР±Р°СЂ");
+    if is_ui_work_query {
+        let ui_targets = [
+            "workbench.ts",
+            "main.css",
+            "workbench.test.ts",
+            "scenarios.ts",
+            "selectors.ts",
+            "assertions.ts",
+        ];
+        for target in ui_targets {
+            if rel_lower.ends_with(target) {
+                entry.score += 24.0;
+                entry.reason.push(format!("UI work target boost for \"{}\"", target));
+                break;
+            }
+        }
+    }
 }
 
 // --- Tauri Commands Implementation ---
@@ -560,12 +621,39 @@ fn is_static_website_creation_prompt(prompt: &str) -> bool {
     asks_for_site && asks_to_create && has_page_shape
 }
 
+fn is_ui_work_prompt(prompt: &str) -> bool {
+    let lower = prompt.to_lowercase();
+    lower.contains("ui")
+        || lower.contains("ux")
+        || lower.contains("interface")
+        || lower.contains("composer")
+        || lower.contains("sidebar")
+        || lower.contains("right panel")
+        || lower.contains("inspector")
+        || lower.contains("workbench")
+        || lower.contains("mcp")
+        || lower.contains("playwright")
+}
+
+fn is_ui_work_context_candidate(relative_path: &str) -> bool {
+    let rel_lower = relative_path.to_lowercase();
+    rel_lower.contains("/src/ui/")
+        || rel_lower.ends_with("workbench.ts")
+        || rel_lower.ends_with("main.css")
+        || rel_lower.ends_with("workbench.test.ts")
+        || rel_lower.contains("/mcp/")
+        || rel_lower.ends_with("scenarios.ts")
+        || rel_lower.ends_with("selectors.ts")
+        || rel_lower.ends_with("assertions.ts")
+}
+
 fn is_low_signal_static_site_context(relative_path: &str) -> bool {
     let lower = relative_path.to_lowercase();
     lower.contains("karo-test-output")
         || lower.contains("context-engine-check")
         || lower.contains("chat_response")
         || lower.contains("manual-check")
+        || lower.ends_with(".txt")
         || lower.ends_with("test-output.txt")
         || lower.ends_with("output.txt")
 }
@@ -698,6 +786,7 @@ pub fn shell_build_task_context(
 
     let is_security_query = is_security_review_prompt(&prompt);
     let is_static_website_creation = is_static_website_creation_prompt(&prompt);
+    let is_ui_work_query = is_ui_work_prompt(&prompt);
     let mut readme_count = 0usize;
     let candidate_files: Vec<ProjectFileEntry> = file_tree_summary
         .iter()
@@ -706,6 +795,13 @@ pub fn shell_build_task_context(
             if is_static_website_creation
                 && explicit_paths.is_empty()
                 && is_low_signal_static_site_context(&e.relative_path)
+            {
+                return false;
+            }
+            if is_ui_work_query
+                && explicit_paths.is_empty()
+                && !is_ui_work_context_candidate(&e.relative_path)
+                && e.score < 12.0
             {
                 return false;
             }
@@ -860,6 +956,38 @@ mod tests {
         assert!(!has_staging);
         assert!(!has_e2e_artifacts);
         assert!(pkg.ignored_summary.ignored_dirs > 0);
+    }
+
+    #[test]
+    fn test_ignores_generated_runtime_artifacts() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().to_path_buf();
+        fs::create_dir_all(root.join(".codex")).unwrap();
+        fs::create_dir_all(root.join(".antigravitycli")).unwrap();
+        fs::create_dir_all(root.join("screenshots")).unwrap();
+        fs::create_dir_all(root.join("reports")).unwrap();
+        fs::create_dir_all(root.join("src")).unwrap();
+
+        File::create(root.join(".codex/session.json")).unwrap();
+        File::create(root.join(".antigravitycli/state.json")).unwrap();
+        File::create(root.join("screenshots/runtime.png")).unwrap();
+        File::create(root.join("reports/latest.md")).unwrap();
+        File::create(root.join("karo-before-test.patch")).unwrap();
+        File::create(root.join("chat_response.txt")).unwrap();
+        File::create(root.join("context-engine-check.txt")).unwrap();
+        File::create(root.join("src/app.ts")).unwrap();
+
+        let pkg = shell_scan_project_context(root.to_string_lossy().to_string()).unwrap();
+        let files = pkg.file_tree_summary.iter().map(|f| f.relative_path.as_str()).collect::<Vec<_>>();
+
+        assert!(files.contains(&"src/app.ts"));
+        assert!(!files.iter().any(|path| path.contains(".codex")));
+        assert!(!files.iter().any(|path| path.contains(".antigravitycli")));
+        assert!(!files.iter().any(|path| path.contains("screenshots")));
+        assert!(!files.iter().any(|path| path.contains("reports")));
+        assert!(!files.contains(&"karo-before-test.patch"));
+        assert!(!files.contains(&"chat_response.txt"));
+        assert!(!files.contains(&"context-engine-check.txt"));
     }
 
     #[test]
@@ -1024,6 +1152,8 @@ mod tests {
         fs::create_dir_all(root.join("src")).unwrap();
         let mut output = File::create(root.join("src/karo-test-output.txt")).unwrap();
         output.write_all(b"old generated output").unwrap();
+        let mut random_txt = File::create(root.join("src/random-notes.txt")).unwrap();
+        random_txt.write_all(b"random note that should not drive website generation").unwrap();
 
         let mut package = File::create(root.join("package.json")).unwrap();
         package.write_all(br#"{"scripts":{"dev":"vite"}}"#).unwrap();
@@ -1047,6 +1177,52 @@ mod tests {
             "low-signal generated output should not become primary context: {:?}",
             selected
         );
+        assert!(
+            !selected.contains(&"src/random-notes.txt"),
+            "random txt files should not become static website context: {:?}",
+            selected
+        );
+    }
+
+    #[test]
+    fn test_ui_work_prefers_workbench_css_tests_and_mcp_scenarios() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().to_path_buf();
+        fs::create_dir_all(root.join("apps/desktop-windows/src/ui")).unwrap();
+        fs::create_dir_all(root.join("apps/desktop-windows/mcp/tools")).unwrap();
+        fs::create_dir_all(root.join("apps/backend/src/auth")).unwrap();
+
+        let files = [
+            ("apps/desktop-windows/src/ui/workbench.ts", "function renderComposer() {}"),
+            ("apps/desktop-windows/src/ui/main.css", ".kw-composer { display: grid; }"),
+            ("apps/desktop-windows/src/ui/workbench.test.ts", "it('keeps composer visible', () => {})"),
+            ("apps/desktop-windows/mcp/tools/scenarios.ts", "export async function responsive_layout() {}"),
+            ("apps/backend/src/auth/authService.ts", "export function login() {}"),
+        ];
+        for (path, body) in files {
+            let mut f = File::create(root.join(path)).unwrap();
+            f.write_all(body.as_bytes()).unwrap();
+        }
+
+        let pkg = shell_build_task_context(
+            root.to_string_lossy().to_string(),
+            "improve UI composer right panel and MCP scenario coverage".to_string(),
+            Some(BuildTaskContextOptions {
+                max_files: Some(6),
+                max_total_chars: Some(20000),
+                include_content: Some(true),
+                include_file_tree: Some(true),
+                selected_files: None,
+                current_file: None,
+            }),
+        ).unwrap();
+
+        let selected = pkg.selected_files.iter().map(|f| f.relative_path.as_str()).collect::<Vec<_>>();
+        assert!(selected.contains(&"apps/desktop-windows/src/ui/workbench.ts"));
+        assert!(selected.contains(&"apps/desktop-windows/src/ui/main.css"));
+        assert!(selected.contains(&"apps/desktop-windows/src/ui/workbench.test.ts"));
+        assert!(selected.contains(&"apps/desktop-windows/mcp/tools/scenarios.ts"));
+        assert!(!selected.contains(&"apps/backend/src/auth/authService.ts"));
     }
 
     #[cfg(windows)]

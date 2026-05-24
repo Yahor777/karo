@@ -49,7 +49,7 @@
 
 import type { AgentId, BuiltinAgentRole, TaskId } from "@ai-agent-orchestrator/shared-core";
 
-import type { DesktopShell, EncryptedBlob, ApplyResult, TaskInternalPersistent } from "../shell/types.js";
+import type { DesktopShell, EncryptedBlob, ApplyResult, TaskInternalPersistent, BuildTaskContextOptions } from "../shell/types.js";
 import { API_KEY_SECRET_PREFIX, type ApiKeyMetadata } from "../ui/desktopApiKeySink.js";
 
 import { ChatModelClient, type ChatMessage } from "./modelClient.js";
@@ -1823,15 +1823,11 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
             kind: "thought",
             text: `[Context Engine] Scanning project at ${normalizedProjectPath} for task...`
           });
+          const contextOptions = buildContextOptionsForEstimate(internal.state.agentCoreEstimate);
           contextPackage = await this.desktopShell.shell_build_task_context(
             normalizedProjectPath,
             originalPrompt,
-            {
-              maxFiles: 12,
-              maxTotalChars: 80000,
-              includeContent: true,
-              includeFileTree: true,
-            }
+            contextOptions,
           );
 
           contextSummary = {
@@ -4490,6 +4486,62 @@ function formatPromptWithConversationContext(
   const context = conversationContext?.trim();
   if (context === undefined || context.length === 0) return prompt;
   return `${context}\n\nCurrent user request:\n${prompt}`;
+}
+
+function buildContextOptionsForEstimate(
+  estimate: TaskStateSnapshot["agentCoreEstimate"],
+): BuildTaskContextOptions {
+  const base = {
+    includeContent: true,
+    includeFileTree: true,
+  } satisfies Pick<BuildTaskContextOptions, "includeContent" | "includeFileTree">;
+
+  switch (estimate?.contextProfile) {
+    case "website_creation":
+      return {
+        ...base,
+        maxFiles: 6,
+        maxTotalChars: 24_000,
+      };
+    case "security_review":
+      return {
+        ...base,
+        maxFiles: 12,
+        maxTotalChars: 80_000,
+      };
+    case "apply_changes_explain":
+      return {
+        ...base,
+        maxFiles: 12,
+        maxTotalChars: 70_000,
+      };
+    case "ui_work":
+      return {
+        ...base,
+        maxFiles: 10,
+        maxTotalChars: 70_000,
+      };
+    case "project_explain":
+      return {
+        ...base,
+        maxFiles: 10,
+        maxTotalChars: 64_000,
+      };
+    case "conversation_memory":
+    case "casual_chat":
+    case "none":
+      return {
+        ...base,
+        maxFiles: 0,
+        maxTotalChars: 0,
+      };
+    default:
+      return {
+        ...base,
+        maxFiles: 12,
+        maxTotalChars: 80_000,
+      };
+  }
 }
 
 /**

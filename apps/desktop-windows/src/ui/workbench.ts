@@ -6820,12 +6820,16 @@ export function mountWorkspaceShell(
         { label: "Route reason", value: estimate?.routeReasonUser ?? decision?.reasoningSummary ?? "No route decision recorded." },
         { label: "Context profile", value: estimate?.contextProfile ?? "unknown" },
         { label: "Expected model calls", value: estimate !== undefined ? `${String(estimate.expectedModelCalls)} max ${String(estimate.maxExpectedModelCalls)}` : "unknown" },
+        { label: "Risk level", value: estimate?.riskLevel ?? decision?.riskLevel ?? "unknown" },
+        { label: "Allows artifacts", value: estimate !== undefined ? String(estimate.allowsArtifacts) : "unknown" },
+        { label: "Allows commands", value: estimate !== undefined ? String(estimate.allowsCommands) : String(decision?.allowCommands ?? "unknown") },
         { label: "Selected files", value: String(taskState?.contextSummary?.selectedFilesCount ?? 0) },
         { label: "Context tokens", value: String(breakdown.selectedFilesTokens + breakdown.projectContextTokens) },
         { label: "Model calls", value: String(modelCalls) },
         { label: "Elapsed model time", value: elapsedMs > 0 ? `${(elapsedMs / 1000).toFixed(1)}s` : "n/a" },
         { label: "Artifacts", value: String(artifactsCount) },
         { label: "Fallback used", value: fallbackUsed ? "yes" : "no" },
+        { label: "Timeout policy", value: estimate?.timeoutPolicy ?? "n/a" },
         { label: "Recovery policy", value: estimate?.recoveryPolicy ?? "n/a" },
       ];
       for (const metric of metrics) {

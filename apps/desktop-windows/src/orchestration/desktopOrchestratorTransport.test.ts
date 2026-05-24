@@ -423,7 +423,9 @@ describe("DesktopOrchestratorTransport — happy path", () => {
     expect(state?.reviewCycles).toBe(0);
     expect(state?.agentCoreEstimate?.mode).toBe("quick_edit");
     expect(state?.agentCoreEstimate?.expectedModelCalls).toBe(0);
+    expect(state?.agentCoreEstimate?.contextProfile).toBe("none");
     expect(calls).toHaveLength(0);
+    expect(shell.shell_build_task_context).not.toHaveBeenCalled();
 
     const artifacts = t.getArtifacts(taskId);
     expect(artifacts).toHaveLength(1);
@@ -464,6 +466,7 @@ describe("DesktopOrchestratorTransport — happy path", () => {
 
     expect(calls).toHaveLength(0);
     expect(t.getTaskState(taskId)?.participants).toEqual(["quick_edit"]);
+    expect(shell.shell_build_task_context).not.toHaveBeenCalled();
     expect(t.getArtifacts(taskId)[0]?.fileName).toBe("src/karo-mcp-proof.txt");
   });
 
@@ -489,6 +492,7 @@ describe("DesktopOrchestratorTransport — happy path", () => {
 
     expect(calls).toHaveLength(0);
     expect(t.getTaskState(taskId)?.participants).toEqual(["quick_edit"]);
+    expect(shell.shell_build_task_context).not.toHaveBeenCalled();
     const artifacts = t.getArtifacts(taskId);
     expect(artifacts).toHaveLength(1);
     expect(artifacts[0]?.fileName).toBe("src/karo-demo-site/index.html");
@@ -1640,8 +1644,19 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     const state = t.getTaskState(taskId);
     expect(state?.status).toBe("error");
     expect(state?.decision?.executionMode).toBe("agent");
+    expect(state?.agentCoreEstimate?.contextProfile).toBe("website_creation");
     expect(state?.reviewCycles).toBe(0);
     expect(apply).not.toHaveBeenCalled();
+    expect(shell.shell_build_task_context).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({
+        maxFiles: 6,
+        maxTotalChars: 24000,
+        includeContent: true,
+        includeFileTree: true,
+      }),
+    );
     expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder"]);
     expect(calls.filter((call) => call.which === "coder").every((call) => call.timeoutMs === 120000)).toBe(true);
 

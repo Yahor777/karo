@@ -561,6 +561,14 @@ describe("workbench ??? chat workbench", () => {
       .map((el) => el.textContent ?? "")
       .join("\n");
     expect(answer).toContain("Plan Result");
+    expect(answer).toContain("Goal");
+    expect(answer).toContain("Assumptions");
+    expect(answer).toContain("File areas");
+    expect(answer).toContain("Implementation steps");
+    expect(answer).toContain("Risks");
+    expect(answer).toContain("Tests");
+    expect(answer).toContain("Estimated complexity");
+    expect(answer).toContain("Suggested mode for execution");
     expect(opts.transport.createCalls).toHaveLength(0);
     expect(root.querySelector(".kw-chat-final")).toBeNull();
   });
@@ -757,7 +765,7 @@ describe("workbench ??? chat workbench", () => {
     // After start the chat shows the user prompt and a KARO message.
     expect(root.querySelector(".kw-chat-user")?.textContent).toContain("Build hello world");
     expect(root.querySelector(".kw-chat-assistant")).not.toBeNull();
-    expect(root.querySelector(".kw-chat-status-pill")?.textContent).toBe("Running Researcher");
+    expect(root.querySelector(".kw-chat-status-pill")?.textContent).toBe("Selecting context");
   });
 
   it("Cancel on the confirmation modal does not call the transport", async () => {
@@ -1265,6 +1273,10 @@ describe("workbench ??? chat workbench", () => {
         expect(researcherStep.textContent).toContain(
           "\u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442",
         );
+        expect(researcherStep.textContent).toContain("Finds minimal relevant project context");
+        expect(researcherStep.textContent).toContain("Show activity details");
+        expect(researcherStep.textContent).not.toContain("thought");
+        expect(researcherStep.querySelector(".kw-agent-step-details")?.hasAttribute("open")).toBe(false);
         expect(researcherStep.dataset["status"]).toBe("finished");
       });
   });

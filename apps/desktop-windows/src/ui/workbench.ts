@@ -139,11 +139,11 @@ const BUILTIN_AGENTS: ReadonlyArray<{
   readonly displayName: string;
   readonly description: string;
 }> = [
-  { id: "researcher", displayName: "Researcher", description: "Enriches the prompt." },
-  { id: "coder", displayName: "Coder", description: "Produces the artifact." },
-  { id: "reviewer", displayName: "Reviewer", description: "Lists defects." },
-  { id: "fixer", displayName: "Fixer", description: "Applies fixes." },
-  { id: "boss", displayName: "Boss", description: "Final verdict." },
+  { id: "researcher", displayName: "Researcher", description: "Finds relevant project context." },
+  { id: "coder", displayName: "Coder", description: "Creates staged file changes." },
+  { id: "reviewer", displayName: "Reviewer", description: "Reviews quality and correctness." },
+  { id: "fixer", displayName: "Fixer", description: "Repairs specific issues." },
+  { id: "boss", displayName: "Finalizer", description: "Summarizes result and next steps." },
 ];
 
 const DEFAULT_REVIEW_CYCLES = 2;
@@ -2522,8 +2522,9 @@ export function mountWorkspaceShell(
     if (group.events.length > 0) {
       const detailsWrap = doc.createElement("details");
       detailsWrap.className = "kw-agent-step-details";
+      detailsWrap.dataset["testid"] = "agent-activity-details";
       const summaryEl = doc.createElement("summary");
-      summaryEl.textContent = `Show raw events (${String(group.events.length)})`;
+      summaryEl.textContent = `Show activity details (${String(group.events.length)})`;
       detailsWrap.append(summaryEl);
       const list = doc.createElement("ul");
       list.className = "kw-agent-step-events";
@@ -2603,7 +2604,7 @@ export function mountWorkspaceShell(
       const summaryText = isQuickEdit
         ? report.bossSummary.replace(/^соответствует:\s*/iu, "")
         : report.bossSummary;
-      appendKv(doc, list, isQuickEdit ? "Summary" : "Boss summary", summaryText);
+      appendKv(doc, list, isQuickEdit ? "Summary" : "Finalizer summary", summaryText);
     }
     wrap.append(list);
 
@@ -3673,6 +3674,11 @@ export function mountWorkspaceShell(
         "Если запрос на самом деле требует изменения файлов, кратко объясни, что для этого нужен явный file-change запрос и подтверждение.";
     }
 
+    if (activeComposerMode === "plan") {
+      systemInstruction +=
+        "\n\nPlan Mode contract: use planning roles, not coding agents. Cover Goal, Assumptions, File areas, Implementation steps, Risks, Tests, Estimated complexity, and Suggested mode for execution. Do not create artifacts, do not mention Apply Changes as already available, and do not claim files were changed.";
+    }
+
     systemInstruction +=
       "\n\nResponse style override: do not start with a mode preamble. Mention the mode only when the user explicitly asks about the mode, or when a safety/permission decision must be explained.";
 
@@ -3711,6 +3717,11 @@ export function mountWorkspaceShell(
         "Ответь на вопрос пользователя на русском языке. " +
         "Не начинай ответ с режима. Упоминай режим только если пользователь прямо спрашивает о режиме или нужно объяснить safety/permission ограничение. " +
         "Если запрос требует изменения файлов, кратко объясни, что нужен явный file-change запрос и подтверждение.";
+    }
+
+    if (activeComposerMode === "plan") {
+      systemInstruction +=
+        "\n\nPlan Mode contract: act as Context Analyst, Product/Tech Planner, Risk Reviewer, and Plan Finalizer. Return a structured plan with Goal, Assumptions, File areas, Implementation steps, Risks, Tests, Estimated complexity, and Suggested mode for execution. This is read-only: no artifacts, no file changes, no Apply Changes.";
     }
 
     systemInstruction +=
@@ -6771,6 +6782,88 @@ export function mountWorkspaceShell(
       wrap.append(agentSection);
     }
 
+    if (taskState?.decision !== undefined || (taskState?.providerDiagnostics?.length ?? 0) > 0) {
+      const modeSection = doc.createElement("div");
+      const modeTitle = doc.createElement("h4");
+      modeTitle.textContent = "Mode and model calls";
+      modeTitle.style.margin = "0 0 8px 0";
+      modeTitle.style.fontSize = "12px";
+      modeTitle.style.textTransform = "uppercase";
+      modeTitle.style.color = "var(--vscode-descriptionForeground, #8c8c8c)";
+      modeSection.append(modeTitle);
+
+      const decision = taskState?.decision;
+      const diagnostics = taskState?.providerDiagnostics ?? [];
+      const modelCalls = diagnostics.length;
+      const elapsedMs = diagnostics.reduce((sum: number, diagnostic: any) => sum + (diagnostic.elapsedMs ?? 0), 0);
+      const artifactsCount = options.transport !== undefined && taskId !== null
+        ? options.transport.getArtifacts(taskId).length
+        : 0;
+      const fallbackUsed = diagnostics.some((diagnostic: any) => /fallback/i.test(String(diagnostic.stageName ?? "")));
+      const table = doc.createElement("table");
+      table.style.width = "100%";
+      table.style.borderCollapse = "collapse";
+      table.style.fontSize = "12px";
+      const metrics = [
+        { label: "Mode selected", value: decision?.executionMode ?? "unknown" },
+        { label: "Route reason", value: decision?.reasoningSummary ?? "No route decision recorded." },
+        { label: "Selected files", value: String(taskState?.contextSummary?.selectedFilesCount ?? 0) },
+        { label: "Context tokens", value: String(breakdown.selectedFilesTokens + breakdown.projectContextTokens) },
+        { label: "Model calls", value: String(modelCalls) },
+        { label: "Elapsed model time", value: elapsedMs > 0 ? `${(elapsedMs / 1000).toFixed(1)}s` : "n/a" },
+        { label: "Artifacts", value: String(artifactsCount) },
+        { label: "Fallback used", value: fallbackUsed ? "yes" : "no" },
+      ];
+      for (const metric of metrics) {
+        const tr = doc.createElement("tr");
+        tr.style.borderBottom = "1px solid rgba(255, 255, 255, 0.03)";
+        const label = doc.createElement("td");
+        label.style.padding = "6px 4px";
+        label.textContent = metric.label;
+        const value = doc.createElement("td");
+        value.style.padding = "6px 4px";
+        value.style.textAlign = "right";
+        value.style.wordBreak = "break-word";
+        value.textContent = metric.value;
+        tr.append(label, value);
+        table.append(tr);
+      }
+      modeSection.append(table);
+
+      if (diagnostics.length > 0) {
+        const details = doc.createElement("details");
+        details.className = "kw-usage-provider-diagnostics";
+        const summary = doc.createElement("summary");
+        summary.textContent = `Provider call diagnostics (${String(diagnostics.length)})`;
+        details.append(summary);
+        const calls = doc.createElement("ul");
+        calls.style.listStyle = "none";
+        calls.style.padding = "0";
+        calls.style.margin = "8px 0 0";
+        for (const diagnostic of diagnostics) {
+          const item = doc.createElement("li");
+          item.style.padding = "8px";
+          item.style.border = "1px solid rgba(255, 255, 255, 0.04)";
+          item.style.borderRadius = "6px";
+          item.style.marginBottom = "6px";
+          item.style.wordBreak = "break-word";
+          item.textContent = [
+            `${readableAgentName(diagnostic.agentId)} / ${diagnostic.stageName}`,
+            `${diagnostic.provider}/${formatFriendlyModelName(diagnostic.modelId)}`,
+            `tokens ${String(diagnostic.inputTokenEstimate)}`,
+            `files ${String(diagnostic.selectedFilesCount)}`,
+            `${String(Math.round(diagnostic.elapsedMs / 1000))}s`,
+            diagnostic.errorType !== undefined ? `error ${diagnostic.errorType}` : "ok",
+          ].join(" · ");
+          calls.append(item);
+        }
+        details.append(calls);
+        modeSection.append(details);
+      }
+
+      wrap.append(modeSection);
+    }
+
     const selectedContextFiles =
       taskState?.contextSummary?.selectedFiles?.map((f: any) => f.relativePath) ??
       state.lastContextSelectedFiles ??
@@ -7071,10 +7164,52 @@ function shouldRouteToPlan(prompt: string): boolean {
 
 function formatPlanResult(answer: string): string {
   const trimmed = answer.trim();
-  if (/^#{1,3}\s*Plan Result/im.test(trimmed) || /Plan Result/i.test(trimmed.slice(0, 80))) {
-    return trimmed;
+  const body =
+    /^#{1,3}\s*Plan Result/im.test(trimmed) || /Plan Result/i.test(trimmed.slice(0, 80))
+      ? trimmed
+      : `## Plan Result\n\n${trimmed}`;
+  const requiredSections = [
+    {
+      heading: "Goal",
+      fallback: "Turn the request into a safe, reviewable implementation path without changing files in Plan Mode.",
+    },
+    {
+      heading: "Assumptions",
+      fallback: "The current answer is a read-only plan. Any file changes must be run later through Agent Mode and Apply Changes.",
+    },
+    {
+      heading: "File areas",
+      fallback: "Use project context when available; otherwise verify target files before implementation.",
+    },
+    {
+      heading: "Implementation steps",
+      fallback: "Follow the plan above as the first draft of the implementation sequence.",
+    },
+    {
+      heading: "Risks",
+      fallback: "Watch for unclear scope, missing project context, failing tests, and changes that should be split smaller.",
+    },
+    {
+      heading: "Tests",
+      fallback: "Run the smallest relevant unit, type, GUI, and runtime checks before applying or publishing the work.",
+    },
+    {
+      heading: "Estimated complexity",
+      fallback: "Medium by default; reduce to low only when the target files and behavior are fully known.",
+    },
+    {
+      heading: "Suggested mode for execution",
+      fallback: "Use Agent Mode only when you are ready to create staged file changes. Stay in Chat or Plan for questions and design review.",
+    },
+  ];
+  const additions: string[] = [];
+  for (const section of requiredSections) {
+    const pattern = new RegExp(`^#{1,4}\\s*${section.heading}\\b`, "im");
+    if (!pattern.test(body)) {
+      additions.push(`### ${section.heading}\n${section.fallback}`);
+    }
   }
-  return `## Plan Result\n\n${trimmed}\n\n### Next Action\nUse **Start implementation** from this plan only when you are ready to run Agent Mode and produce file changes.`;
+  return [body, ...additions].join("\n\n");
 }
 
 function detectPreviewCommand(): string {
@@ -7102,6 +7237,8 @@ function stripModePreamble(text: string): string {
       "",
     )
     .replace(/^\s*(?:I\s+(?:am|work)\s+in\s+(?:Auto|Assist|Agent|Chat)\s+Mode\.?\s*)/iu, "")
+    .replace(/^\s*(?:\[?Plan\s+Mode\]?\s*[:\-–—.]?\s*)?(?:Я\s+(?:работаю|нахожусь)\s+в\s+(?:режиме\s+)?Plan\s+Mode\.?\s*)/iu, "")
+    .replace(/^\s*(?:I\s+(?:am|work)\s+in\s+Plan\s+Mode\.?\s*)/iu, "")
     .trimStart();
 }
 
@@ -7523,15 +7660,15 @@ function describeStatus(status: TaskStatus): {
     case "created":
       return { label: "Creating task", variant: "info" };
     case "researching":
-      return { label: "Running Researcher", variant: "info" };
+      return { label: "Selecting context", variant: "info" };
     case "coding":
-      return { label: "Running Coder", variant: "info" };
+      return { label: "Preparing changes", variant: "info" };
     case "reviewing":
-      return { label: "Running Reviewer", variant: "info" };
+      return { label: "Checking result", variant: "info" };
     case "fixing":
-      return { label: "Running Fixer", variant: "info" };
+      return { label: "Repairing issues", variant: "info" };
     case "boss_eval":
-      return { label: "Boss evaluating", variant: "info" };
+      return { label: "Finalizing", variant: "info" };
     case "completed":
       return { label: "Completed", variant: "success" };
     case "stopped_limit":
@@ -7544,22 +7681,26 @@ function describeStatus(status: TaskStatus): {
 }
 
 function formatTraceEvent(ev: TraceEvent): string {
-  switch (ev.record.kind) {
-    case "thought":
-      return `thought · ${ev.record.text.length > 200 ? `${ev.record.text.slice(0, 197)}…` : ev.record.text}`;
-    case "tool_call":
-      return `tool ${ev.record.tool}`;
-    case "artifact_change":
-      return `artifact ${ev.record.artifactId.slice(0, 8)}@v${String(ev.record.version)}`;
-    case "status":
-      return `status · ${ev.record.status}`;
+  if (ev.record.kind === "thought") {
+    return `activity · ${ev.record.text.length > 200 ? `${ev.record.text.slice(0, 197)}...` : ev.record.text}`;
   }
+  if (ev.record.kind === "tool_call") {
+    return `tool call · ${ev.record.tool}`;
+  }
+  if (ev.record.kind === "artifact_change") {
+    return `artifact prepared · ${ev.record.artifactId.slice(0, 8)}@v${String(ev.record.version)}`;
+  }
+  if (ev.record.kind === "status") {
+    return `status · ${ev.record.status}`;
+  }
+  return "activity";
 }
 
 function readableAgentName(agentId: AgentId): string {
+  if (agentId === "boss") return "Finalizer";
   const known = BUILTIN_AGENTS.find((a) => a.id === agentId);
   if (known !== undefined) return known.displayName;
-  if (agentId === "quick_edit") return "Quick edit";
+  if (agentId === "quick_edit") return "Quick Edit";
   if (agentId === "orchestrator") return "Orchestrator";
   return agentId;
 }
@@ -7588,25 +7729,36 @@ function agentInitials(agentId: AgentId): string {
 function agentRoleLine(agentId: AgentId): string {
   switch (agentId) {
     case "researcher":
-      return "Context and task analysis";
+      return "Finds minimal relevant project context";
     case "coder":
-      return "Artifact generation";
+      return "Creates staged file changes";
     case "reviewer":
-      return "Quality review";
+      return "Reviews quality and correctness";
     case "fixer":
-      return "Defect correction";
+      return "Repairs specific issues";
     case "boss":
-      return "Final acceptance";
+      return "Summarizes result and next steps";
     case "quick_edit":
-      return "Direct artifact preparation";
+      return "Prepares deterministic staged changes";
     case "orchestrator":
-      return "Pipeline coordinator";
+      return "Routes to Chat, Plan, Agent, Safety, or Quick Edit";
     default:
       return "Agent";
   }
 }
 
 function agentStartPhrase(agentId: AgentId): string {
+  const phraseByAgent: Partial<Record<AgentId, string>> = {
+    researcher: "Ищу минимально достаточный контекст.",
+    coder: "Готовлю staged изменения.",
+    reviewer: "Проверяю результат и риски.",
+    fixer: "Исправляю конкретные найденные проблемы.",
+    boss: "Собираю честный итог и следующие шаги.",
+    quick_edit: "Готовлю точечное изменение без модели и полного pipeline.",
+    orchestrator: "Выбираю минимально достаточный режим.",
+  };
+  const phrase = phraseByAgent[agentId];
+  if (phrase !== undefined) return phrase;
   switch (agentId) {
     case "researcher":
       return "Разбираю задачу и контекст.";

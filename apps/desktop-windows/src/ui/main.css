@@ -2264,7 +2264,8 @@ html, body {
     font-size: 12px;
   }
 
-  .kw-preview-url {
+  .kw-preview-url,
+  .kw-preview-status {
     display: flex;
     flex-wrap: wrap;
     align-items: center;

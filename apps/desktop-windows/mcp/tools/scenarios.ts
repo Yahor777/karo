@@ -709,17 +709,32 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
     const previewText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
     const openButton = ctx.page.locator('[data-testid="preview-open-static"]').first();
     const openDisabled = await openButton.isDisabled().catch(() => false);
+    const copyPathVisible = await ctx.page.locator('[data-testid="preview-copy-static-path"]').first().isVisible().catch(() => false);
+    const embeddedFrameCount = await ctx.page.locator(".kw-right-content iframe").count().catch(() => 0);
     const terminalBefore = await ctx.page.locator(byTestId(TEST_IDS.terminalPanel)).textContent().catch(() => "");
     bag.assertions.push(
       {
         name: "website-preview-shows-apply-before-preview",
-        passed: /Apply changes before preview/i.test(previewText ?? "") && /src\/karo-demo-site\/index\.html/i.test(previewText ?? ""),
+        passed:
+          /Preview status:\s*staged-only\/apply-required/i.test(previewText ?? "") &&
+          /Apply changes before preview/i.test(previewText ?? "") &&
+          /src\/karo-demo-site\/index\.html/i.test(previewText ?? ""),
         details: previewText ?? "",
       },
       {
         name: "website-preview-open-disabled-before-apply",
         passed: openDisabled,
         details: `openDisabled=${String(openDisabled)}`,
+      },
+      {
+        name: "website-preview-copy-path-available",
+        passed: copyPathVisible,
+        details: `copyPathVisible=${String(copyPathVisible)}`,
+      },
+      {
+        name: "website-preview-no-fake-embedded-frame",
+        passed: embeddedFrameCount === 0 && /Embedded preview is not implemented/i.test(previewText ?? ""),
+        details: `embeddedFrameCount=${String(embeddedFrameCount)} text=${previewText ?? ""}`,
       },
       {
         name: "website-preview-does-not-auto-run-terminal",
@@ -970,7 +985,7 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
     }
     await ctx.page.locator(byTestId(TEST_IDS.terminalPanel)).click();
     const terminalText = await ctx.page.locator(byTestId(TEST_IDS.terminalPanel)).textContent().catch(() => "");
-    const terminalConnected = /Safe terminal backend connected/i.test(terminalText ?? "");
+    const terminalConnected = /Safe terminal (backend connected|MVP runner connected)/i.test(terminalText ?? "");
     bag.assertions.push({
       name: "terminal-bottom-panel-honest-state",
       passed: terminalConnected

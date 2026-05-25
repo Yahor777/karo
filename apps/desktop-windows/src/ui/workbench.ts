@@ -287,6 +287,7 @@ interface InternalState {
   terminalStatus: "idle" | "running" | "exited" | "error" | "blocked";
   terminalLines: Array<{ stream: "stdout" | "stderr"; text: string; at: string }>;
   terminalError: string | null;
+  terminalExitCode: number | null;
   terminalProfiles: TerminalProfile[];
   terminalProfileId: string;
   previewUrl: string | null;
@@ -369,6 +370,7 @@ export function mountWorkspaceShell(
     terminalStatus: "idle",
     terminalLines: [],
     terminalError: null,
+    terminalExitCode: null,
     terminalProfiles: [],
     terminalProfileId: localStorage.getItem("karo.terminalProfile") ?? "",
     previewUrl: null,
@@ -5755,12 +5757,29 @@ export function mountWorkspaceShell(
             ?.getArtifacts(state.activeTaskId)
             .find((artifact) => /(^|\/)index\.html$/i.test(artifact.fileName))
         : undefined;
+    const staticPreviewApplied =
+      staticPreviewArtifact !== undefined &&
+      state.activeTaskId !== null &&
+      isStaticPreviewApplied(state.activeTaskId, staticPreviewArtifact.fileName);
+    const previewStatus =
+      staticPreviewArtifact !== undefined
+        ? staticPreviewApplied
+          ? "static-file-ready"
+          : "staged-only/apply-required"
+        : detectedUrl !== null
+          ? "running"
+          : suggested.trim().length > 0
+            ? "dev-command-available"
+            : "unavailable";
+    const statusCard = doc.createElement("div");
+    statusCard.className = "kw-preview-status";
+    statusCard.dataset["testid"] = "preview-status";
+    statusCard.textContent = `Preview status: ${previewStatus}`;
     const staticPreview = doc.createElement("div");
     staticPreview.className = "kw-system-notice";
     if (staticPreviewArtifact !== undefined) {
       const staticText = doc.createElement("span");
-      const applied = state.activeTaskId !== null && isStaticPreviewApplied(state.activeTaskId, staticPreviewArtifact.fileName);
-      staticText.textContent = applied
+      staticText.textContent = staticPreviewApplied
         ? `Static preview: ${staticPreviewArtifact.fileName} is applied and can be opened without running a command.`
         : `Static preview: Apply changes before preview. File staged: ${staticPreviewArtifact.fileName}.`;
       const openStatic = doc.createElement("button");
@@ -5769,16 +5788,25 @@ export function mountWorkspaceShell(
       openStatic.dataset["testid"] = "preview-open-static";
       openStatic.textContent = "Open preview";
       openStatic.disabled =
-        !applied ||
+        !staticPreviewApplied ||
         projectRoot.length === 0 ||
         options.desktopShell.shell_open_preview_file === undefined;
-      openStatic.title = applied
+      openStatic.title = staticPreviewApplied
         ? "Open the applied index.html with the operating system browser/default app."
         : "Apply Changes before preview. Karo will not open staged-only files.";
       openStatic.addEventListener("click", () => {
         void openStaticPreviewFile(staticPreviewArtifact.fileName);
       });
-      staticPreview.append(staticText, openStatic);
+      const copyPath = doc.createElement("button");
+      copyPath.type = "button";
+      copyPath.className = "kw-button kw-button-secondary";
+      copyPath.dataset["testid"] = "preview-copy-static-path";
+      copyPath.textContent = "Copy file path";
+      copyPath.title = staticPreviewApplied
+        ? "Copy the project-relative index.html path."
+        : "Copy the staged project-relative path. Apply Changes before opening it from disk.";
+      copyPath.addEventListener("click", () => void copyToClipboard(staticPreviewArtifact.fileName));
+      staticPreview.append(staticText, openStatic, copyPath);
       if (state.previewOpenStatus === "opened") {
         const opened = doc.createElement("span");
         opened.className = "kw-preview-open-state";
@@ -5795,6 +5823,9 @@ export function mountWorkspaceShell(
       staticPreview.textContent =
         "Static preview: if this run stages an index.html file, Apply Changes first, then open it in a browser.";
     }
+    const embeddedNote = doc.createElement("p");
+    embeddedNote.className = "kw-preview-meta";
+    embeddedNote.textContent = "Embedded preview is not implemented in this MVP; Karo opens applied static files externally or runs an explicit dev command.";
     const notice = doc.createElement("p");
     notice.className = "kw-system-notice kw-system-notice-warning";
     notice.textContent =
@@ -5850,7 +5881,7 @@ export function mountWorkspaceShell(
     } else {
       actions.append(start, copyCommand, openTerminal);
     }
-    wrap.append(title, commandLabel, meta, urlState, staticPreview, notice, actions);
+    wrap.append(title, statusCard, commandLabel, meta, urlState, staticPreview, embeddedNote, notice, actions);
     return wrap;
   }
 
@@ -6129,7 +6160,7 @@ export function mountWorkspaceShell(
     const body = doc.createElement("p");
     body.className = "kw-empty-body";
     body.textContent = terminalAvailable
-      ? `Safe terminal backend connected. Status: ${state.terminalStatus}.`
+      ? `Safe terminal MVP runner connected. Status: ${getTerminalDisplayStatus()}. This is not a full PTY terminal.`
       : "Terminal backend is not connected in this runtime. Command execution is disabled.";
     const profileLabel = doc.createElement("label");
     profileLabel.className = "kw-terminal-profile";
@@ -6137,7 +6168,8 @@ export function mountWorkspaceShell(
     profileText.textContent = "Shell profile";
     const profileSelect = doc.createElement("select");
     profileSelect.dataset["testid"] = "terminal-profile";
-    profileSelect.disabled = !terminalAvailable || state.terminalProfiles.length === 0;
+    const availableProfiles = state.terminalProfiles.filter((profile) => profile.available);
+    profileSelect.disabled = !terminalAvailable || availableProfiles.length === 0;
     const profiles =
       state.terminalProfiles.length > 0
         ? state.terminalProfiles
@@ -6145,7 +6177,8 @@ export function mountWorkspaceShell(
     for (const profile of profiles) {
       const opt = doc.createElement("option");
       opt.value = profile.id;
-      opt.textContent = `${profile.label}${profile.shell.length > 0 ? ` (${profile.shell})` : ""}`;
+      opt.disabled = !profile.available;
+      opt.textContent = `${profile.label}${profile.shell.length > 0 ? ` (${profile.shell})` : ""}${profile.available ? "" : " - unavailable"}`;
       opt.selected = profile.id === state.terminalProfileId;
       profileSelect.append(opt);
     }
@@ -6197,12 +6230,24 @@ export function mountWorkspaceShell(
     const output = doc.createElement("pre");
     output.className = "kw-terminal-output";
     output.dataset["testid"] = "terminal-output";
-    output.textContent =
+    output.textContent = formatTerminalOutputForDisplay(terminalAvailable);
+    wrap.append(title, body, profileLabel, command, actions, output);
+    return wrap;
+  }
+
+  function getTerminalDisplayStatus(): string {
+    if (state.terminalStatus === "exited" && state.terminalExitCode === 0) return "success";
+    if (state.terminalStatus === "exited") return "completed";
+    return state.terminalStatus;
+  }
+
+  function formatTerminalOutputForDisplay(terminalAvailable: boolean): string {
+    const lines =
       state.terminalLines.length > 0
         ? state.terminalLines.map((line) => `[${line.stream}] ${line.text}`).join("\n")
         : state.terminalError ?? (terminalAvailable ? "No terminal output yet." : "Backend unavailable.");
-    wrap.append(title, body, profileLabel, command, actions, output);
-    return wrap;
+    if (state.terminalExitCode === null) return lines;
+    return `${lines}\nExit code: ${String(state.terminalExitCode)}`;
   }
 
   function renderBottomTools(): void {
@@ -6214,7 +6259,7 @@ export function mountWorkspaceShell(
     label.textContent = "Terminal";
     const status = doc.createElement("span");
     status.className = "kw-bottom-tools-status";
-    status.textContent = hasTerminalBackend() ? state.terminalStatus : "backend not connected";
+    status.textContent = hasTerminalBackend() ? getTerminalDisplayStatus() : "backend not connected";
     const toggle = doc.createElement("span");
     toggle.className = "kw-bottom-tools-toggle";
     toggle.textContent = bottomTools.dataset["open"] === "true" ? "Hide" : "Show";
@@ -6245,12 +6290,13 @@ export function mountWorkspaceShell(
     if (options.desktopShell.shell_get_terminal_profiles === undefined) return;
     try {
       const profiles = await options.desktopShell.shell_get_terminal_profiles();
-      state.terminalProfiles = profiles.filter((profile) => profile.available);
+      state.terminalProfiles = [...profiles];
+      const availableProfiles = state.terminalProfiles.filter((profile) => profile.available);
       if (
         state.terminalProfileId.length === 0 ||
-        !state.terminalProfiles.some((profile) => profile.id === state.terminalProfileId)
+        !availableProfiles.some((profile) => profile.id === state.terminalProfileId)
       ) {
-        state.terminalProfileId = state.terminalProfiles[0]?.id ?? "";
+        state.terminalProfileId = availableProfiles[0]?.id ?? "";
         if (state.terminalProfileId.length > 0) {
           localStorage.setItem("karo.terminalProfile", state.terminalProfileId);
         }
@@ -6295,6 +6341,7 @@ export function mountWorkspaceShell(
     if (!hasTerminalBackend()) {
       state.terminalError = "Terminal backend is not connected in this runtime.";
       state.terminalStatus = "error";
+      state.terminalExitCode = null;
       renderBottomTools();
       renderRightContent();
       return;
@@ -6302,6 +6349,7 @@ export function mountWorkspaceShell(
     if (projectRoot.length === 0) {
       state.terminalError = "Select a project root before running terminal commands.";
       state.terminalStatus = "error";
+      state.terminalExitCode = null;
       renderBottomTools();
       renderRightContent();
       return;
@@ -6312,6 +6360,7 @@ export function mountWorkspaceShell(
       state.terminalSessionId = result.sessionId;
       state.terminalStatus = result.status;
       state.terminalLines = [];
+      state.terminalExitCode = null;
       state.previewUrl = null;
       bottomTools.dataset["open"] = "true";
       pushLog("info", `Terminal started: ${command}`);
@@ -6323,6 +6372,7 @@ export function mountWorkspaceShell(
       state.terminalError = describeError(err);
       state.terminalStatus = "blocked";
       state.terminalLines = [];
+      state.terminalExitCode = null;
       bottomTools.dataset["open"] = "true";
       pushLog("warn", `Terminal command blocked or failed: ${state.terminalError}`);
       renderBottomTools();
@@ -6336,6 +6386,7 @@ export function mountWorkspaceShell(
       const output = await options.desktopShell.shell_stop_command(state.terminalSessionId);
       state.terminalStatus = output.status;
       state.terminalLines = [...output.lines];
+      state.terminalExitCode = output.exitCode ?? null;
       stopTerminalPollingIfTerminal();
       pushLog("info", `Terminal stopped: ${state.terminalSessionId}`);
     } catch (err) {
@@ -6352,6 +6403,7 @@ export function mountWorkspaceShell(
       const output = await options.desktopShell.shell_get_command_output(state.terminalSessionId);
       state.terminalStatus = output.status;
       state.terminalLines = [...output.lines];
+      state.terminalExitCode = output.exitCode ?? null;
       const detectedUrl = detectPreviewUrlFromLines(state.terminalLines);
       if (detectedUrl !== null) {
         state.previewUrl = detectedUrl;
@@ -6377,6 +6429,7 @@ export function mountWorkspaceShell(
       });
     }
     state.terminalLines = [];
+    state.terminalExitCode = null;
     renderBottomTools();
   }
 
@@ -6396,7 +6449,9 @@ export function mountWorkspaceShell(
 
   function formatTerminalOutputForCopy(): string {
     const terminal = state.terminalLines.map((line) => `[${line.stream}] ${line.text}`).join("\n");
-    if (terminal.length > 0) return terminal;
+    if (terminal.length > 0) {
+      return state.terminalExitCode === null ? terminal : `${terminal}\nExit code: ${String(state.terminalExitCode)}`;
+    }
     return state.logs.map((log) => `${log.at} ${log.level}: ${log.text}`).join("\n");
   }
 

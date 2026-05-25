@@ -2288,9 +2288,11 @@ describe("workbench ??? right panel", () => {
     const text = root.querySelector(".kw-right-content")?.textContent ?? "";
     expect(text).toContain("Preview");
     expect(text).toContain("Suggested command");
+    expect(text).toContain("Preview status");
     expect(text).toContain("Run preview");
     expect(text).toContain("Copy command");
     expect(text).toContain("Terminal status");
+    expect(text).toContain("Embedded preview is not implemented");
     expect(root.querySelector<HTMLButtonElement>(".kw-preview-panel .kw-button-primary")?.disabled).toBe(true);
   });
 
@@ -2367,8 +2369,10 @@ describe("workbench ??? right panel", () => {
     root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!.click();
     const text = root.querySelector(".kw-right-content")?.textContent ?? "";
     expect(text).toContain("Static preview");
+    expect(text).toContain("Preview status: staged-only/apply-required");
     expect(text).toContain("Apply changes before preview");
     expect(text).toContain("src/karo-demo-site/index.html");
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-copy-static-path"]')?.disabled).toBe(false);
     expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-open-static"]')?.disabled).toBe(true);
   });
 
@@ -2452,6 +2456,7 @@ describe("workbench ??? right panel", () => {
 
     const open = root.querySelector<HTMLButtonElement>('[data-testid="preview-open-static"]')!;
     expect(open.disabled).toBe(false);
+    expect(root.querySelector(".kw-right-content")?.textContent).toContain("Preview status: static-file-ready");
     open.click();
     await flush();
 
@@ -2495,12 +2500,14 @@ describe("workbench ??? right panel", () => {
       shell_get_command_output: vi.fn(async () => ({
         sessionId: "term-1",
         status: "running" as const,
+        exitCode: null,
         lines: terminalLines,
       })),
       shell_clear_command_output: vi.fn(async () => undefined),
       shell_get_terminal_profiles: vi.fn(async () => [
         { id: "powershell", label: "PowerShell", shell: "powershell.exe", available: true },
         { id: "cmd", label: "CMD", shell: "cmd.exe", available: true },
+        { id: "git_bash", label: "Git Bash", shell: "C:\\Program Files\\Git\\bin\\bash.exe", available: false },
       ]),
     });
 
@@ -2524,6 +2531,9 @@ describe("workbench ??? right panel", () => {
     expect(root.querySelector<HTMLElement>(".kw-bottom-tools")?.dataset["open"]).toBe("true");
     expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("running");
     expect(root.querySelector('[data-testid="terminal-profile"]')?.textContent).toContain("PowerShell");
+    const gitBashOption = root.querySelector<HTMLOptionElement>('[data-testid="terminal-profile"] option[value="git_bash"]');
+    expect(gitBashOption?.disabled).toBe(true);
+    expect(gitBashOption?.textContent).toContain("unavailable");
     expect(root.querySelector(".kw-preview-url")?.textContent).toContain("http://127.0.0.1:5173/");
 
     const stopPreview = Array.from(root.querySelectorAll<HTMLButtonElement>(".kw-preview-actions button")).find(
@@ -2535,6 +2545,8 @@ describe("workbench ??? right panel", () => {
 
     expect(stop).toHaveBeenCalledWith("term-1");
     expect(root.querySelector('[data-testid="terminal-output"]')?.textContent).toContain("preview ready");
+    expect(root.querySelector('[data-testid="terminal-output"]')?.textContent).toContain("Exit code: 0");
+    expect(root.querySelector(".kw-bottom-tools-status")?.textContent).toContain("success");
   });
 
   it("Terminal shows backend block errors instead of pretending destructive commands ran", async () => {

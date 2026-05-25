@@ -468,6 +468,23 @@ function hasProjectSecuritySignal(text: string): boolean {
   );
 }
 
+function hasExplicitFilePathSignal(text: string): boolean {
+  return /(?:^|[\s,;:])(?:[A-Za-z0-9_.-]+[\\/])+[A-Za-z0-9_.-]+\.(?:html|htm|css|js|mjs|ts|tsx|jsx|json|md|txt|rs|toml|yml|yaml|scss|svg)\b/iu.test(text) ||
+    /\b(?:index\.html|styles\.css|script\.js|readme\.md|package\.json)\b/iu.test(text);
+}
+
+function hasExplicitFileChangingSignal(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const writeSignal =
+    /\b(?:create|build|make|generate|implement|write|modify|fix|add|delete|remove)\b/iu.test(normalized) ||
+    /\u0441\u043e\u0437\u0434\u0430|\u0441\u0434\u0435\u043b\u0430|\u0438\u0437\u043c\u0435\u043d|\u0438\u0441\u043f\u0440\u0430\u0432|\u0434\u043e\u0431\u0430\u0432|\u0443\u0434\u0430\u043b|\u0440\u0435\u0430\u043b\u0438\u0437|\u043d\u0430\u043f\u0438\u0448|\u043f\u043e\u0441\u0442\u0440\u043e/iu.test(normalized);
+  const targetSignal =
+    hasExplicitFilePathSignal(normalized) ||
+    /\b(?:agent\s*mode|use\s+agent|file-changing|staged artifacts?|apply changes)\b/iu.test(normalized) ||
+    /\u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\s+agent|\u0440\u0435\u0436\u0438\u043c\s+agent|\u0441\u043e\u0437\u0434\u0430\u0439\s+\u0444\u0430\u0439\u043b|\u0441\u043e\u0437\u0434\u0430\u0439\s+\u0444\u0430\u0439\u043b\u044b|\u0441\u0430\u0439\u0442|\u043b\u0435\u043d\u0434\u0438\u043d\u0433/iu.test(normalized);
+  return writeSignal && targetSignal;
+}
+
 function hasLocalProjectAnalysisSignal(text: string): boolean {
   const normalized = text.toLowerCase();
   return /(karo|\u043a\u0430\u0440\u043e|\u043f\u0440\u043e\u0435\u043a\u0442|\u043f\u0443\u0441\u0442\u044b\u0448|\u043f\u043e\u043b\u0435\u0437|\u0440\u0435\u0430\u043b\u044c\u043d\w*\s+\u0436\u0438\u0437\u043d|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442\u0443\u0440|\u0444\u0430\u0439\u043b)/iu.test(
@@ -477,6 +494,9 @@ function hasLocalProjectAnalysisSignal(text: string): boolean {
 
 export function shouldGenerateArtifacts(prompt: string): boolean {
   const text = prompt.trim().toLowerCase();
+  if (hasExplicitFileChangingSignal(text)) {
+    return true;
+  }
   if (hasProjectSecuritySignal(text)) {
     return false;
   }
@@ -534,6 +554,12 @@ export function classifyPromptIntent(prompt: string): IntentResult {
     /^(?:\u0441\u0434\u0435\u043b\u0430\u0439\s+\u043b\u0443\u0447\u0448\u0435|\u0443\u043b\u0443\u0447\u0448\u0438\s+\u043f\u0440\u043e\u0435\u043a\u0442|\u043f\u043e\u0447\u0438\u043d\u0438\s+\u0432\u0441[её]|\u0441\u0434\u0435\u043b\u0430\u0439\s+\u043a\u0440\u0430\u0441\u0438\u0432\u043e|make\s+it\s+better|make\s+better)[.!?\s]*$/iu.test(text)
   ) {
     return { kind: "unclear_task", reason: "broad project request needs clarification" };
+  }
+  if (hasExplicitFileChangingSignal(text)) {
+    return {
+      kind: "coding_task",
+      reason: "explicit file-changing request with target files or Agent Mode",
+    };
   }
   if (hasProjectSecuritySignal(text)) {
     return {

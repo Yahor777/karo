@@ -587,7 +587,15 @@ export function isStaticWebsiteCreationPrompt(prompt: string): boolean {
     text.includes("способност") ||
     text.includes("персонаж") ||
     text.includes("карточ");
-  return asksForSite && asksToCreate && staticSignals;
+  const explicitWebsiteFiles = /\b(index\.html|styles\.css|script\.js|readme\.md)\b/iu.test(text);
+  const unicodeSiteSignals = /\u0441\u0430\u0439\u0442|\u043b\u0435\u043d\u0434\u0438\u043d\u0433|\u0441\u0442\u0440\u0430\u043d\u0438\u0446/iu.test(text);
+  const unicodeCreateSignals = /\u0441\u043e\u0437\u0434\u0430|\u0441\u0434\u0435\u043b\u0430|\u043f\u043e\u0441\u0442\u0440\u043e|\u0441\u0433\u0435\u043d\u0435\u0440|\u0440\u0435\u0430\u043b\u0438\u0437/iu.test(text);
+  const unicodeSectionSignals = /\u0441\u043f\u043e\u0441\u043e\u0431\u043d\u043e\u0441|\u043f\u0435\u0440\u0441\u043e\u043d\u0430\u0436|\u044d\u043d\u0435\u0440\u0433|\u043a\u0430\u0440\u0442\u043e\u0447/iu.test(text);
+  return (
+    (asksForSite || explicitWebsiteFiles || unicodeSiteSignals) &&
+    (asksToCreate || unicodeCreateSignals) &&
+    (staticSignals || explicitWebsiteFiles || unicodeSectionSignals)
+  );
 }
 
 function inferContextProfile(input: AgentCoreEstimateInput): AgentContextProfile {

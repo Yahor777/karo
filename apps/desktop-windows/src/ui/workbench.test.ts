@@ -1607,6 +1607,18 @@ describe("workbench ??? chat workbench", () => {
       at: "2026-05-17T12:00:00.000Z",
       record: { kind: "artifact_change", artifactId: "a", version: 1 },
     });
+    opts.transport.emitArtifact(
+      {
+        id: "a",
+        taskId: "task-2",
+        fileName: "src/example.ts",
+        latestVersion: 1,
+        latestContentHash: "hash-a",
+        authoredByAgentId: "coder",
+        updatedAt: "2026-05-17T12:00:01.000Z",
+      },
+      "export const value = 1;",
+    );
 
     // Mount AFTER seeding, then simulate the activeTaskId by clicking
     // Start; simpler: directly seed by calling Start through composer.
@@ -1637,15 +1649,154 @@ describe("workbench ??? chat workbench", () => {
         )!;
         expect(researcherStep.textContent).toContain("Enriched prompt.");
         expect(researcherStep.querySelector(".kw-agent-avatar")?.textContent).toBe("R");
-        expect(researcherStep.textContent).toContain(
-          "\u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442",
-        );
+        expect(researcherStep.textContent).toContain("Selecting the minimum project context needed.");
         expect(researcherStep.textContent).toContain("Finds minimal relevant project context");
         expect(researcherStep.textContent).toContain("Show activity details");
         expect(researcherStep.textContent).not.toContain("thought");
         expect(researcherStep.querySelector(".kw-agent-step-details")?.hasAttribute("open")).toBe(false);
         expect(researcherStep.dataset["status"]).toBe("finished");
+        const coderStep = root.querySelector<HTMLElement>('.kw-agent-step[data-agent-id="coder"]')!;
+        expect(coderStep.querySelector(".kw-agent-file-chip")?.textContent).toBe("src/example.ts");
       });
+  });
+
+  it("shows skipped reviewer and file chips when deterministic validation passes", async () => {
+    const opts = buildOptions();
+    opts.transport.emitTaskState({
+      id: "website-activity",
+      status: "completed",
+      currentAgentId: null,
+      reviewCycles: 0,
+      maxReviewCycles: 2,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:00:05.000Z",
+      originalPrompt: "создай landing page",
+      modelId: "x",
+      provider: "fireworks",
+      participants: ["planner", "coder", "validator", "finalizer"],
+      deterministicValidation: {
+        status: "passed",
+        skipModelReview: true,
+        issues: [],
+        checkedSignals: ["hero", "faq", "responsive"],
+        reason: "Website acceptance signals passed.",
+      },
+    });
+    for (const [sequence, agentId, status] of [
+      [1, "planner", "finished"],
+      [2, "coder", "finished"],
+      [4, "validator", "finished"],
+      [5, "finalizer", "finished"],
+    ] as const) {
+      opts.transport.emitTraceEvent({
+        taskId: "website-activity",
+        agentId,
+        sequence,
+        at: `2026-05-17T12:00:0${String(sequence)}.000Z`,
+        record: { kind: "status", status },
+      });
+    }
+    opts.transport.emitTraceEvent({
+      taskId: "website-activity",
+      agentId: "coder",
+      sequence: 3,
+      at: "2026-05-17T12:00:03.000Z",
+      record: { kind: "artifact_change", artifactId: "site-css", version: 1 },
+    });
+    opts.transport.emitArtifact(
+      {
+        id: "site-css",
+        taskId: "website-activity",
+        fileName: "src/karo-demo-site/styles.css",
+        latestVersion: 1,
+        latestContentHash: "hash-css",
+        authoredByAgentId: "coder",
+        updatedAt: "2026-05-17T12:00:03.000Z",
+      },
+      ".hero { display: grid; }",
+    );
+
+    mountWorkspaceShell(root, opts);
+    opts.transport.createImpl = async () => ({ taskId: "website-activity" });
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "создай landing page";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    root.querySelector<HTMLButtonElement>(".kw-modal-confirm")!.click();
+    await flush();
+
+    const ids = Array.from(root.querySelectorAll<HTMLElement>(".kw-agent-step"))
+      .map((step) => step.dataset["agentId"]);
+    expect(ids).toEqual(expect.arrayContaining(["planner", "coder", "validator", "reviewer", "finalizer"]));
+    const reviewer = root.querySelector<HTMLElement>('.kw-agent-step[data-agent-id="reviewer"]')!;
+    expect(reviewer.dataset["status"]).toBe("skipped");
+    expect(reviewer.textContent).toContain("Пропущен");
+    expect(reviewer.textContent).toContain("deterministic validation");
+    const coder = root.querySelector<HTMLElement>('.kw-agent-step[data-agent-id="coder"]')!;
+    expect(coder.querySelector(".kw-agent-file-chip")?.textContent).toBe("src/karo-demo-site/styles.css");
+    expect(root.querySelectorAll(".kw-agent-step-details[open]")).toHaveLength(0);
+    expect(root.querySelector('[data-testid="chat-thread"]')?.textContent).not.toMatch(/\bthought\b/i);
+  });
+
+  it("shows recovery summary without marking a failed run completed", async () => {
+    const opts = buildOptions();
+    opts.transport.emitTaskState({
+      id: "recovery-activity",
+      status: "error",
+      currentAgentId: "coder",
+      reviewCycles: 0,
+      maxReviewCycles: 2,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:01:00.000Z",
+      originalPrompt: "создай сайт",
+      modelId: "x",
+      provider: "fireworks",
+      participants: ["coder"],
+      errorReason: "Coder timed out",
+      recoveryState: {
+        failedStage: "chunked_coder",
+        failedAgent: "coder",
+        failedFile: "src/karo-demo-site/script.js",
+        provider: "fireworks",
+        model: "x",
+        elapsedMs: 60_000,
+        timeoutMs: 60_000,
+        selectedFiles: [],
+        contextTokens: 800,
+        partialArtifacts: [
+          { artifactId: "site-html", version: 1, fileName: "src/karo-demo-site/index.html" },
+          { artifactId: "site-css", version: 1, fileName: "src/karo-demo-site/styles.css" },
+        ],
+        retryCount: 0,
+        lastSuccessfulStage: "chunked_coder",
+        lastSuccessfulArtifact: { artifactId: "site-css", version: 1, fileName: "src/karo-demo-site/styles.css" },
+        recommendedAction: "retry_failed_stage",
+        fallbackUsed: false,
+        canRetryFailedStage: true,
+        canRetryReducedContext: true,
+        canContinueFromPartial: true,
+        canSwitchModel: false,
+        recoveryReasonUser: "Coder timed out while generating script.js.",
+        recoveryReasonInternal: "provider_timeout",
+      },
+    });
+
+    mountWorkspaceShell(root, opts);
+    opts.transport.createImpl = async () => ({ taskId: "recovery-activity" });
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "создай сайт";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    root.querySelector<HTMLButtonElement>(".kw-modal-confirm")!.click();
+    await flush();
+
+    const recovery = root.querySelector<HTMLElement>('[data-testid="agent-recovery-summary"]')!;
+    expect(recovery.textContent).toContain("src/karo-demo-site/script.js");
+    expect(recovery.textContent).toContain("src/karo-demo-site/index.html");
+    expect(recovery.textContent).toContain("fallback");
+    expect(recovery.textContent).not.toContain("Completed");
   });
 
   it("renders a Final Report card with Copy report and Open artifacts buttons", async () => {

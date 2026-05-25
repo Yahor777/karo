@@ -25,5 +25,6 @@ Router and Context Curator runtime rules are documented in `docs/router_context_
 Chat Mode read-only behavior is documented in `docs/chat_mode_contract.md`.
 Plan Mode read-only planning behavior is documented in `docs/plan_mode_agents.md`.
 Recovery and no-wasted-limits behavior is documented in `docs/recovery_no_wasted_limits.md`.
+Agent Activity Trace UI behavior is documented in `docs/agent_activity_trace.md`.
 
 Those tests enforce the non-negotiables: Quick Edit has zero model calls, Chat has at most one call, Plan/Security are read-only, dangerous commands cannot execute, and fallback cannot pass website generation.

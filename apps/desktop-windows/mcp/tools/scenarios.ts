@@ -603,12 +603,15 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
       await assertNotVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "no-apply-before-agent-confirmation" }),
     );
     await ctx.page.locator(".kw-modal-confirm").click();
-    await ctx.page.waitForSelector(".kw-agent-card", { timeout: 10_000 });
+    await ctx.page.waitForSelector(byTestId(TEST_IDS.agentCard), { timeout: 10_000 });
+    const firstAgentCard = ctx.page.locator(byTestId(TEST_IDS.agentCard)).first();
+    const firstAgentText = await firstAgentCard.textContent() ?? "";
+    const threadText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent() ?? "";
     bag.assertions.push(
       {
         name: "quick-edit-agent-card-rendered",
-        passed: /Quick edit|Prepared 1 file|Prepared changes/i.test(await ctx.page.locator(".kw-agent-card").first().textContent() ?? ""),
-        details: await ctx.page.locator(".kw-agent-card").first().textContent() ?? "",
+        passed: /Quick edit|Prepared 1 file|Prepared changes/i.test(firstAgentText),
+        details: firstAgentText,
       },
       {
         name: "quick-edit-does-not-render-full-five-agent-pipeline",
@@ -618,23 +621,28 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
       {
         name: "quick-edit-hides-review-cycles-counter",
         passed: !/0\/2 cycles|review cycles performed|Researcher|Coder|Reviewer|Fixer|Boss/i.test(
-          await ctx.page.locator('[data-testid="chat-thread"]').textContent() ?? "",
+          threadText,
         ),
         details: "Quick Edit should not expose review cycle or full-pipeline labels.",
       },
       {
         name: "quick-edit-raw-events-collapsed",
-        passed: (await ctx.page.locator(".kw-agent-step-details[open]").count()) === 0,
+        passed: (await ctx.page.locator(`${byTestId(TEST_IDS.agentActivityDetails)}[open]`).count()) === 0,
         details: "raw event details should be collapsed by default",
       },
       {
         name: "quick-edit-shows-user-facing-activity-not-thoughts",
         passed:
           /Show activity details|Prepares deterministic staged changes/i.test(
-            await ctx.page.locator(".kw-agent-card").first().textContent() ?? "",
+            firstAgentText,
           ) &&
-          !/thought\s*[·В]/i.test(await ctx.page.locator('[data-testid="chat-thread"]').textContent() ?? ""),
-        details: await ctx.page.locator(".kw-agent-card").first().textContent() ?? "",
+          !/\bthought\b/i.test(threadText),
+        details: firstAgentText,
+      },
+      {
+        name: "quick-edit-file-chip-visible",
+        passed: /src\/karo-mcp-proof\.txt/i.test(firstAgentText),
+        details: firstAgentText,
       },
       await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "apply-available-after-quick-edit-artifact" }),
     );
@@ -676,7 +684,7 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
       await assertNotVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "website-no-apply-before-confirmation" }),
     );
     await ctx.page.locator(".kw-modal-confirm").click();
-    await ctx.page.waitForSelector(".kw-agent-card", { timeout: 10_000 });
+    await ctx.page.waitForSelector(byTestId(TEST_IDS.agentCard), { timeout: 10_000 });
     const threadText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
     bag.assertions.push(
       {
@@ -688,6 +696,11 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
         name: "website-quick-edit-no-full-pipeline",
         passed: !/0\/2 cycles|review cycles performed|Researcher|Reviewer|Fixer|Boss/i.test(threadText ?? ""),
         details: "Static index.html should use Quick Edit, not the full review pipeline.",
+      },
+      {
+        name: "website-activity-no-visible-thoughts",
+        passed: !/\bthought\b/i.test(threadText ?? "") && (await ctx.page.locator(`${byTestId(TEST_IDS.agentActivityDetails)}[open]`).count()) === 0,
+        details: "Activity details should stay collapsed and should not expose thought labels.",
       },
       await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "website-apply-visible-after-staging" }),
     );

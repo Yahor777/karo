@@ -2098,7 +2098,13 @@ export function mountWorkspaceShell(
 
     // Calculate agent statuses for horizontal pipeline
     const events = transport.getTraceEvents(taskId);
-    const groups = groupTraceByAgent(events);
+    const artifactMap = buildArtifactFileNameMap(transport.getArtifacts(taskId));
+    const locale = detectActivityLocale(taskState.originalPrompt);
+    const includeRouteCard = !isQuickEdit && taskState.decision?.executionMode !== "chat";
+    const groups = withSyntheticActivityGroups(
+      groupTraceByAgent(events, { includeOrchestrator: includeRouteCard }),
+      taskState,
+    );
 
     function getAgentStatusInPipeline(
       agentId: BuiltinAgentRole,
@@ -2204,6 +2210,9 @@ export function mountWorkspaceShell(
       err.className = "kw-chat-error";
       err.textContent = taskState.errorReason;
       wrap.append(err);
+    }
+    if (taskState.recoveryState !== undefined) {
+      wrap.append(buildInlineRecoverySummary(doc, taskState, locale));
     }
 
     if (taskState.status === "waiting_consent") {
@@ -2547,14 +2556,20 @@ export function mountWorkspaceShell(
       const list = doc.createElement("ol");
       list.className = "kw-agent-timeline";
       for (const group of groups) {
-        list.append(buildAgentGroupCard(doc, group));
+        list.append(buildAgentGroupCard(doc, group, artifactMap, taskState, locale));
       }
       wrap.append(list);
     }
     return wrap;
   }
 
-  function buildAgentGroupCard(doc: Document, group: AgentGroup): HTMLElement {
+  function buildAgentGroupCard(
+    doc: Document,
+    group: AgentGroup,
+    artifactMap: ReadonlyMap<string, string>,
+    taskState: TaskStateSnapshot,
+    locale: ActivityLocale,
+  ): HTMLElement {
     const li = doc.createElement("li");
     li.className = "kw-agent-step kw-agent-card";
     li.dataset["testid"] = "agent-card";
@@ -2572,25 +2587,55 @@ export function mountWorkspaceShell(
     name.textContent = readableAgentName(group.agentId);
     const role = doc.createElement("span");
     role.className = "kw-agent-step-role";
-    role.textContent = agentRoleLine(group.agentId);
+    role.textContent = agentRoleLine(group.agentId, locale);
     titleWrap.append(name, role);
     const stat = doc.createElement("span");
     stat.className = "kw-agent-step-status";
     stat.dataset["status"] = group.status;
-    stat.textContent = describeAgentStatus(group.status);
+    stat.textContent = describeAgentStatus(group.status, locale);
     head.append(avatar, titleWrap, stat);
     li.append(head);
 
     const starter = doc.createElement("p");
     starter.className = "kw-agent-step-starter";
-    starter.textContent = agentStartPhrase(group.agentId);
+    starter.textContent = agentStartPhrase(group.agentId, locale);
     li.append(starter);
 
-    if (group.summary.length > 0) {
+    const publicSummary = publicActivitySummary(group, artifactMap, taskState, locale);
+    if (publicSummary.length > 0) {
       const summary = doc.createElement("p");
       summary.className = "kw-agent-step-summary";
-      summary.textContent = truncateLongThought(group.summary);
+      summary.textContent = publicSummary;
       li.append(summary);
+    }
+
+    const fileNames = groupFileNames(group, artifactMap);
+    if (fileNames.length > 0) {
+      const chips = doc.createElement("div");
+      chips.className = "kw-agent-file-chips";
+      chips.setAttribute("aria-label", "Files touched by this activity");
+      for (const fileName of fileNames.slice(0, 6)) {
+        const chip = doc.createElement("span");
+        chip.className = "kw-agent-file-chip";
+        chip.title = fileName;
+        chip.textContent = fileName;
+        chips.append(chip);
+      }
+      if (fileNames.length > 6) {
+        const more = doc.createElement("span");
+        more.className = "kw-agent-file-chip";
+        more.textContent = `+${String(fileNames.length - 6)} more`;
+        chips.append(more);
+      }
+      li.append(chips);
+    }
+
+    const elapsed = formatAgentElapsed(group);
+    if (elapsed !== null) {
+      const meta = doc.createElement("p");
+      meta.className = "kw-agent-step-meta";
+      meta.textContent = elapsed;
+      li.append(meta);
     }
 
     if (group.events.length > 0) {
@@ -2606,13 +2651,47 @@ export function mountWorkspaceShell(
         const item = doc.createElement("li");
         item.className = "kw-agent-step-event";
         item.dataset["kind"] = ev.record.kind;
-        item.textContent = formatTraceEvent(ev);
+        item.textContent = formatTraceEvent(ev, artifactMap, locale);
         list.append(item);
       }
       detailsWrap.append(list);
       li.append(detailsWrap);
     }
     return li;
+  }
+
+  function buildInlineRecoverySummary(
+    doc: Document,
+    taskState: TaskStateSnapshot,
+    locale: ActivityLocale,
+  ): HTMLElement {
+    const recovery = taskState.recoveryState!;
+    const wrap = doc.createElement("section");
+    wrap.className = "kw-agent-recovery-summary";
+    wrap.dataset["testid"] = "agent-recovery-summary";
+    const title = doc.createElement("h4");
+    title.textContent = locale === "ru" ? "\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e" : "Recovery available";
+    const body = doc.createElement("p");
+    const failed = recovery.failedFile ?? recovery.failedStage;
+    const preserved = recovery.partialArtifacts.length;
+    body.textContent =
+      locale === "ru"
+        ? `\u0421\u0431\u043e\u0439: ${failed}. \u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e staged \u0444\u0430\u0439\u043b\u043e\u0432: ${String(preserved)}. \u0421\u0442\u0430\u0442\u0443\u0441 \u043d\u0435 completed, fallback \u043d\u0435 \u0441\u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044f \u0443\u0441\u043f\u0435\u0445\u043e\u043c.`
+        : `Failed: ${failed}. Preserved staged files: ${String(preserved)}. This is not completed, and fallback is not success.`;
+    wrap.append(title, body);
+    if (recovery.partialArtifacts.length > 0) {
+      const chips = doc.createElement("div");
+      chips.className = "kw-agent-file-chips";
+      for (const artifact of recovery.partialArtifacts) {
+        const chip = doc.createElement("span");
+        chip.className = "kw-agent-file-chip";
+        chip.title = artifact.fileName;
+        chip.textContent = artifact.fileName;
+        chips.append(chip);
+      }
+      wrap.append(chips);
+    }
+    return wrap;
   }
 
   function buildFinalReportMessage(
@@ -8168,12 +8247,20 @@ function savePersistedConversation(conversation: PersistedConversationView): voi
 
 interface AgentGroup {
   readonly agentId: AgentId;
-  readonly status: "pending" | "started" | "finished" | "error";
+  readonly status: "pending" | "started" | "finished" | "error" | "skipped";
   readonly summary: string;
   readonly events: readonly TraceEvent[];
+  readonly startedAtMs?: number | undefined;
+  readonly endedAtMs?: number | undefined;
+  readonly syntheticReason?: "deterministic_validation_passed" | undefined;
 }
 
-function groupTraceByAgent(events: readonly TraceEvent[]): readonly AgentGroup[] {
+type ActivityLocale = "en" | "ru";
+
+function groupTraceByAgent(
+  events: readonly TraceEvent[],
+  options: { readonly includeOrchestrator?: boolean } = {},
+): readonly AgentGroup[] {
   const order: AgentId[] = [];
   const map = new Map<
     AgentId,
@@ -8181,20 +8268,27 @@ function groupTraceByAgent(events: readonly TraceEvent[]): readonly AgentGroup[]
       status: AgentGroup["status"];
       summary: string;
       events: TraceEvent[];
+      startedAtMs?: number | undefined;
+      endedAtMs?: number | undefined;
     }
   >();
   for (const ev of events) {
-    if (ev.agentId === "orchestrator") continue;
+    if (ev.agentId === "orchestrator" && options.includeOrchestrator !== true) continue;
     if (!map.has(ev.agentId)) {
       order.push(ev.agentId);
       map.set(ev.agentId, { status: "pending", summary: "", events: [] });
     }
     const slot = map.get(ev.agentId)!;
     slot.events.push(ev);
+    const eventTime = Date.parse(ev.at);
+    if (!Number.isNaN(eventTime)) {
+      slot.startedAtMs = slot.startedAtMs === undefined ? eventTime : Math.min(slot.startedAtMs, eventTime);
+      slot.endedAtMs = slot.endedAtMs === undefined ? eventTime : Math.max(slot.endedAtMs, eventTime);
+    }
     if (ev.record.kind === "status") {
       slot.status = ev.record.status;
     } else if (ev.record.kind === "thought") {
-      slot.summary = truncateLongThought(ev.record.text);
+      slot.summary = truncatePublicActivity(ev.record.text);
     } else if (ev.record.kind === "artifact_change" && slot.summary.length === 0) {
       slot.summary = `Wrote ${ev.record.artifactId.slice(0, 8)}@v${String(ev.record.version)}`;
     }
@@ -8204,10 +8298,48 @@ function groupTraceByAgent(events: readonly TraceEvent[]): readonly AgentGroup[]
     status: map.get(id)!.status,
     summary: map.get(id)!.summary,
     events: map.get(id)!.events,
+    startedAtMs: map.get(id)!.startedAtMs,
+    endedAtMs: map.get(id)!.endedAtMs,
   }));
 }
 
-function describeAgentStatus(status: AgentGroup["status"]): string {
+function withSyntheticActivityGroups(
+  groups: readonly AgentGroup[],
+  taskState: TaskStateSnapshot,
+): readonly AgentGroup[] {
+  const validation = taskState.deterministicValidation;
+  if (validation?.skipModelReview !== true || groups.some((group) => group.agentId === "reviewer")) {
+    return groups;
+  }
+  const reviewer: AgentGroup = {
+    agentId: "reviewer",
+    status: "skipped",
+    summary: "Deterministic validation passed; model review was not needed.",
+    events: [],
+    syntheticReason: "deterministic_validation_passed",
+  };
+  const validatorIndex = groups.findIndex((group) => group.agentId === "validator");
+  const coderIndex = groups.findIndex((group) => group.agentId === "coder");
+  const insertAfter = validatorIndex >= 0 ? validatorIndex : coderIndex;
+  if (insertAfter < 0) return [...groups, reviewer];
+  return [...groups.slice(0, insertAfter + 1), reviewer, ...groups.slice(insertAfter + 1)];
+}
+
+function describeAgentStatus(status: AgentGroup["status"], locale: ActivityLocale = "en"): string {
+  if (locale === "ru") {
+    switch (status) {
+      case "pending":
+        return "\u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438";
+      case "started":
+        return "\u0432 \u0440\u0430\u0431\u043e\u0442\u0435";
+      case "finished":
+        return "\u0433\u043e\u0442\u043e\u0432\u043e";
+      case "error":
+        return "\u043e\u0448\u0438\u0431\u043a\u0430";
+      case "skipped":
+        return "\u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d";
+    }
+  }
   switch (status) {
     case "pending":
       return "pending";
@@ -8217,6 +8349,8 @@ function describeAgentStatus(status: AgentGroup["status"]): string {
       return "done";
     case "error":
       return "error";
+    case "skipped":
+      return "skipped";
   }
 }
 
@@ -8248,18 +8382,31 @@ function describeStatus(status: TaskStatus): {
   }
 }
 
-function formatTraceEvent(ev: TraceEvent): string {
+function formatTraceEvent(
+  ev: TraceEvent,
+  artifactMap: ReadonlyMap<string, string> = new Map(),
+  locale: ActivityLocale = "en",
+): string {
   if (ev.record.kind === "thought") {
-    return `activity · ${ev.record.text.length > 200 ? `${ev.record.text.slice(0, 197)}...` : ev.record.text}`;
+    return locale === "ru"
+      ? `\u0410\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u044c - ${truncatePublicActivity(ev.record.text, 200)}`
+      : `Activity - ${truncatePublicActivity(ev.record.text, 200)}`;
   }
   if (ev.record.kind === "tool_call") {
-    return `tool call · ${ev.record.tool}`;
+    return locale === "ru"
+      ? `\u0418\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442 - ${ev.record.tool}`
+      : `Tool call - ${ev.record.tool}`;
   }
   if (ev.record.kind === "artifact_change") {
-    return `artifact prepared · ${ev.record.artifactId.slice(0, 8)}@v${String(ev.record.version)}`;
+    const fileName = artifactMap.get(ev.record.artifactId) ?? ev.record.artifactId.slice(0, 8);
+    return locale === "ru"
+      ? `\u0410\u0440\u0442\u0438\u0444\u0430\u043a\u0442 staged - ${fileName}@v${String(ev.record.version)}`
+      : `Artifact staged - ${fileName}@v${String(ev.record.version)}`;
   }
   if (ev.record.kind === "status") {
-    return `status · ${ev.record.status}`;
+    return locale === "ru"
+      ? `\u0421\u0442\u0430\u0442\u0443\u0441 - ${describeAgentStatus(ev.record.status, locale)}`
+      : `Status - ${describeAgentStatus(ev.record.status, locale)}`;
   }
   return "activity";
 }
@@ -8268,10 +8415,12 @@ function readableAgentName(agentId: AgentId): string {
   if (agentId === "boss") return "Finalizer";
   const known = BUILTIN_AGENTS.find((a) => a.id === agentId);
   if (known !== undefined) return known.displayName;
+  if (agentId === "planner") return "Planner";
   if (agentId === "quick_edit") return "Quick Edit";
   if (agentId === "validator") return "Deterministic Validator";
   if (agentId === "finalizer") return "Finalizer";
   if (agentId === "orchestrator") return "Orchestrator";
+  if (agentId === "safety_check") return "Safety Check";
   return agentId;
 }
 
@@ -8286,24 +8435,57 @@ function agentInitials(agentId: AgentId): string {
     case "fixer":
       return "F";
     case "boss":
-      return "B";
+      return "FN";
+    case "planner":
+      return "P";
     case "quick_edit":
       return "QE";
     case "validator":
       return "V";
     case "finalizer":
-      return "F";
+      return "FN";
     case "orchestrator":
       return "O";
+    case "safety_check":
+      return "SC";
     default:
       return agentId.slice(0, 2).toUpperCase();
   }
 }
 
-function agentRoleLine(agentId: AgentId): string {
+function agentRoleLine(agentId: AgentId, locale: ActivityLocale = "en"): string {
+  if (locale === "ru") {
+    switch (agentId) {
+      case "researcher":
+        return "\u041d\u0430\u0445\u043e\u0434\u0438\u0442 \u043c\u0438\u043d\u0438\u043c\u0430\u043b\u044c\u043d\u044b\u0439 \u0440\u0435\u043b\u0435\u0432\u0430\u043d\u0442\u043d\u044b\u0439 \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442";
+      case "planner":
+        return "\u041f\u0440\u0435\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0443 \u0432 \u043f\u043b\u0430\u043d \u0438\u0441\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f";
+      case "coder":
+        return "\u0413\u043e\u0442\u043e\u0432\u0438\u0442 staged \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f";
+      case "reviewer":
+        return "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u0442 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e \u0438 \u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u043e\u0441\u0442\u044c";
+      case "fixer":
+        return "\u0427\u0438\u043d\u0438\u0442 \u043a\u043e\u043d\u043a\u0440\u0435\u0442\u043d\u044b\u0435 \u0434\u0435\u0444\u0435\u043a\u0442\u044b";
+      case "boss":
+      case "finalizer":
+        return "\u0421\u043e\u0431\u0438\u0440\u0430\u0435\u0442 \u0447\u0435\u0441\u0442\u043d\u044b\u0439 \u0438\u0442\u043e\u0433 \u0438 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0435 \u0448\u0430\u0433\u0438";
+      case "quick_edit":
+        return "\u0413\u043e\u0442\u043e\u0432\u0438\u0442 deterministic staged \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f";
+      case "validator":
+        return "\u0417\u0430\u043f\u0443\u0441\u043a\u0430\u0435\u0442 \u0434\u0435\u0448\u0435\u0432\u044b\u0435 deterministic \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438";
+      case "orchestrator":
+        return "\u0412\u044b\u0431\u0438\u0440\u0430\u0435\u0442 \u043d\u0443\u0436\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c \u0438 \u0431\u044e\u0434\u0436\u0435\u0442";
+      case "safety_check":
+        return "\u0411\u043b\u043e\u043a\u0438\u0440\u0443\u0435\u0442 \u043e\u043f\u0430\u0441\u043d\u044b\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u044b";
+      default:
+        return "\u0410\u0433\u0435\u043d\u0442";
+    }
+  }
   switch (agentId) {
     case "researcher":
       return "Finds minimal relevant project context";
+    case "planner":
+      return "Turns the task into a structured execution plan";
     case "coder":
       return "Creates staged file changes";
     case "reviewer":
@@ -8320,45 +8502,134 @@ function agentRoleLine(agentId: AgentId): string {
       return "Summarizes result and next steps";
     case "orchestrator":
       return "Routes to Chat, Plan, Agent, Safety, or Quick Edit";
+    case "safety_check":
+      return "Blocks dangerous commands before execution";
     default:
       return "Agent";
   }
 }
 
-function agentStartPhrase(agentId: AgentId): string {
-  const phraseByAgent: Partial<Record<AgentId, string>> = {
-    researcher: "Ищу минимально достаточный контекст.",
-    coder: "Готовлю staged изменения.",
-    reviewer: "Проверяю результат и риски.",
-    fixer: "Исправляю конкретные найденные проблемы.",
-    boss: "Собираю честный итог и следующие шаги.",
-    quick_edit: "Готовлю точечное изменение без модели и полного pipeline.",
-    orchestrator: "Выбираю минимально достаточный режим.",
-  };
-  const phrase = phraseByAgent[agentId];
-  if (phrase !== undefined) return phrase;
+function agentStartPhrase(agentId: AgentId, locale: ActivityLocale = "en"): string {
+  if (locale === "ru") {
+    const phraseByAgent: Partial<Record<AgentId, string>> = {
+      researcher: "\u0418\u0449\u0443 \u043c\u0438\u043d\u0438\u043c\u0430\u043b\u044c\u043d\u043e \u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u044b\u0439 \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442.",
+      planner: "\u041f\u043b\u0430\u043d\u0438\u0440\u0443\u044e \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f \u043f\u0435\u0440\u0435\u0434 coding.",
+      coder: "\u0413\u043e\u0442\u043e\u0432\u043b\u044e staged \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f.",
+      reviewer: "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u044e \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u0438 \u0440\u0438\u0441\u043a\u0438.",
+      fixer: "\u0418\u0441\u043f\u0440\u0430\u0432\u043b\u044f\u044e \u043a\u043e\u043d\u043a\u0440\u0435\u0442\u043d\u044b\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u043d\u044b\u0435 \u043f\u0440\u043e\u0431\u043b\u0435\u043c\u044b.",
+      boss: "\u0421\u043e\u0431\u0438\u0440\u0430\u044e \u0447\u0435\u0441\u0442\u043d\u044b\u0439 \u0438\u0442\u043e\u0433 \u0438 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0435 \u0448\u0430\u0433\u0438.",
+      quick_edit: "\u0413\u043e\u0442\u043e\u0432\u043b\u044e \u0442\u043e\u0447\u0435\u0447\u043d\u043e\u0435 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435 \u0431\u0435\u0437 \u043c\u043e\u0434\u0435\u043b\u0438 \u0438 \u043f\u043e\u043b\u043d\u043e\u0433\u043e pipeline.",
+      validator: "\u0417\u0430\u043f\u0443\u0441\u043a\u0430\u044e deterministic \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438.",
+      finalizer: "\u0424\u0438\u043d\u0430\u043b\u0438\u0437\u0438\u0440\u0443\u044e staged \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442.",
+      orchestrator: "\u0412\u044b\u0431\u0438\u0440\u0430\u044e \u043c\u0438\u043d\u0438\u043c\u0430\u043b\u044c\u043d\u043e \u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c.",
+      safety_check: "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u044e \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u043d\u0430 \u0440\u0438\u0441\u043a.",
+    };
+    return phraseByAgent[agentId] ?? "\u0412\u044b\u043f\u043e\u043b\u043d\u044f\u044e \u0448\u0430\u0433.";
+  }
   switch (agentId) {
     case "researcher":
-      return "Разбираю задачу и контекст.";
+      return "Selecting the minimum project context needed.";
+    case "planner":
+      return "Building an implementation plan.";
     case "coder":
-      return "Готовлю изменения.";
+      return "Preparing staged changes.";
     case "reviewer":
-      return "Проверяю результат.";
+      return "Checking quality and risks.";
     case "fixer":
-      return "Исправляю найденные проблемы.";
+      return "Repairing targeted defects.";
     case "boss":
-      return "Сверяю результат с запросом.";
+    case "finalizer":
+      return "Summarizing staged files, checks, and next steps.";
     case "quick_edit":
-      return "Готовлю точечное изменение без полного агентского pipeline.";
+      return "Preparing a deterministic staged edit without a model call.";
+    case "validator":
+      return "Running deterministic checks before any expensive review.";
     case "orchestrator":
-      return "Координирую запуск.";
+      return "Choosing the smallest safe route for this request.";
+    case "safety_check":
+      return "Checking command risk before execution.";
     default:
-      return "Выполняю шаг.";
+      return "Running a public activity step.";
   }
 }
 
-function truncateLongThought(text: string): string {
-  return text.length > 360 ? `${text.slice(0, 357)}...` : text;
+function truncatePublicActivity(text: string, maxLength = 360): string {
+  const sanitized = text
+    .replace(/\bchain[-\s]?of[-\s]?thought\b/giu, "private reasoning")
+    .replace(/\bthoughts?\b/giu, "activity")
+    .replace(/\breasoning\b/giu, "analysis")
+    .trim();
+  return sanitized.length > maxLength ? `${sanitized.slice(0, Math.max(0, maxLength - 3))}...` : sanitized;
+}
+
+function detectActivityLocale(text: string): ActivityLocale {
+  return /[\u0400-\u04ff]/u.test(text) ? "ru" : "en";
+}
+
+function buildArtifactFileNameMap(artifacts: readonly ArtifactMetadata[]): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  for (const artifact of artifacts) {
+    out.set(artifact.id, artifact.fileName);
+  }
+  return out;
+}
+
+function groupFileNames(group: AgentGroup, artifactMap: ReadonlyMap<string, string>): readonly string[] {
+  const names: string[] = [];
+  for (const ev of group.events) {
+    if (ev.record.kind !== "artifact_change") continue;
+    const fileName = artifactMap.get(ev.record.artifactId);
+    if (fileName !== undefined && !names.includes(fileName)) {
+      names.push(fileName);
+    }
+  }
+  return names;
+}
+
+function publicActivitySummary(
+  group: AgentGroup,
+  artifactMap: ReadonlyMap<string, string>,
+  taskState: TaskStateSnapshot,
+  locale: ActivityLocale,
+): string {
+  if (group.syntheticReason === "deterministic_validation_passed") {
+    return locale === "ru"
+      ? "\u041f\u0440\u043e\u043f\u0443\u0449\u0435\u043d: deterministic validation \u043f\u0440\u043e\u0448\u043b\u0430, \u0434\u043e\u0440\u043e\u0433\u043e\u0439 model review \u043d\u0435 \u043d\u0443\u0436\u0435\u043d."
+      : "Skipped: deterministic validation passed, so model review was not needed.";
+  }
+  const files = groupFileNames(group, artifactMap);
+  if (group.agentId === "finalizer" || group.agentId === "boss") {
+    const count = files.length;
+    if (count > 0) {
+      return locale === "ru"
+        ? `\u041f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u043e staged \u0444\u0430\u0439\u043b\u043e\u0432: ${String(count)}. Apply Changes \u0432\u0441\u0435 \u0435\u0449\u0435 \u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u0435\u043d.`
+        : `Staged files: ${String(count)}. Apply Changes is still required.`;
+    }
+    if (taskState.deterministicValidation?.status === "passed") {
+      return locale === "ru"
+        ? "Deterministic validation \u043f\u0440\u043e\u0439\u0434\u0435\u043d\u0430; \u0438\u0442\u043e\u0433 \u043d\u0435 \u043e\u0437\u043d\u0430\u0447\u0430\u0435\u0442 auto-apply."
+        : "Deterministic validation passed; the result is still staged, not applied.";
+    }
+  }
+  if (group.summary.length > 0) {
+    return truncatePublicActivity(group.summary);
+  }
+  if (files.length > 0) {
+    return locale === "ru"
+      ? `\u041f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u044b staged \u0444\u0430\u0439\u043b\u044b: ${String(files.length)}.`
+      : `Staged ${String(files.length)} file${files.length === 1 ? "" : "s"}.`;
+  }
+  if (group.status === "skipped") {
+    return locale === "ru" ? "\u0428\u0430\u0433 \u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d." : "Step skipped.";
+  }
+  return "";
+}
+
+function formatAgentElapsed(group: AgentGroup): string | null {
+  if (group.startedAtMs === undefined || group.endedAtMs === undefined) return null;
+  const elapsedMs = Math.max(0, group.endedAtMs - group.startedAtMs);
+  if (elapsedMs < 1000) return "<1s";
+  return `${String(Math.round(elapsedMs / 1000))}s`;
 }
 
 function formatProvider(p: ProviderId): string {

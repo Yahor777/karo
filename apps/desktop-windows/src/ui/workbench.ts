@@ -2705,7 +2705,13 @@ export function mountWorkspaceShell(
     }
 
     if (isExplainOnly && report.status === "error") {
-      wrap.append(buildReadOnlyFailureRecovery(doc, report, taskState, () => setRightTab("usage")));
+      wrap.append(
+        buildReadOnlyFailureRecovery(doc, report, taskState, {
+          openUsage: () => setRightTab("usage"),
+          retryFailedStage: () => options.transport!.resumeTask(report.taskId, { kind: "retryFailedStage" }),
+          retryReducedContext: () => options.transport!.resumeTask(report.taskId, { kind: "retryReducedContext" }),
+        }),
+      );
     }
 
     if (!isExplainOnly && report.status === "error" && isCoderTimeoutReport(report, taskState)) {
@@ -2714,6 +2720,9 @@ export function mountWorkspaceShell(
           openChanges,
           openLogs: () => setRightTab("logs"),
           openModels: () => navigate("models"),
+          retryFailedStage: () => options.transport!.resumeTask(report.taskId, { kind: "retryFailedStage" }),
+          retryReducedContext: () => options.transport!.resumeTask(report.taskId, { kind: "retryReducedContext" }),
+          continuePartial: () => options.transport!.resumeTask(report.taskId, { kind: "continuePartial" }),
         }),
       );
     }
@@ -5817,8 +5826,13 @@ export function mountWorkspaceShell(
     doc: Document,
     report: FinalReportSummary,
     taskState: TaskStateSnapshot | null | undefined,
-    openUsage: () => void,
+    actionsIn: {
+      readonly openUsage: () => void;
+      readonly retryFailedStage: () => Promise<void>;
+      readonly retryReducedContext: () => Promise<void>;
+    },
   ): HTMLElement {
+    const recovery = taskState?.recoveryState;
     const card = doc.createElement("section");
     card.className = "kw-recovery-card";
     card.dataset["testid"] = "model-timeout-recovery";
@@ -5836,8 +5850,9 @@ export function mountWorkspaceShell(
     retry.type = "button";
     retry.className = "kw-button kw-button-secondary";
     retry.textContent = "Retry same model";
-    retry.disabled = true;
-    retry.title = "Retry wiring is planned; re-submit the prompt from the composer for now.";
+    retry.disabled = !(recovery?.canRetryFailedStage ?? false);
+    retry.title = retry.disabled ? "Retry is unavailable for this failure." : "Retry the same read-only stage.";
+    retry.addEventListener("click", () => void actionsIn.retryFailedStage());
 
     const switchModel = doc.createElement("button");
     switchModel.type = "button";
@@ -5849,14 +5864,17 @@ export function mountWorkspaceShell(
     reduce.type = "button";
     reduce.className = "kw-button kw-button-secondary";
     reduce.textContent = "Reduce context and retry";
-    reduce.disabled = true;
-    reduce.title = "Automatic context reduction is not wired yet.";
+    reduce.disabled = !(recovery?.canRetryReducedContext ?? false);
+    reduce.title = reduce.disabled
+      ? "Reduced-context retry is unavailable for this failure."
+      : "Retry the same read-only stage with reduced context.";
+    reduce.addEventListener("click", () => void actionsIn.retryReducedContext());
 
     const showFiles = doc.createElement("button");
     showFiles.type = "button";
     showFiles.className = "kw-button kw-button-secondary";
     showFiles.textContent = "Show selected files";
-    showFiles.addEventListener("click", openUsage);
+    showFiles.addEventListener("click", actionsIn.openUsage);
 
     const copy = doc.createElement("button");
     copy.type = "button";
@@ -5901,23 +5919,28 @@ export function mountWorkspaceShell(
       readonly openChanges: () => void;
       readonly openLogs: () => void;
       readonly openModels: () => void;
+      readonly retryFailedStage: () => Promise<void>;
+      readonly retryReducedContext: () => Promise<void>;
+      readonly continuePartial: () => Promise<void>;
     },
   ): HTMLElement {
     const latestCoderFailure = [...(taskState?.providerDiagnostics ?? [])]
       .reverse()
       .find((diagnostic) => diagnostic.agentId === "coder" && diagnostic.errorType !== undefined);
+    const recovery = taskState?.recoveryState;
     const card = doc.createElement("section");
     card.className = "kw-recovery-card";
     card.dataset["testid"] = "coder-timeout-recovery";
     const title = doc.createElement("h4");
-    title.textContent = "Coder timed out";
+    title.textContent = recovery?.failedFile ? `Coder recovery: ${recovery.failedFile}` : "Coder timed out";
     const body = doc.createElement("p");
     const elapsed =
       latestCoderFailure !== undefined
         ? ` Last call ran for ${String(Math.round(latestCoderFailure.elapsedMs / 1000))}s with an estimated ${String(latestCoderFailure.inputTokenEstimate)} input tokens.`
         : "";
     body.textContent =
-      "Karo kept the Researcher/Planner output and any staged draft files, but this run is not completed. Emergency fallback is available only as an explicit recovery choice, not as a success path." +
+      (recovery?.recoveryReasonUser ??
+        "Karo kept the Researcher/Planner output and any staged draft files, but this run is not completed. Emergency fallback is available only as an explicit recovery choice, not as a success path.") +
       elapsed;
     const actions = doc.createElement("div");
     actions.className = "kw-recovery-actions";
@@ -5925,33 +5948,52 @@ export function mountWorkspaceShell(
     const retry = doc.createElement("button");
     retry.type = "button";
     retry.className = "kw-button kw-button-secondary";
-    retry.textContent = "Retry Coder";
-    retry.disabled = true;
-    retry.title = "Retry wiring is planned; re-submit the prompt or use a smaller context for now.";
+    retry.textContent = "Retry failed stage";
+    retry.disabled = !(recovery?.canRetryFailedStage ?? false);
+    retry.title = retry.disabled ? "Retry is unavailable for this failure." : "Retry only the failed stage/file.";
+    retry.addEventListener("click", () => void actionsIn.retryFailedStage());
 
     const reduce = doc.createElement("button");
     reduce.type = "button";
     reduce.className = "kw-button kw-button-secondary";
     reduce.textContent = "Retry with reduced context";
-    reduce.disabled = true;
-    reduce.title = "Karo already attempted one reduced-context retry for the failed file.";
+    reduce.disabled = !(recovery?.canRetryReducedContext ?? false);
+    reduce.title = reduce.disabled
+      ? "Reduced-context retry is unavailable or was already attempted for this failure."
+      : "Retry the failed stage/file with a smaller prompt/context.";
+    reduce.addEventListener("click", () => void actionsIn.retryReducedContext());
 
     const switchModel = doc.createElement("button");
     switchModel.type = "button";
     switchModel.className = "kw-button kw-button-secondary";
     switchModel.textContent = "Switch model";
+    switchModel.disabled = recovery?.canSwitchModel === false;
+    switchModel.title = switchModel.disabled
+      ? "Inline switch is not wired; choose another model from Models and retry."
+      : "Open Models to choose another model.";
     switchModel.addEventListener("click", actionsIn.openModels);
 
     const partial = doc.createElement("button");
     partial.type = "button";
     partial.className = "kw-button kw-button-secondary";
     partial.textContent = "Continue from partial artifacts";
-    partial.disabled = report.finalArtifacts.length === 0;
+    partial.disabled = !(recovery?.canContinueFromPartial ?? report.finalArtifacts.length > 0);
     partial.title =
-      report.finalArtifacts.length === 0
+      partial.disabled
         ? "No partial artifacts were staged before the timeout."
-        : "Open Changes to inspect the partial files that were staged before the timeout.";
-    partial.addEventListener("click", actionsIn.openChanges);
+        : "Continue from the first missing/failed file while preserving existing staged artifacts.";
+    partial.addEventListener("click", () => void actionsIn.continuePartial());
+
+    const inspect = doc.createElement("button");
+    inspect.type = "button";
+    inspect.className = "kw-button kw-button-secondary";
+    inspect.textContent = "Show preserved files";
+    inspect.disabled = report.finalArtifacts.length === 0;
+    inspect.title =
+      report.finalArtifacts.length === 0
+        ? "No staged files were preserved."
+        : "Open Changes to inspect preserved staged artifacts.";
+    inspect.addEventListener("click", actionsIn.openChanges);
 
     const emergency = doc.createElement("button");
     emergency.type = "button";
@@ -5994,7 +6036,7 @@ export function mountWorkspaceShell(
       );
     });
 
-    actions.append(retry, reduce, switchModel, partial, emergency, logs, copy);
+    actions.append(retry, reduce, switchModel, partial, inspect, emergency, logs, copy);
     card.append(title, body, actions);
     return card;
   }

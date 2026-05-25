@@ -87,6 +87,8 @@ import {
   type TaskUsageSummary,
   type TaskDecision,
   type ProviderCallDiagnostic,
+  type TaskRecoveryState,
+  type DeterministicValidationSummary,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -358,6 +360,20 @@ interface TaskInternal {
   applyResult?: ApplyResult | null | undefined;
   contextFilesForUsage?: Array<{ relativePath: string; content?: string }> | undefined;
   metadata?: ApiKeyMetadata | undefined;
+  recoveryRuntime?: WebsiteRecoveryRuntime | undefined;
+  reducedContextForRecovery?: boolean | undefined;
+  lastInput?: StartTaskInput | undefined;
+}
+
+interface WebsiteRecoveryRuntime {
+  readonly kind: "static_website";
+  readonly plan: readonly StaticWebsiteFilePlanItem[];
+  readonly originalPrompt: string;
+  readonly researcherSummary: string;
+  readonly input: StartTaskInput;
+  readonly failedFileName?: string | undefined;
+  readonly retryCount: number;
+  readonly reducedContextRetryCount: number;
 }
 
 interface ProviderModelError {
@@ -996,6 +1012,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       currentArtifactVersion: null,
       projectPath: input.projectPath,
       metadata: input.metadata,
+      lastInput: input,
     };
     this.tasks.set(taskId, internal);
     this.notifyState(taskId);
@@ -1027,6 +1044,13 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
     const internal = this.tasks.get(taskId);
     if (!internal) {
       return Promise.reject(new Error(`Task with id ${taskId} not found`));
+    }
+    if (
+      decision.kind === "retryFailedStage" ||
+      decision.kind === "retryReducedContext" ||
+      decision.kind === "continuePartial"
+    ) {
+      return this.resumeRecoverableTask(taskId, decision.kind);
     }
     if (internal.state.status !== "waiting_consent") {
       return Promise.reject(new Error(`Task ${taskId} is not in waiting_consent status`));
@@ -1262,6 +1286,219 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       }, 500);
     }, 500);
     return Promise.resolve();
+  }
+
+  private async resumeRecoverableTask(
+    taskId: TaskId,
+    action: "retryFailedStage" | "retryReducedContext" | "continuePartial",
+  ): Promise<void> {
+    const internal = this.tasks.get(taskId);
+    if (internal === undefined) {
+      return Promise.reject(new Error(`Task with id ${taskId} not found`));
+    }
+    const recovery = internal.state.recoveryState;
+    if (recovery === undefined) {
+      return Promise.reject(new Error(`Task ${taskId} has no recovery state`));
+    }
+    if (action === "retryFailedStage" && !recovery.canRetryFailedStage) {
+      return Promise.reject(new Error(`Task ${taskId} cannot retry the failed stage`));
+    }
+    if (action === "retryReducedContext" && !recovery.canRetryReducedContext) {
+      return Promise.reject(new Error(`Task ${taskId} cannot retry with reduced context`));
+    }
+    if (action === "continuePartial" && !recovery.canContinueFromPartial) {
+      return Promise.reject(new Error(`Task ${taskId} cannot continue from partial artifacts`));
+    }
+
+    if (internal.recoveryRuntime?.kind === "static_website") {
+      await this.resumeWebsiteRecovery(taskId, action);
+      return;
+    }
+
+    if (action === "continuePartial") {
+      return Promise.reject(new Error(`Task ${taskId} has no partial continuation runtime`));
+    }
+    const input = internal.lastInput;
+    if (input === undefined) {
+      return Promise.reject(new Error(`Task ${taskId} has no saved input for retry`));
+    }
+    const metadata = internal.metadata ?? input.metadata;
+    internal.reducedContextForRecovery = action === "retryReducedContext";
+    internal.state = {
+      ...internal.state,
+      status: "created",
+      currentAgentId: null,
+      errorReason: undefined,
+      recoveryState: {
+        ...recovery,
+        retryCount: recovery.retryCount + 1,
+        recommendedAction: action === "retryReducedContext" ? "retry_reduced_context" : "retry_failed_stage",
+        recoveryReasonUser:
+          action === "retryReducedContext"
+            ? "Retrying the failed read-only model call with reduced project context. No artifacts will be created."
+            : "Retrying the failed read-only model call. No artifacts will be created.",
+        recoveryReasonInternal: `Generic recovery action=${action}; rerun same saved input without changing mode.`,
+      },
+      updatedAt: this.clock().toISOString(),
+    };
+    this.notifyState(taskId);
+    this.publishTrace(taskId, "orchestrator", {
+      kind: "thought",
+      text: `Recovery action: ${action}. Re-running the same read-only route without switching to Agent.`,
+    });
+    const apiKey = await this.resolveApiKey(metadata);
+    await this.runPipeline(taskId, internal.state.originalPrompt, apiKey, input);
+  }
+
+  private async resumeWebsiteRecovery(
+    taskId: TaskId,
+    action: "retryFailedStage" | "retryReducedContext" | "continuePartial",
+  ): Promise<void> {
+    const internal = this.tasks.get(taskId);
+    const runtime = internal?.recoveryRuntime;
+    if (internal === undefined || runtime === undefined) return;
+    const metadata = internal.metadata ?? runtime.input.metadata;
+    const failedFile = internal.state.recoveryState?.failedFile ?? runtime.failedFileName;
+    const firstMissing = this.firstMissingWebsiteFile(taskId, runtime.plan);
+    const targetFile = action === "continuePartial" ? (firstMissing ?? failedFile) : failedFile;
+    const startIndex = Math.max(
+      0,
+      runtime.plan.findIndex((file) => file.fileName === targetFile),
+    );
+    const nextRuntime: WebsiteRecoveryRuntime = {
+      ...runtime,
+      failedFileName: targetFile,
+      retryCount: runtime.retryCount + 1,
+      reducedContextRetryCount:
+        action === "retryReducedContext"
+          ? runtime.reducedContextRetryCount + 1
+          : runtime.reducedContextRetryCount,
+    };
+    internal.recoveryRuntime = nextRuntime;
+    internal.state = {
+      ...internal.state,
+      status: "coding",
+      currentAgentId: "coder",
+      errorReason: undefined,
+      recoveryState: {
+        ...internal.state.recoveryState!,
+        retryCount: nextRuntime.retryCount,
+        recoveryReasonUser:
+          action === "continuePartial"
+            ? "Continuing from the first missing website file. Existing staged artifacts are preserved."
+            : action === "retryReducedContext"
+              ? "Retrying only the failed website file with reduced context."
+              : "Retrying only the failed website file.",
+        recoveryReasonInternal: `Website recovery action=${action}; startIndex=${String(startIndex)}; targetFile=${targetFile ?? "none"}.`,
+      },
+      updatedAt: this.clock().toISOString(),
+    };
+    this.notifyState(taskId);
+    this.publishTrace(taskId, "coder", {
+      kind: "thought",
+      text:
+        action === "continuePartial"
+          ? `Continuing website generation from ${targetFile ?? "the next missing file"}; already staged files stay untouched.`
+          : `Retrying website chunk ${targetFile ?? "unknown"}${action === "retryReducedContext" ? " with reduced context" : ""}.`,
+    });
+
+    const apiKey = await this.resolveApiKey(metadata);
+    const result = await this.runWebsiteFileChunks(taskId, {
+      plan: runtime.plan,
+      startIndex,
+      originalPrompt: runtime.originalPrompt,
+      researcherSummary: runtime.researcherSummary,
+      apiKey,
+      metadata,
+      input: runtime.input,
+      reducedContext: action === "retryReducedContext",
+      allowAutomaticReducedRetry: action !== "retryReducedContext",
+      skipExisting: action === "continuePartial",
+      stopAfterOne: action !== "continuePartial",
+    });
+    if (result === null) return;
+    this.finalizeRecoveredWebsite(taskId, runtime.originalPrompt);
+  }
+
+  private finalizeRecoveredWebsite(taskId: TaskId, originalPrompt: string): void {
+    let validation = this.runDeterministicValidation(taskId, originalPrompt);
+    if (validation.status === "needs_model_review" && validation.issues.length > 0) {
+      void this.runTargetedDeterministicFixes(taskId, validation.issues).then((fix) => {
+        if (fix === null) {
+          this.setWebsiteRecoveryState(taskId, {
+            failedFile: this.firstMissingWebsiteFile(taskId, buildStaticWebsiteFilePlan()) ?? undefined,
+            provider: this.getTaskState(taskId)?.provider ?? "unknown",
+            model: this.getTaskState(taskId)?.modelId ?? "unknown",
+            error: {
+              kind: "error",
+              providerCode: "validation_incomplete",
+              providerMessage: validation.issues.join("; "),
+            },
+            recommendedAction: "continue_partial",
+            reducedContext: false,
+          });
+          this.markModelError(taskId, `Recovery generated more artifacts, but validation is still incomplete: ${validation.issues.join("; ")}`);
+          return;
+        }
+        validation = this.runDeterministicValidation(taskId, originalPrompt);
+        this.completeOrKeepWebsiteRecovery(taskId, validation);
+      });
+      return;
+    }
+    this.completeOrKeepWebsiteRecovery(taskId, validation);
+  }
+
+  private completeOrKeepWebsiteRecovery(taskId: TaskId, validation: DeterministicValidationSummary): void {
+    if (validation.skipModelReview) {
+      const internal = this.tasks.get(taskId);
+      if (internal !== undefined) {
+        const participantSet = new Set(this.getTraceEvents(taskId).map((event) => event.agentId));
+        internal.state = {
+          ...internal.state,
+          participants: ["researcher", "planner", "coder", "validator", ...(participantSet.has("fixer") ? ["fixer"] : []), "finalizer"],
+          recoveryState: undefined,
+          updatedAt: this.clock().toISOString(),
+        };
+        this.notifyState(taskId);
+      }
+      this.publishTrace(taskId, "finalizer", { kind: "status", status: "started" });
+      this.publishTrace(taskId, "finalizer", {
+        kind: "thought",
+        text: "Recovery completed the missing website artifacts. Apply Changes is still required.",
+      });
+      this.publishTrace(taskId, "finalizer", { kind: "status", status: "finished" });
+      this.markCompleted(taskId, {
+        kind: "approved",
+        verdict: BOSS_VERDICT_RUSSIAN.approved,
+        notes: buildAgentFinalizerNotes({
+          status: "completed",
+          changedFiles: this.getArtifacts(taskId).map((artifact) => artifact.fileName),
+          validation,
+          fallbackUsed: false,
+          modelCallsUsed: this.getTaskState(taskId)?.providerDiagnostics?.length,
+          contextProfile: this.getTaskState(taskId)?.agentCoreEstimate?.contextProfile,
+        }),
+      });
+      return;
+    }
+
+    const nextMissing = this.firstMissingWebsiteFile(taskId, buildStaticWebsiteFilePlan());
+    this.setWebsiteRecoveryState(taskId, {
+      failedFile: nextMissing ?? undefined,
+      provider: this.getTaskState(taskId)?.provider ?? "unknown",
+      model: this.getTaskState(taskId)?.modelId ?? "unknown",
+      error: {
+        kind: "error",
+        providerCode: "validation_incomplete",
+        providerMessage: validation.issues.join("; ") || validation.reason,
+      },
+      recommendedAction: nextMissing !== null ? "continue_partial" : "retry_failed_stage",
+      reducedContext: false,
+    });
+    this.markModelError(
+      taskId,
+      `Recovery is not completed. Preserved staged artifacts, but validation still needs work: ${validation.issues.join("; ") || validation.reason}`,
+    );
   }
 
   public getTraceEvents(taskId: TaskId): readonly TraceEvent[] {
@@ -1776,9 +2013,17 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
           temperature: 0.5,
         });
 
-        const responseText = chatRes.kind === "ok"
-          ? stripModePreamble(chatRes.text)
-          : `Failed to get response: ${chatRes.providerMessage}`;
+        if (chatRes.kind !== "ok") {
+          this.publishProviderFailureLog(taskId, "orchestrator", chatRes);
+          this.publishTrace(taskId, "orchestrator", { kind: "status", status: "error" });
+          this.markModelError(
+            taskId,
+            `Chat model failed: ${chatRes.providerCode}: ${chatRes.providerMessage}. Retry same mode or switch model; no artifacts were created.`,
+          );
+          return;
+        }
+
+        const responseText = stripModePreamble(chatRes.text);
 
         this.updateTokenUsage(taskId, "orchestrator", systemPrompt, originalPrompt, responseText, modelId);
 
@@ -1853,7 +2098,10 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
             kind: "thought",
             text: `[Context Engine] Scanning project at ${normalizedProjectPath} for task...`
           });
-          const contextOptions = buildContextOptionsForEstimate(internal.state.agentCoreEstimate);
+          const contextOptions = buildContextOptionsForEstimate(
+            internal.state.agentCoreEstimate,
+            internal.reducedContextForRecovery === true,
+          );
           contextPackage = await this.desktopShell.shell_build_task_context(
             normalizedProjectPath,
             originalPrompt,
@@ -2682,36 +2930,93 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         "Static website task detected. Context minimized for Coder: using original prompt, Researcher summary, target file plan, sections, visual constraints, and preview requirements only.",
     });
 
+    const internal = this.tasks.get(taskId);
+    if (internal !== undefined) {
+      internal.recoveryRuntime = {
+        kind: "static_website",
+        plan,
+        originalPrompt,
+        researcherSummary,
+        input,
+        retryCount: internal.recoveryRuntime?.retryCount ?? 0,
+        reducedContextRetryCount: internal.recoveryRuntime?.reducedContextRetryCount ?? 0,
+      };
+    }
+
+    return this.runWebsiteFileChunks(taskId, {
+      plan,
+      startIndex: 0,
+      originalPrompt,
+      researcherSummary,
+      apiKey,
+      metadata,
+      input,
+      reducedContext: false,
+      allowAutomaticReducedRetry: true,
+      skipExisting: false,
+    });
+  }
+
+  private async runWebsiteFileChunks(
+    taskId: TaskId,
+    args: {
+      readonly plan: readonly StaticWebsiteFilePlanItem[];
+      readonly startIndex: number;
+      readonly originalPrompt: string;
+      readonly researcherSummary: string;
+      readonly apiKey: string;
+      readonly metadata: ApiKeyMetadata;
+      readonly input: StartTaskInput;
+      readonly reducedContext: boolean;
+      readonly allowAutomaticReducedRetry: boolean;
+      readonly skipExisting: boolean;
+      readonly stopAfterOne?: boolean | undefined;
+    },
+  ): Promise<CoderRunResult | null> {
     let last: CoderRunResult | null = null;
-    for (const file of plan) {
-      const userPrompt = buildWebsiteFileCoderPrompt(originalPrompt, researcherSummary, file, plan);
+    for (let index = args.startIndex; index < args.plan.length; index += 1) {
+      const file = args.plan[index]!;
+      if (args.skipExisting && this.findArtifactIdByFileName(taskId, file.fileName) !== null) {
+        this.publishTrace(taskId, "coder", {
+          kind: "thought",
+          text: `Recovery skipped already staged ${file.fileName}.`,
+        });
+        continue;
+      }
+      const userPrompt = buildWebsiteFileCoderPrompt(
+        args.originalPrompt,
+        args.reducedContext ? "" : args.researcherSummary,
+        file,
+        args.plan,
+        args.reducedContext,
+      );
       const messages = [
         { role: "system" as const, content: CODER_SYSTEM_PROMPT },
         { role: "user" as const, content: userPrompt },
       ];
       let response = await this.chatWithTools(taskId, "coder", {
-        provider: metadata.provider,
-        modelId: this.modelIdForAgent(metadata, input, "coder"),
-        ...(metadata.baseUrl !== undefined ? { baseUrl: metadata.baseUrl } : {}),
-        apiKey,
+        provider: args.metadata.provider,
+        modelId: this.modelIdForAgent(args.metadata, args.input, "coder"),
+        ...(args.metadata.baseUrl !== undefined ? { baseUrl: args.metadata.baseUrl } : {}),
+        apiKey: args.apiKey,
         messages,
         maxTokens: websiteFileMaxTokens(file.fileName),
-        temperature: 0.25,
+        temperature: args.reducedContext ? 0.15 : 0.25,
         timeoutMs: MODEL_TIMEOUT_WEBSITE_FILE_MS,
       });
 
-      if (response.kind !== "ok" && response.providerCode === "provider_timeout") {
+      if (args.allowAutomaticReducedRetry && response.kind !== "ok" && response.providerCode === "provider_timeout") {
         this.publishProviderFailureLog(taskId, "coder", response);
         this.publishTrace(taskId, "coder", {
           kind: "thought",
           text: `Coder timed out while generating ${file.fileName}. Retrying once with reduced context.`,
         });
-        const reducedPrompt = buildWebsiteFileCoderPrompt(originalPrompt, "", file, plan, true);
+        const reducedPrompt = buildWebsiteFileCoderPrompt(args.originalPrompt, "", file, args.plan, true);
         response = await this.chatWithTools(taskId, "coder", {
-          provider: metadata.provider,
-          modelId: this.modelIdForAgent(metadata, input, "coder"),
-          ...(metadata.baseUrl !== undefined ? { baseUrl: metadata.baseUrl } : {}),
-          apiKey,
+          provider: args.metadata.provider,
+          modelId: this.modelIdForAgent(args.metadata, args.input, "coder"),
+          ...(args.metadata.baseUrl !== undefined ? { baseUrl: args.metadata.baseUrl } : {}),
+          apiKey: args.apiKey,
           messages: [
             { role: "system" as const, content: CODER_SYSTEM_PROMPT },
             { role: "user" as const, content: reducedPrompt },
@@ -2725,9 +3030,17 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       if (response.kind !== "ok") {
         this.publishProviderFailureLog(taskId, "coder", response);
         this.publishTrace(taskId, "coder", { kind: "status", status: "error" });
+        this.setWebsiteRecoveryState(taskId, {
+          failedFile: file.fileName,
+          provider: args.metadata.provider,
+          model: this.modelIdForAgent(args.metadata, args.input, "coder"),
+          error: response,
+          recommendedAction: this.getArtifacts(taskId).length > 0 ? "continue_partial" : "retry_reduced_context",
+          reducedContext: args.reducedContext,
+        });
         this.markModelError(
           taskId,
-          formatCoderTimeoutRecoveryMessage(metadata.provider, response, file.fileName, this.getArtifacts(taskId).length),
+          formatCoderTimeoutRecoveryMessage(args.metadata.provider, response, file.fileName, this.getArtifacts(taskId).length),
         );
         return null;
       }
@@ -2740,9 +3053,21 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
           text:
             `Coder returned invalid JSON while generating ${file.fileName}. Raw preview ` +
             `(first ${String(RAW_MODEL_PREVIEW_CHARS)} chars): ` +
-            formatRawModelPreview(response.text, [apiKey]),
+            formatRawModelPreview(response.text, [args.apiKey]),
         });
         this.publishTrace(taskId, "coder", { kind: "status", status: "error" });
+        this.setWebsiteRecoveryState(taskId, {
+          failedFile: file.fileName,
+          provider: args.metadata.provider,
+          model: this.modelIdForAgent(args.metadata, args.input, "coder"),
+          error: {
+            kind: "error",
+            providerCode: "invalid_json",
+            providerMessage: "Coder returned invalid artifact JSON.",
+          },
+          recommendedAction: "retry_failed_stage",
+          reducedContext: args.reducedContext,
+        });
         this.markModelError(
           taskId,
           `Coder returned invalid artifact JSON while generating ${file.fileName}. Retry Coder, switch model, or use the emergency static scaffold explicitly.`,
@@ -2761,6 +3086,9 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         kind: "thought",
         text: `Prepared ${file.fileName}. Staged drafts so far: ${String(this.getArtifacts(taskId).length)} file(s).`,
       });
+      if (args.stopAfterOne === true) {
+        break;
+      }
     }
 
     this.publishTrace(taskId, "coder", { kind: "status", status: "finished" });
@@ -3435,6 +3763,87 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
     return validation;
   }
 
+  private setWebsiteRecoveryState(
+    taskId: TaskId,
+    args: {
+      readonly failedFile?: string | undefined;
+      readonly provider: string;
+      readonly model: string;
+      readonly error: ProviderModelError;
+      readonly recommendedAction: TaskRecoveryState["recommendedAction"];
+      readonly reducedContext: boolean;
+    },
+  ): void {
+    const internal = this.tasks.get(taskId);
+    if (internal === undefined) return;
+    const partialArtifacts = this.getArtifacts(taskId).map((artifact) => ({
+      artifactId: artifact.id,
+      version: artifact.latestVersion,
+      fileName: artifact.fileName,
+    }));
+    const latestFailure = [...(internal.state.providerDiagnostics ?? [])]
+      .reverse()
+      .find((diagnostic) => diagnostic.agentId === "coder" && diagnostic.errorType !== undefined);
+    const retryCount = internal.recoveryRuntime?.retryCount ?? internal.state.recoveryState?.retryCount ?? 0;
+    const selectedFiles = internal.state.contextSummary?.selectedFiles.map((file) => file.relativePath) ?? [];
+    const recoveryState: TaskRecoveryState = {
+      failedStage: "chunked_coder",
+      failedAgent: "coder",
+      ...(args.failedFile !== undefined ? { failedFile: args.failedFile } : {}),
+      provider: latestFailure?.provider ?? args.provider,
+      model: latestFailure?.modelId ?? args.model,
+      elapsedMs: latestFailure?.elapsedMs ?? 0,
+      timeoutMs: latestFailure?.timeoutMs ?? MODEL_TIMEOUT_WEBSITE_FILE_MS,
+      selectedFiles,
+      contextTokens: latestFailure?.contextTokens ?? internal.state.currentContextUsage?.selectedFilesTokens ?? 0,
+      partialArtifacts,
+      retryCount,
+      lastSuccessfulStage: partialArtifacts.length > 0 ? "chunked_coder" : "planner",
+      ...(partialArtifacts.length > 0
+        ? { lastSuccessfulArtifact: partialArtifacts[partialArtifacts.length - 1]! }
+        : {}),
+      recommendedAction: args.recommendedAction,
+      fallbackUsed: false,
+      canRetryFailedStage: args.failedFile !== undefined,
+      canRetryReducedContext: !args.reducedContext && args.failedFile !== undefined,
+      canContinueFromPartial: partialArtifacts.length > 0,
+      canSwitchModel: false,
+      recoveryReasonUser:
+        `Coder failed while generating ${args.failedFile ?? "a website file"}. ` +
+        `Karo preserved ${String(partialArtifacts.length)} staged artifact(s), did not apply changes, and did not create fallback success.`,
+      recoveryReasonInternal:
+        `Provider/model failure in chunked website generation: ${args.error.providerCode}: ${args.error.providerMessage}. ` +
+        `reducedContext=${String(args.reducedContext)}.`,
+    };
+    internal.recoveryRuntime = internal.recoveryRuntime
+      ? {
+          ...internal.recoveryRuntime,
+          ...(args.failedFile !== undefined ? { failedFileName: args.failedFile } : {}),
+        }
+      : internal.recoveryRuntime;
+    internal.state = {
+      ...internal.state,
+      recoveryState,
+      updatedAt: this.clock().toISOString(),
+    };
+    this.notifyState(taskId);
+  }
+
+  private firstMissingWebsiteFile(
+    taskId: TaskId,
+    plan: readonly StaticWebsiteFilePlanItem[],
+  ): string | null {
+    const existing = new Set(
+      this.getArtifacts(taskId).map((artifact) => artifact.fileName.replace(/\\/g, "/").toLowerCase()),
+    );
+    for (const file of plan) {
+      if (!existing.has(file.fileName.replace(/\\/g, "/").toLowerCase())) {
+        return file.fileName;
+      }
+    }
+    return null;
+  }
+
   private collectArtifactValidationInputs(taskId: TaskId): Array<{ fileName: string; content: string }> {
     const artifacts: Array<{ fileName: string; content: string }> = [];
     for (const meta of this.getArtifacts(taskId)) {
@@ -3592,17 +4001,75 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
   private markModelError(taskId: TaskId, reason: string): void {
     const internal = this.tasks.get(taskId);
     if (internal === undefined) return;
+    const existingRecovery = internal.state.recoveryState;
+    const recoveryState =
+      existingRecovery ??
+      this.buildGenericRecoveryState(taskId, {
+        reason,
+        recommendedAction: "retry_failed_stage",
+      });
     internal.state = {
       ...internal.state,
       status: "error",
       currentAgentId: null,
       errorReason: reason,
+      ...(recoveryState !== undefined ? { recoveryState } : {}),
       updatedAt: this.clock().toISOString(),
     };
     this.notifyState(taskId);
     const report = this.assembleFinalReport(taskId, "error", null, [reason]);
     if (report !== null) this.publishFinalReport(taskId, report);
     this.persistTaskRun(taskId);
+  }
+
+  private buildGenericRecoveryState(
+    taskId: TaskId,
+    args: {
+      readonly reason: string;
+      readonly recommendedAction: TaskRecoveryState["recommendedAction"];
+    },
+  ): TaskRecoveryState | undefined {
+    const internal = this.tasks.get(taskId);
+    if (internal === undefined) return undefined;
+    const latestFailure = [...(internal.state.providerDiagnostics ?? [])]
+      .reverse()
+      .find((diagnostic) => diagnostic.errorType !== undefined);
+    if (latestFailure === undefined && !/timeout|provider|model|api_key|decrypt/i.test(args.reason)) {
+      return undefined;
+    }
+    const partialArtifacts = this.getArtifacts(taskId).map((artifact) => ({
+      artifactId: artifact.id,
+      version: artifact.latestVersion,
+      fileName: artifact.fileName,
+    }));
+    const selectedFiles = internal.state.contextSummary?.selectedFiles.map((file) => file.relativePath) ?? [];
+    const failedAgent = latestFailure?.agentId ?? internal.state.currentAgentId ?? "orchestrator";
+    return {
+      failedStage: latestFailure?.stageName ?? readableStageName(failedAgent),
+      failedAgent,
+      provider: latestFailure?.provider ?? String(internal.state.provider),
+      model: latestFailure?.modelId ?? internal.state.modelId,
+      elapsedMs: latestFailure?.elapsedMs ?? 0,
+      timeoutMs: latestFailure?.timeoutMs ?? 0,
+      selectedFiles,
+      contextTokens: latestFailure?.contextTokens ?? internal.state.currentContextUsage?.selectedFilesTokens ?? 0,
+      partialArtifacts,
+      retryCount: internal.state.recoveryState?.retryCount ?? 0,
+      ...(partialArtifacts.length > 0
+        ? {
+            lastSuccessfulStage: "artifact_staged",
+            lastSuccessfulArtifact: partialArtifacts[partialArtifacts.length - 1]!,
+          }
+        : {}),
+      recommendedAction: args.recommendedAction,
+      fallbackUsed: false,
+      canRetryFailedStage: true,
+      canRetryReducedContext: selectedFiles.length > 0,
+      canContinueFromPartial: partialArtifacts.length > 0,
+      canSwitchModel: false,
+      recoveryReasonUser: "The model/provider call failed. Karo did not mark the run completed and did not create fallback success.",
+      recoveryReasonInternal: args.reason,
+    };
   }
 
   private reportParticipantsForTask(state: TaskStateSnapshot): readonly AgentId[] {
@@ -4621,58 +5088,78 @@ function formatPromptWithConversationContext(
 
 function buildContextOptionsForEstimate(
   estimate: TaskStateSnapshot["agentCoreEstimate"],
+  reducedContext = false,
 ): BuildTaskContextOptions {
   const base = {
     includeContent: true,
     includeFileTree: true,
   } satisfies Pick<BuildTaskContextOptions, "includeContent" | "includeFileTree">;
 
+  let options: BuildTaskContextOptions;
   switch (estimate?.contextProfile) {
     case "website_creation":
-      return {
+      options = {
         ...base,
         maxFiles: 6,
         maxTotalChars: 24_000,
       };
+      break;
     case "security_review":
-      return {
+      options = {
         ...base,
         maxFiles: 12,
         maxTotalChars: 80_000,
       };
+      break;
     case "apply_changes_explain":
-      return {
+      options = {
         ...base,
         maxFiles: 12,
         maxTotalChars: 70_000,
       };
+      break;
     case "ui_work":
-      return {
+      options = {
         ...base,
         maxFiles: 10,
         maxTotalChars: 70_000,
       };
+      break;
     case "project_explain":
-      return {
+      options = {
         ...base,
         maxFiles: 10,
         maxTotalChars: 64_000,
       };
+      break;
     case "conversation_memory":
     case "casual_chat":
     case "none":
-      return {
+      options = {
         ...base,
         maxFiles: 0,
         maxTotalChars: 0,
       };
+      break;
     default:
-      return {
+      options = {
         ...base,
         maxFiles: 12,
         maxTotalChars: 80_000,
       };
+      break;
   }
+
+  const maxFiles = options.maxFiles ?? 0;
+  const maxTotalChars = options.maxTotalChars ?? 0;
+  if (!reducedContext || maxFiles === 0 || maxTotalChars === 0) {
+    return options;
+  }
+  return {
+    ...options,
+    maxFiles: Math.max(1, Math.floor(maxFiles / 2)),
+    maxTotalChars: Math.max(4_000, Math.floor(maxTotalChars / 2)),
+  };
 }
 
 /**

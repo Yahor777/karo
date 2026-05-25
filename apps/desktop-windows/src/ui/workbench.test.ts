@@ -1723,6 +1723,26 @@ describe("workbench ??? chat workbench", () => {
         allowCommands: false,
         reason: "local security question",
       } as any,
+      recoveryState: {
+        failedStage: "Security review",
+        failedAgent: "researcher",
+        provider: SAMPLE_METADATA.provider,
+        model: SAMPLE_METADATA.modelId!,
+        elapsedMs: 60000,
+        timeoutMs: 60000,
+        selectedFiles: ["src/security.ts", "src/settings.ts"],
+        contextTokens: 1200,
+        partialArtifacts: [],
+        retryCount: 0,
+        recommendedAction: "retry_failed_stage",
+        fallbackUsed: false,
+        canRetryFailedStage: true,
+        canRetryReducedContext: true,
+        canContinueFromPartial: false,
+        canSwitchModel: false,
+        recoveryReasonUser: "Security review timed out. No artifacts were created.",
+        recoveryReasonInternal: "provider_timeout",
+      },
     });
     const stateObj = (root as any)._karoState || (window as any)._karoState;
     if (stateObj) {
@@ -1819,6 +1839,124 @@ describe("workbench ??? chat workbench", () => {
     expect(finalCard?.textContent).toContain("Reduce context and retry");
     expect(finalCard?.textContent).toContain("Show selected files");
     expect(finalCard?.textContent).toContain("Copy context summary");
+
+    const buttons = Array.from(finalCard?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    expect(buttons.find((button) => button.textContent?.includes("Retry same model") === true)).not.toBeUndefined();
+    expect(buttons.find((button) => button.textContent?.includes("Reduce context and retry") === true)).not.toBeUndefined();
+  });
+
+  it("wires Coder recovery actions to retry/continue decisions and disables fake model switch", async () => {
+    const opts = buildOptions();
+    mountWorkspaceShell(root, opts);
+    opts.transport.emitTaskState({
+      id: "website-recovery",
+      status: "error",
+      currentAgentId: null,
+      reviewCycles: 0,
+      maxReviewCycles: 1,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:01:00.000Z",
+      originalPrompt: "Create a landing page website",
+      modelId: SAMPLE_METADATA.modelId!,
+      provider: SAMPLE_METADATA.provider,
+      participants: ["researcher", "planner", "coder"],
+      isExplainOnly: false,
+      providerDiagnostics: [
+        {
+          id: "diag-1",
+          agentId: "coder",
+          stageName: "Coder",
+          provider: SAMPLE_METADATA.provider,
+          modelId: SAMPLE_METADATA.modelId!,
+          inputTokenEstimate: 3200,
+          selectedFilesCount: 0,
+          contextTokens: 0,
+          timeoutMs: 120000,
+          elapsedMs: 120200,
+          errorType: "provider_timeout",
+          partialOutputReceived: false,
+          artifactsCreated: true,
+          createdAt: "2026-05-17T12:01:00.000Z",
+        },
+      ],
+      recoveryState: {
+        failedStage: "chunked_coder",
+        failedAgent: "coder",
+        failedFile: "src/karo-demo-site/script.js",
+        provider: SAMPLE_METADATA.provider,
+        model: SAMPLE_METADATA.modelId!,
+        elapsedMs: 120200,
+        timeoutMs: 120000,
+        selectedFiles: [],
+        contextTokens: 0,
+        partialArtifacts: [
+          { artifactId: "art-index", version: 1, fileName: "src/karo-demo-site/index.html" },
+        ],
+        retryCount: 0,
+        lastSuccessfulStage: "chunked_coder",
+        lastSuccessfulArtifact: { artifactId: "art-index", version: 1, fileName: "src/karo-demo-site/index.html" },
+        recommendedAction: "continue_partial",
+        fallbackUsed: false,
+        canRetryFailedStage: true,
+        canRetryReducedContext: true,
+        canContinueFromPartial: true,
+        canSwitchModel: false,
+        recoveryReasonUser: "Coder timed out while generating script.js. One staged artifact was preserved.",
+        recoveryReasonInternal: "provider_timeout",
+      },
+    });
+    opts.transport.emitArtifact(
+      {
+        id: "art-index",
+        taskId: "website-recovery",
+        fileName: "src/karo-demo-site/index.html",
+        latestVersion: 1,
+        latestContentHash: "hash",
+        authoredByAgentId: "coder",
+        updatedAt: "2026-05-17T12:00:30.000Z",
+      },
+      "<main><section class=\"hero\">Hero</section></main>",
+    );
+    const stateObj = (root as any)._karoState || (window as any)._karoState;
+    if (stateObj) {
+      stateObj.activeTaskId = "website-recovery";
+      stateObj.routeId = "chat";
+    }
+    opts.transport.emitFinalReport({
+      taskId: "website-recovery",
+      status: "error",
+      originalPrompt: "Create a landing page website",
+      participants: ["researcher", "planner", "coder"],
+      reviewCyclesPerformed: 0,
+      finalArtifacts: [
+        {
+          artifactId: "art-index",
+          version: 1,
+          fileName: "src/karo-demo-site/index.html",
+        },
+      ],
+      outstandingIssues: [
+        "Coder timed out while generating src/karo-demo-site/script.js. Retry Coder or continue from partial artifacts.",
+      ],
+      createdAt: "2026-05-17T12:01:00.000Z",
+    });
+    await flush();
+
+    const recovery = root.querySelector<HTMLElement>('[data-testid="coder-timeout-recovery"]');
+    expect(recovery).not.toBeNull();
+    expect(recovery?.textContent).toContain("Coder recovery: src/karo-demo-site/script.js");
+    const buttons = Array.from(recovery?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    expect(buttons.find((button) => button.textContent === "Switch model")?.disabled).toBe(true);
+
+    buttons.find((button) => button.textContent === "Retry failed stage")?.click();
+    buttons.find((button) => button.textContent === "Retry with reduced context")?.click();
+    buttons.find((button) => button.textContent === "Continue from partial artifacts")?.click();
+    await flush();
+    expect(opts.transport.resumeCalls).toEqual([
+      { taskId: "website-recovery", decision: { kind: "retryFailedStage" } },
+      { taskId: "website-recovery", decision: { kind: "retryReducedContext" } },
+      { taskId: "website-recovery", decision: { kind: "continuePartial" } },
+    ]);
   });
 
   it("keeps delayed security report attached before a later safety command", async () => {

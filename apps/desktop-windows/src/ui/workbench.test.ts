@@ -319,7 +319,7 @@ describe("workbench ??? layout", () => {
     mountWorkspaceShell(root, buildOptions());
     expect(root.querySelector<HTMLImageElement>(".kw-brand-logo")?.alt).toBe("KARO");
     expect(root.querySelector(".kw-brand-name")?.textContent).toBe("KARO");
-    expect(root.querySelector(".kw-brand-tagline")?.textContent).toContain("AI Agent Orchestrator");
+    expect(root.querySelector(".kw-brand-tagline")?.textContent).toContain("AI IDE Workbench");
     expect(root.querySelector(".kw-project-field")?.textContent).toBe("No project selected");
     expect(root.querySelector(".kw-provider-line")?.textContent).toContain("Fireworks AI");
     const modelLine = root.querySelector<HTMLElement>(".kw-model-line");

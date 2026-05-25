@@ -483,7 +483,7 @@ export function mountWorkspaceShell(
   brand.textContent = "KARO";
   const brandSub = doc.createElement("span");
   brandSub.className = "kw-brand-tagline";
-  brandSub.textContent = "AI Agent Orchestrator";
+  brandSub.textContent = "AI IDE Workbench";
   brandWrap.append(brandLogo, brand, brandSub);
 
   const projectField = doc.createElement("button");
@@ -799,7 +799,7 @@ export function mountWorkspaceShell(
   // -------------------------------------------------------------------------
 
   function renderHeader(): void {
-    providerLine.textContent = `${formatProvider(state.metadata.provider)} · ${state.metadata.fingerprint}`;
+    providerLine.textContent = `${formatProvider(state.metadata.provider)} / ${state.metadata.fingerprint}`;
     const friendlyModelName = formatFriendlyModelName(state.metadata.modelId);
     modelLine.textContent = `Model: ${friendlyModelName}`;
     modelLine.title = state.metadata.modelId ?? "(default)";
@@ -1540,14 +1540,14 @@ export function mountWorkspaceShell(
     const sub = doc.createElement("p");
     sub.className = "kw-chat-welcome-sub";
     sub.textContent =
-      "Ask about the project, plan work, or request file changes. Karo keeps chat, planning, and Agent Mode separate.";
+      "Ask questions, plan safely, or stage file changes. Chat and Plan stay read-only; Agent Mode prepares artifacts that still require Apply.";
     const suggestions = doc.createElement("div");
     suggestions.className = "kw-welcome-suggestions";
     for (const [label, prompt] of [
-      ["Explain project", "Объясни что это за проект и как он устроен"],
-      ["Make a plan", "Составь план редизайна Karo под Codex-like UI"],
-      ["Create a file", "Создай файл src/karo-test.txt с текстом hello"],
-      ["Security review", "Проверь, безопасно ли проект хранит API keys и выполняет команды"],
+      ["Explain project", "Explain what this project does and where to start."],
+      ["Make a plan", "Create a read-only implementation plan for improving this UI."],
+      ["Create a file", "Create src/karo-test.txt with the text hello."],
+      ["Security review", "Review how this project handles API keys and command execution."],
     ] as const) {
       const btn = doc.createElement("button");
       btn.type = "button";
@@ -2235,7 +2235,7 @@ export function mountWorkspaceShell(
 
         const title = doc.createElement("h4");
         title.className = "kw-clarification-title";
-        title.innerHTML = "🤔 KARO Needs Clarification";
+        title.textContent = "KARO needs clarification";
         title.style.cssText = "margin: 0 0 10px 0; color: #fff; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;";
         clarBox.append(title);
 
@@ -2285,7 +2285,7 @@ export function mountWorkspaceShell(
         const textarea = doc.createElement("textarea");
         textarea.className = "kw-clarify-textarea";
         textarea.dataset["testid"] = "clarification-custom-input";
-        textarea.placeholder = "Напиши свой вариант...";
+        textarea.placeholder = "Write your answer...";
         textarea.style.cssText = "width: 100%; height: 80px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #fff; padding: 10px; font-size: 13px; resize: none; margin-bottom: 15px; outline: none; transition: border-color 0.2s;";
         textarea.addEventListener("focus", () => {
           textarea.style.borderColor = "rgb(99, 102, 241)";
@@ -2552,7 +2552,7 @@ export function mountWorkspaceShell(
     if (groups.length === 0 && !waitingForClarification) {
       const empty = doc.createElement("p");
       empty.className = "kw-chat-empty";
-      empty.textContent = "Waiting for the first agent to start…";
+      empty.textContent = "Waiting for the first agent to start...";
       wrap.append(empty);
     } else if (groups.length > 0) {
       const list = doc.createElement("ol");
@@ -2873,7 +2873,7 @@ export function mountWorkspaceShell(
     const textarea = doc.createElement("textarea");
     textarea.className = "kw-composer-input";
     textarea.dataset["testid"] = "composer-textarea";
-    textarea.placeholder = "Ask KARO to build, fix, explain, refactor…";
+    textarea.placeholder = "Ask KARO to explain, plan, fix, refactor, or stage a change...";
     textarea.rows = 3;
     const activeTaskState = state.activeTaskId !== null ? options.transport?.getTaskState(state.activeTaskId) : null;
     const waitingForClarification =
@@ -2928,7 +2928,7 @@ export function mountWorkspaceShell(
         }
         const remove = doc.createElement("button");
         remove.type = "button";
-        remove.textContent = "×";
+        remove.textContent = "x";
         remove.title = "Remove attachment";
         remove.addEventListener("click", () => {
           const index = attachments.findIndex((item) => item.id === attachment.id);

@@ -69,7 +69,7 @@ pnpm --filter @ai-agent-orchestrator/desktop-windows dev:renderer     # Vite dev
 pnpm --filter @ai-agent-orchestrator/desktop-windows build            # tsc + vite build (renderer bundle)
 pnpm --filter @ai-agent-orchestrator/desktop-windows build:tauri      # Full Tauri release build (default bundle targets)
 pnpm --filter @ai-agent-orchestrator/desktop-windows build:installer  # Windows installer build (msi + nsis)
-pnpm --filter @ai-agent-orchestrator/desktop-windows typecheck        # tsc -b --noEmit
+pnpm --filter @ai-agent-orchestrator/desktop-windows typecheck        # tsc -p tsconfig.json --noEmit
 pnpm --filter @ai-agent-orchestrator/desktop-windows test             # Vitest
 pnpm --filter @ai-agent-orchestrator/desktop-windows tauri:dev        # Alias of `dev` (kept for back-compat)
 pnpm --filter @ai-agent-orchestrator/desktop-windows tauri:build      # Alias of `build:tauri` (kept for back-compat)

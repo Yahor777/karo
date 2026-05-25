@@ -9,11 +9,11 @@
   "scripts": {
     "dev": "tauri dev",
     "dev:renderer": "vite",
-    "build": "tsc -b --noEmit && vite build",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
     "build:tauri": "tauri build",
     "build:installer": "tauri build --bundles msi,nsis",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest --run",
     "mcp:ui": "tsx mcp/karo-ui-mcp-server.ts",
     "gui:check": "tsx mcp/run-all-gui-scenarios.ts",

@@ -18,6 +18,7 @@ pub struct TerminalManager {
 struct TerminalSession {
     child: Arc<Mutex<Child>>,
     status: Arc<Mutex<TerminalStatus>>,
+    exit_code: Arc<Mutex<Option<i32>>>,
     output: Arc<Mutex<Vec<TerminalOutputLine>>>,
 }
 
@@ -93,6 +94,11 @@ pub fn is_allowed_mvp_terminal_command(command: &str) -> bool {
             | "pnpm --filter @ai-agent-orchestrator/desktop-windows exec tsc --noEmit"
             | "cargo check"
             | "cargo test"
+            | "pwd"
+            | "dir"
+            | "ls"
+            | "git status"
+            | "pnpm --version"
     )
 }
 
@@ -144,23 +150,19 @@ pub fn detect_terminal_profiles() -> Vec<TerminalProfile> {
             },
         ];
         let git_bash = PathBuf::from(r"C:\Program Files\Git\bin\bash.exe");
-        if git_bash.exists() {
-            profiles.push(TerminalProfile {
-                id: "git_bash".to_string(),
-                label: "Git Bash".to_string(),
-                shell: git_bash.to_string_lossy().to_string(),
-                available: true,
-            });
-        }
+        profiles.push(TerminalProfile {
+            id: "git_bash".to_string(),
+            label: "Git Bash".to_string(),
+            shell: git_bash.to_string_lossy().to_string(),
+            available: git_bash.exists(),
+        });
         let wsl = PathBuf::from(r"C:\Windows\System32\wsl.exe");
-        if wsl.exists() {
-            profiles.push(TerminalProfile {
-                id: "wsl".to_string(),
-                label: "WSL".to_string(),
-                shell: wsl.to_string_lossy().to_string(),
-                available: true,
-            });
-        }
+        profiles.push(TerminalProfile {
+            id: "wsl".to_string(),
+            label: "WSL".to_string(),
+            shell: wsl.to_string_lossy().to_string(),
+            available: wsl.exists(),
+        });
         profiles
     } else if cfg!(target_os = "macos") {
         vec![
@@ -284,6 +286,7 @@ impl TerminalManager {
         let session_id = format!("term-{}", now_millis());
         let output = Arc::new(Mutex::new(Vec::<TerminalOutputLine>::new()));
         let status = Arc::new(Mutex::new(TerminalStatus::Running));
+        let exit_code = Arc::new(Mutex::new(None));
 
         let mut command_builder = command_for_profile(&profile, &command);
         let mut child = command_builder
@@ -305,6 +308,7 @@ impl TerminalManager {
             TerminalSession {
                 child,
                 status,
+                exit_code,
                 output,
             },
         );
@@ -325,7 +329,10 @@ impl TerminalManager {
         })?;
         let mut child = session.child.lock().map_err(lock_err)?;
         kill_child_process_tree(&mut child);
-        let _ = child.wait();
+        let status = child.wait().ok();
+        if let Some(status) = status {
+            *session.exit_code.lock().map_err(lock_err)? = status.code();
+        }
         *session.status.lock().map_err(lock_err)? = TerminalStatus::Exited;
         drop(child);
         self.output_for_session(&session_id)
@@ -376,6 +383,7 @@ impl TerminalManager {
         };
         let mut child = session.child.lock().map_err(lock_err)?;
         if let Some(status) = child.try_wait()? {
+            *session.exit_code.lock().map_err(lock_err)? = status.code();
             *session.status.lock().map_err(lock_err)? = if status.success() {
                 TerminalStatus::Exited
             } else {
@@ -391,11 +399,12 @@ impl TerminalManager {
             message: "Terminal session not found.".to_string(),
         })?;
         let status = session.status.lock().map_err(lock_err)?.clone();
+        let exit_code = *session.exit_code.lock().map_err(lock_err)?;
         let lines = session.output.lock().map_err(lock_err)?.clone();
         Ok(TerminalOutput {
             session_id: session_id.to_string(),
             status,
-            exit_code: None,
+            exit_code,
             lines,
         })
     }
@@ -520,6 +529,11 @@ mod tests {
         assert!(is_allowed_mvp_terminal_command("npm run preview"));
         assert!(is_allowed_mvp_terminal_command("yarn dev"));
         assert!(is_allowed_mvp_terminal_command("cargo check"));
+        assert!(is_allowed_mvp_terminal_command("pwd"));
+        assert!(is_allowed_mvp_terminal_command("dir"));
+        assert!(is_allowed_mvp_terminal_command("ls"));
+        assert!(is_allowed_mvp_terminal_command("git status"));
+        assert!(is_allowed_mvp_terminal_command("pnpm --version"));
         assert!(!is_allowed_mvp_terminal_command("echo hello"));
     }
 
@@ -530,6 +544,8 @@ mod tests {
         if cfg!(windows) {
             assert!(profiles.iter().any(|profile| profile.id == "powershell"));
             assert!(profiles.iter().any(|profile| profile.id == "cmd"));
+            assert!(profiles.iter().any(|profile| profile.id == "git_bash"));
+            assert!(profiles.iter().any(|profile| profile.id == "wsl"));
         }
     }
 

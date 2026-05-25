@@ -270,6 +270,10 @@ const CODER_SYSTEM_PROMPT = [
   "- Keep file contents concise but complete. Do NOT inline long",
   "  explanations into code comments — put any explanation into the",
   '  "summary" field instead so the artifact stays compact.',
+  "- For static website work, produce production-shaped files: semantic",
+  "  HTML with title/meta viewport, linked CSS/JS, polished responsive",
+  "  layout, visible CTA/navigation, accessible labels, and no placeholder",
+  "  text. Prefer local CSS/JS over external assets or CDNs.",
   '- "summary" is a one-paragraph natural-language description of what',
   "  was created. It MUST be a string (use empty string when nothing",
   "  to add).",
@@ -4405,7 +4409,15 @@ function isStaticWebsiteCreationPrompt(prompt: string): boolean {
     text.includes("способност") ||
     text.includes("персонаж") ||
     text.includes("карточ");
-  return asksForSite && asksToCreate && staticSignals;
+  const explicitWebsiteFiles = /\b(index\.html|styles\.css|script\.js|readme\.md)\b/i.test(text);
+  const unicodeSiteSignals = /\u0441\u0430\u0439\u0442|\u043b\u0435\u043d\u0434\u0438\u043d\u0433|\u0441\u0442\u0440\u0430\u043d\u0438\u0446/i.test(text);
+  const unicodeCreateSignals = /\u0441\u043e\u0437\u0434\u0430|\u0441\u0434\u0435\u043b\u0430|\u043f\u043e\u0441\u0442\u0440\u043e|\u0441\u0433\u0435\u043d\u0435\u0440|\u0440\u0435\u0430\u043b\u0438\u0437/i.test(text);
+  const unicodeSectionSignals = /\u0441\u043f\u043e\u0441\u043e\u0431\u043d\u043e\u0441|\u043f\u0435\u0440\u0441\u043e\u043d\u0430\u0436|\u044d\u043d\u0435\u0440\u0433|\u043a\u0430\u0440\u0442\u043e\u0447/i.test(text);
+  return (
+    (asksForSite || explicitWebsiteFiles || unicodeSiteSignals) &&
+    (asksToCreate || unicodeCreateSignals) &&
+    (staticSignals || explicitWebsiteFiles || unicodeSectionSignals)
+  );
 }
 
 function buildStaticWebsiteFilePlan(): readonly StaticWebsiteFilePlanItem[] {
@@ -4413,12 +4425,12 @@ function buildStaticWebsiteFilePlan(): readonly StaticWebsiteFilePlanItem[] {
     {
       fileName: "src/karo-demo-site/index.html",
       purpose: "semantic static HTML shell",
-      requiredSignals: ["hero", "abilities", "characters", "energy", "features", "FAQ"],
+      requiredSignals: ["title/meta viewport", "linked styles.css", "linked script.js", "hero", "abilities", "characters", "energy", "features", "FAQ", "CTA"],
     },
     {
       fileName: "src/karo-demo-site/styles.css",
       purpose: "responsive dark anime visual system",
-      requiredSignals: ["responsive", "dark anime style", "cards", "mobile layout"],
+      requiredSignals: ["responsive", "dark anime style", "cards", "mobile layout", "premium dark/liquid polish"],
     },
     {
       fileName: "src/karo-demo-site/script.js",
@@ -4474,6 +4486,9 @@ function buildWebsiteFileCoderPrompt(
     "- Do not use external CDNs, package installs, hidden commands, or absolute local paths.",
     "- Do not include markdown fences or commentary outside JSON.",
     "- Make the landing page feel complete, not a placeholder.",
+    "- index.html must include a title, meta viewport, linked styles.css, deferred script.js, semantic sections, and at least one visible CTA.",
+    "- styles.css must deliver responsive premium dark/liquid UI with stable spacing, readable contrast, and mobile layout.",
+    "- script.js must be safe progressive enhancement only; no network calls, secrets, or command execution.",
     "",
     'Required JSON schema: {"artifacts":[{"fileName":"string","content":"string"}],"summary":"string"}',
   ].join("\n");

@@ -351,9 +351,9 @@ export function buildAgentImplementationPlan(input: {
       filesToModify: [],
       filesToRead: input.contextProfile === "website_creation" ? [] : [],
       acceptanceCriteria: [
-        "index.html contains hero, abilities, characters/energy, features, and FAQ sections.",
-        "styles.css contains responsive dark anime/card styling.",
-        "script.js is present and non-empty.",
+        "index.html contains title/meta viewport, linked styles.css/script.js, hero, abilities, characters/energy, features, FAQ, and CTA sections.",
+        "styles.css contains responsive premium dark anime/card styling with a mobile layout.",
+        "script.js is present, non-empty, and limited to safe local progressive enhancement.",
         "README.md explains Apply Changes and preview/open flow.",
         "All generated files remain staged until Apply Changes.",
         "Emergency fallback is not counted as benchmark success.",

@@ -121,7 +121,7 @@ export class ArtifactStore implements ArtifactStoreInterface {
   private readonly backend: ArtifactStoreBackend;
   private readonly clock: Clock;
   private readonly generateArtifactId: () => string;
-  private readonly staging?: StagingWorkspaceManager;
+  private readonly staging: StagingWorkspaceManager | undefined;
   /**
    * Diff helper used exclusively by {@link getDiff}. Injected via
    * {@link ArtifactStoreOptions.computeDiff} for tests that need to

@@ -1554,6 +1554,10 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
     expect(t.getTaskState(taskId)?.status).toBe("completed");
     expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder", "coder", "coder"]);
+    const indexPrompt = calls.find((call) => call.which === "coder")?.messages.at(-1)?.content ?? "";
+    expect(indexPrompt).toContain("linked styles.css");
+    expect(indexPrompt).toContain("visible CTA");
+    expect(indexPrompt).toContain("premium dark/liquid UI");
     expect(t.getTaskState(taskId)?.agentCoreEstimate?.expectedModelCalls).toBe(5);
     expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
     expect(t.getTaskState(taskId)?.deterministicValidation?.skipModelReview).toBe(true);

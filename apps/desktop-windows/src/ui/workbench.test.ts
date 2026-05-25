@@ -455,6 +455,8 @@ describe("workbench ??? chat workbench", () => {
   it("renders welcome card and composer when no task is active", () => {
     mountWorkspaceShell(root, buildOptions());
     expect(root.querySelector(".kw-chat-welcome")).not.toBeNull();
+    expect(root.querySelector(".kw-chat-welcome")?.textContent).toContain("Apply gate");
+    expect(root.querySelector(".kw-chat-welcome")?.textContent).toContain("Choose project");
     expect(root.querySelector(".kw-composer-input")).not.toBeNull();
     const send = root.querySelector<HTMLButtonElement>(".kw-composer-start")!;
     expect(send.textContent).toBe("\u2191");
@@ -1735,6 +1737,9 @@ describe("workbench ??? chat workbench", () => {
     expect(reviewer.textContent).toContain("deterministic validation");
     const coder = root.querySelector<HTMLElement>('.kw-agent-step[data-agent-id="coder"]')!;
     expect(coder.querySelector(".kw-agent-file-chip")?.textContent).toBe("src/karo-demo-site/styles.css");
+    const contract = root.querySelector<HTMLElement>(".kw-run-contract")?.textContent ?? "";
+    expect(contract).toContain("Apply Changes required before disk write");
+    expect(contract).toContain("passed / reviewer skipped");
     expect(root.querySelectorAll(".kw-agent-step-details[open]")).toHaveLength(0);
     expect(root.querySelector('[data-testid="chat-thread"]')?.textContent).not.toMatch(/\bthought\b/i);
   });
@@ -2292,6 +2297,7 @@ describe("workbench ??? right panel", () => {
     expect(text).toContain("Run preview");
     expect(text).toContain("Copy command");
     expect(text).toContain("Terminal status");
+    expect(text).toContain("No fake iframe preview");
     expect(text).toContain("Embedded preview is not implemented");
     expect(root.querySelector<HTMLButtonElement>(".kw-preview-panel .kw-button-primary")?.disabled).toBe(true);
   });

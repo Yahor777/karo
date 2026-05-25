@@ -68,8 +68,8 @@ import type {
   ReviewerVerdictPayload,
 } from "./types.js";
 import { StagingWorkspaceManager } from "../artifacts/staging.js";
-import { ShellRunner } from "../utils/shellRunner.js";
-import { detectTestCommand } from "../utils/testCommandDetector.js";
+import { ShellRunner, type ShellExecuteInput } from "../utils/shellRunner.js";
+import { detectTestCommand, type DetectTestCommandInput } from "../utils/testCommandDetector.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -216,17 +216,17 @@ export class ReviewerAgent {
   private readonly traceBus: TraceEventBusInterface;
   private readonly clock: Clock;
   private readonly idGenerator: () => string;
-  private readonly staging?: StagingWorkspaceManager;
-  private readonly shellRunner?: ShellRunner;
-  private readonly testCommand?: {
+  private readonly staging: StagingWorkspaceManager | undefined;
+  private readonly shellRunner: ShellRunner | undefined;
+  private readonly testCommand: {
     readonly command: string;
     readonly args: readonly string[];
     readonly timeoutMs?: number;
     readonly maxOutputBytes?: number;
-  };
-  private readonly testCommandDetector?: typeof detectTestCommand;
-  private readonly allowAutoDetectedTestCommand?: boolean;
-  private readonly changedFileNames?: readonly string[];
+  } | undefined;
+  private readonly testCommandDetector: typeof detectTestCommand | undefined;
+  private readonly allowAutoDetectedTestCommand: boolean | undefined;
+  private readonly changedFileNames: readonly string[] | undefined;
 
   public constructor(options: ReviewerAgentOptions) {
     this.modelAdapter = options.modelAdapter;
@@ -318,11 +318,14 @@ export class ReviewerAgent {
           const changedFiles = input.changedFileNames
             ? [...input.changedFileNames]
             : (this.changedFileNames ? [...this.changedFileNames] : []);
-          const detectResult = await this.testCommandDetector({
+          const detectInput: DetectTestCommandInput = {
             cwd: stagingCwd,
             changedFileNames: changedFiles,
-            allowPackageScripts: this.allowAutoDetectedTestCommand,
-          });
+          };
+          if (this.allowAutoDetectedTestCommand !== undefined) {
+            detectInput.allowPackageScripts = this.allowAutoDetectedTestCommand;
+          }
+          const detectResult = await this.testCommandDetector(detectInput);
 
           if (detectResult.kind === "detected") {
             const hasApprove = input.consentDecision && input.consentDecision.kind === "approve";
@@ -380,13 +383,16 @@ export class ReviewerAgent {
           const stagingCwd = this.staging.getStagingRoot(taskId);
           const { command, args, timeoutMs = 20000, maxOutputBytes } = activeTestCommand;
 
-          const shellResult = await this.shellRunner.execute({
+          const shellInput: ShellExecuteInput = {
             command,
             args: [...args],
             cwd: stagingCwd,
             timeoutMs,
-            maxOutputBytes,
-          });
+          };
+          if (maxOutputBytes !== undefined) {
+            shellInput.maxOutputBytes = maxOutputBytes;
+          }
+          const shellResult = await this.shellRunner.execute(shellInput);
 
           // Write debug log to staging
           try {

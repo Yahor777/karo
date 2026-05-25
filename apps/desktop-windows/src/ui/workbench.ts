@@ -1534,15 +1534,46 @@ export function mountWorkspaceShell(
   function buildChatWelcome(doc: Document): HTMLElement {
     const wrap = doc.createElement("div");
     wrap.className = "kw-chat-welcome";
+    const eyebrow = doc.createElement("p");
+    eyebrow.className = "kw-chat-welcome-eyebrow";
+    eyebrow.textContent = "Workspace-safe AI IDE";
     const title = doc.createElement("h2");
     title.className = "kw-chat-welcome-title";
-    title.textContent = "Welcome to KARO";
+    title.textContent = "Start from the right mode";
     const sub = doc.createElement("p");
     sub.className = "kw-chat-welcome-sub";
     sub.textContent =
       "Ask about the project, plan work, or request file changes. Karo keeps chat, planning, and Agent Mode separate.";
+    const contract = doc.createElement("div");
+    contract.className = "kw-welcome-contract-grid";
+    for (const [label, body, stateLabel] of [
+      ["Chat", "Answers questions and can read selected context, but never writes files.", "Read-only"],
+      ["Plan", "Turns broad work into a scoped implementation plan before any file changes.", "Read-only"],
+      ["Agent", "Stages artifacts for review. Nothing is written until Apply Changes.", "Apply gate"],
+      ["Preview", "Opens applied static files or runs an explicit safe terminal command.", "Honest state"],
+    ] as const) {
+      const card = doc.createElement("section");
+      card.className = "kw-welcome-contract-card";
+      const cardHead = doc.createElement("div");
+      cardHead.className = "kw-welcome-contract-head";
+      const labelEl = doc.createElement("strong");
+      labelEl.textContent = label;
+      const stateEl = doc.createElement("span");
+      stateEl.textContent = stateLabel;
+      cardHead.append(labelEl, stateEl);
+      const bodyEl = doc.createElement("p");
+      bodyEl.textContent = body;
+      card.append(cardHead, bodyEl);
+      contract.append(card);
+    }
     const suggestions = doc.createElement("div");
     suggestions.className = "kw-welcome-suggestions";
+    const projectBtn = doc.createElement("button");
+    projectBtn.type = "button";
+    projectBtn.className = "kw-welcome-suggestion kw-welcome-suggestion-primary";
+    projectBtn.textContent = "Choose project";
+    projectBtn.addEventListener("click", () => navigate("project"));
+    suggestions.append(projectBtn);
     for (const [label, prompt] of [
       ["Explain project", "Объясни что это за проект и как он устроен"],
       ["Make a plan", "Составь план редизайна Karo под Codex-like UI"],
@@ -1556,14 +1587,30 @@ export function mountWorkspaceShell(
       btn.addEventListener("click", () => {
         const textarea = doc.querySelector<HTMLTextAreaElement>('[data-testid="composer-textarea"]');
         if (textarea !== null) {
-          textarea.value = prompt;
+          textarea.value = welcomePromptForSuggestion(label, prompt);
+          textarea.dispatchEvent(new Event("input"));
           textarea.focus();
         }
       });
       suggestions.append(btn);
     }
-    wrap.append(title, sub, suggestions);
+    wrap.append(eyebrow, title, sub, contract, suggestions);
     return wrap;
+  }
+
+  function welcomePromptForSuggestion(label: string, fallback: string): string {
+    switch (label) {
+      case "Explain project":
+        return "Explain what this project does and which files matter.";
+      case "Make a plan":
+        return "Make a read-only plan to improve the Karo AI IDE UX without changing files yet.";
+      case "Create a file":
+        return "Create file src/karo-test.txt with text hello";
+      case "Security review":
+        return "Review how this project stores API keys and gates command execution. Do not change files.";
+      default:
+        return fallback;
+    }
   }
 
   function buildChatMessage(doc: Document, message: ChatMessageView): HTMLElement {
@@ -2096,9 +2143,6 @@ export function mountWorkspaceShell(
       author.append(cycles);
     }
 
-    wrap.append(author);
-
-    // Calculate agent statuses for horizontal pipeline
     const events = transport.getTraceEvents(taskId);
     const artifactMap = buildArtifactFileNameMap(transport.getArtifacts(taskId));
     const locale = detectActivityLocale(taskState.originalPrompt);
@@ -2107,6 +2151,8 @@ export function mountWorkspaceShell(
       groupTraceByAgent(events, { includeOrchestrator: includeRouteCard }),
       taskState,
     );
+
+    wrap.append(author, buildRunContractStrip(doc, taskState, groups, artifactMap, isQuickEdit));
 
     function getAgentStatusInPipeline(
       agentId: BuiltinAgentRole,
@@ -2563,6 +2609,62 @@ export function mountWorkspaceShell(
       wrap.append(list);
     }
     return wrap;
+  }
+
+  function buildRunContractStrip(
+    doc: Document,
+    taskState: TaskStateSnapshot,
+    groups: readonly AgentGroup[],
+    artifactMap: ReadonlyMap<string, string>,
+    isQuickEdit: boolean,
+  ): HTMLElement {
+    const strip = doc.createElement("section");
+    strip.className = "kw-run-contract";
+    const filesTouched = new Set<string>();
+    for (const group of groups) {
+      for (const name of groupFileNames(group, artifactMap)) {
+        filesTouched.add(name);
+      }
+    }
+    const artifactCount = artifactMap.size;
+    const modeLabel = isQuickEdit
+      ? "Quick Edit"
+      : taskState.decision?.executionMode === "agent"
+        ? "Agent Mode"
+        : taskState.decision?.executionMode === "plan"
+          ? "Plan Mode"
+          : "Auto Route";
+    const validation = taskState.deterministicValidation;
+    const validationLabel =
+      validation === undefined
+        ? taskState.status === "completed" || taskState.status === "error" || taskState.status === "stopped_limit"
+          ? "Validation recorded in final report"
+          : "Validation pending"
+        : `${validation.status}${validation.skipModelReview ? " / reviewer skipped" : ""}`;
+    const applyLabel =
+      taskState.status === "error"
+        ? "Not completed; partial staged files stay reviewable"
+        : artifactCount > 0
+          ? "Apply Changes required before disk write"
+          : "No file writes from this step";
+    const items: ReadonlyArray<readonly [string, string]> = [
+      ["Route", modeLabel],
+      ["Artifacts", artifactCount > 0 ? `${String(artifactCount)} staged${filesTouched.size > 0 ? ` / ${String(filesTouched.size)} touched` : ""}` : "none yet"],
+      ["Validation", validationLabel],
+      ["Write gate", applyLabel],
+    ];
+    for (const [label, value] of items) {
+      const item = doc.createElement("div");
+      item.className = "kw-run-contract-item";
+      const labelEl = doc.createElement("span");
+      labelEl.className = "kw-run-contract-label";
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      item.append(labelEl, valueEl);
+      strip.append(item);
+    }
+    return strip;
   }
 
   function buildAgentGroupCard(
@@ -5700,6 +5802,10 @@ export function mountWorkspaceShell(
     wrap.className = "kw-preview-panel";
     const title = doc.createElement("h3");
     title.textContent = "Preview";
+    const subtitle = doc.createElement("p");
+    subtitle.className = "kw-preview-subtitle";
+    subtitle.textContent =
+      "Preview is explicit: staged files must be applied first, and dev commands run only through the safe terminal allowlist.";
     const taskState = state.activeTaskId !== null ? options.transport?.getTaskState(state.activeTaskId) ?? null : null;
     const storedPreviewCommand = localStorage.getItem("karo.previewCommand");
     const storedPreviewSource = localStorage.getItem("karo.previewCommandSource");
@@ -5774,9 +5880,41 @@ export function mountWorkspaceShell(
     const statusCard = doc.createElement("div");
     statusCard.className = "kw-preview-status";
     statusCard.dataset["testid"] = "preview-status";
+    statusCard.dataset["state"] = previewStatus;
     statusCard.textContent = `Preview status: ${previewStatus}`;
+    const previewContract = doc.createElement("div");
+    previewContract.className = "kw-preview-contract-grid";
+    for (const [label, value] of [
+      [
+        "Static file",
+        staticPreviewArtifact === undefined
+          ? "No index.html staged"
+          : staticPreviewApplied
+            ? "Applied and openable"
+            : "Staged; Apply required",
+      ],
+      [
+        "Command",
+        terminalAvailable
+          ? "Safe terminal allowlist"
+          : "Terminal unavailable here",
+      ],
+      [
+        "Embedding",
+        "No fake iframe preview",
+      ],
+    ] as const) {
+      const item = doc.createElement("div");
+      item.className = "kw-preview-contract-item";
+      const itemLabel = doc.createElement("span");
+      itemLabel.textContent = label;
+      const itemValue = doc.createElement("strong");
+      itemValue.textContent = value;
+      item.append(itemLabel, itemValue);
+      previewContract.append(item);
+    }
     const staticPreview = doc.createElement("div");
-    staticPreview.className = "kw-system-notice";
+    staticPreview.className = "kw-system-notice kw-preview-static-note";
     if (staticPreviewArtifact !== undefined) {
       const staticText = doc.createElement("span");
       staticText.textContent = staticPreviewApplied
@@ -5881,7 +6019,7 @@ export function mountWorkspaceShell(
     } else {
       actions.append(start, copyCommand, openTerminal);
     }
-    wrap.append(title, statusCard, commandLabel, meta, urlState, staticPreview, embeddedNote, notice, actions);
+    wrap.append(title, subtitle, statusCard, previewContract, commandLabel, meta, urlState, staticPreview, embeddedNote, notice, actions);
     return wrap;
   }
 

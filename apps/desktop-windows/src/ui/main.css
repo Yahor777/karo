@@ -43,6 +43,9 @@
   --karo-accent-bright: #a78bfa;
   --karo-accent-dark: #4c1d95;
   --karo-accent-soft: rgba(124, 58, 237, 0.16);
+  --karo-cyan: #38d5e8;
+  --karo-cyan-soft: rgba(56, 213, 232, 0.12);
+  --karo-glass: rgba(18, 20, 30, 0.82);
   --karo-success: #22c55e;
   --karo-warn: #f59e0b;
   --karo-error: #ef4444;
@@ -1021,22 +1024,81 @@ html, body {
 }
 
 .kw-chat-welcome {
-  background: var(--karo-card);
-  border: 1px solid var(--karo-border);
-  border-radius: 10px;
-  padding: 20px;
+  position: relative;
+  background:
+    linear-gradient(145deg, rgba(24, 28, 42, 0.94), rgba(12, 14, 22, 0.96)),
+    radial-gradient(circle at 12% 0%, rgba(56, 213, 232, 0.1), transparent 32%);
+  border: 1px solid rgba(71, 85, 105, 0.48);
+  border-radius: 8px;
+  padding: 22px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+}
+
+.kw-chat-welcome-eyebrow {
+  margin: 0 0 8px 0;
+  color: var(--karo-cyan);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .kw-chat-welcome-title {
   margin: 0 0 6px 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 750;
 }
 
 .kw-chat-welcome-sub {
   margin: 0;
   color: var(--karo-text-muted);
-  font-size: 13px;
+  font-size: 13.5px;
+  max-width: 760px;
+}
+
+.kw-welcome-contract-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.kw-welcome-contract-card {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgba(71, 85, 105, 0.42);
+  border-radius: 8px;
+  background: rgba(5, 8, 13, 0.45);
+}
+
+.kw-welcome-contract-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.kw-welcome-contract-head strong {
+  font-size: 12.5px;
+  color: var(--karo-text);
+}
+
+.kw-welcome-contract-head span {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid rgba(56, 213, 232, 0.25);
+  border-radius: 999px;
+  color: var(--karo-cyan);
+  font-size: 10.5px;
+  background: var(--karo-cyan-soft);
+}
+
+.kw-welcome-contract-card p {
+  margin: 0;
+  color: var(--karo-text-muted);
+  font-size: 11.8px;
+  line-height: 1.4;
 }
 
 .kw-welcome-suggestions {
@@ -1055,6 +1117,12 @@ html, body {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+}
+
+.kw-welcome-suggestion-primary {
+  border-color: rgba(56, 213, 232, 0.45);
+  background: var(--karo-cyan-soft);
+  color: var(--karo-text);
 }
 
 .kw-welcome-suggestion:hover {
@@ -1176,6 +1244,38 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.kw-run-contract {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(71, 85, 105, 0.42);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(12, 16, 24, 0.78), rgba(20, 18, 31, 0.72));
+}
+
+.kw-run-contract-item {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kw-run-contract-label {
+  color: var(--karo-text-faint);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.kw-run-contract-item strong {
+  color: var(--karo-text);
+  font-size: 11.8px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .kw-agent-step {
@@ -2194,7 +2294,7 @@ html, body {
 }
 
 .kw-preview-open-state[data-state="error"] {
-  color: var(--karo-danger);
+  color: var(--karo-error);
 }
 
 .kw-context-used-details {
@@ -2256,6 +2356,13 @@ html, body {
   font-size: 14px;
 }
 
+.kw-preview-subtitle {
+  margin: -4px 0 0 0;
+  color: var(--karo-text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
 .kw-preview-command {
     display: flex;
     flex-direction: column;
@@ -2277,6 +2384,56 @@ html, body {
     color: var(--karo-text-muted);
     font-size: 12px;
     overflow-wrap: anywhere;
+  }
+
+  .kw-preview-status {
+    border-color: rgba(56, 213, 232, 0.28);
+    background: linear-gradient(135deg, rgba(56, 213, 232, 0.08), rgba(124, 58, 237, 0.08));
+    color: var(--karo-text);
+    font-weight: 650;
+  }
+
+  .kw-preview-status[data-state="staged-only/apply-required"] {
+    border-color: rgba(245, 158, 11, 0.38);
+    color: var(--karo-warn);
+    background: rgba(245, 158, 11, 0.09);
+  }
+
+  .kw-preview-status[data-state="static-file-ready"] {
+    border-color: rgba(34, 197, 94, 0.35);
+    color: var(--karo-success);
+    background: rgba(34, 197, 94, 0.08);
+  }
+
+  .kw-preview-contract-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .kw-preview-contract-item {
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid var(--karo-border);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.025);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .kw-preview-contract-item span {
+    color: var(--karo-text-faint);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .kw-preview-contract-item strong {
+    color: var(--karo-text);
+    font-size: 11.8px;
+    line-height: 1.35;
   }
 
   .kw-terminal-profile {
@@ -3765,6 +3922,12 @@ html, body {
   .kw-pipeline-bar {
     overflow-x: auto;
     justify-content: flex-start;
+  }
+
+  .kw-welcome-contract-grid,
+  .kw-run-contract,
+  .kw-preview-contract-grid {
+    grid-template-columns: 1fr;
   }
 }
 

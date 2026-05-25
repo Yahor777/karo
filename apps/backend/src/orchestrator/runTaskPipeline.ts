@@ -94,6 +94,7 @@ import type {
   Defect,
   FixerAgent,
   ReviewerAgent,
+  ReviewerRunInput,
   ResearcherAgent,
   ConsentDecision,
 } from "../agents/index.js";
@@ -292,7 +293,7 @@ export class TaskPipeline {
   private readonly clock: PipelineClock;
   private readonly artifactStore?: Pick<ArtifactStoreInterface, "listArtifacts">;
   private readonly taskHistoryStore?: TaskHistoryStore;
-  private readonly staging?: StagingWorkspaceManager;
+  private readonly staging: StagingWorkspaceManager | undefined;
 
   public constructor(options: TaskPipelineOptions) {
     this.store = options.store;
@@ -378,7 +379,7 @@ export class TaskPipeline {
       // Resume logic: load last message and current artifact
       const history = await this.messageHistoryStore.list(taskId);
       if (history.length > 0) {
-        lastMessage = history[history.length - 1];
+        lastMessage = history[history.length - 1]!;
       } else {
         lastMessage = {
           taskId,
@@ -394,8 +395,9 @@ export class TaskPipeline {
         try {
           const artifacts = await this.artifactStore.listArtifacts(taskId);
           if (artifacts.length > 0) {
+            const firstArtifact = artifacts[0]!;
             let maxVer = -1;
-            let bestArt = artifacts[0];
+            let bestArt = firstArtifact;
             for (const art of artifacts) {
               if (art.latestVersion > maxVer) {
                 maxVer = art.latestVersion;
@@ -677,7 +679,7 @@ export class TaskPipeline {
           }
         }
 
-        const result = await this.participants.reviewer.runner.run({
+        const reviewerInput: ReviewerRunInput = {
           task: taskCtx,
           agent: this.participants.reviewer.agent,
           apiKey: input.apiKey,
@@ -685,9 +687,11 @@ export class TaskPipeline {
           artifactRef: ctx.currentArtifact,
           fixerAgentId: this.participants.fixer.agent.id,
           bossAgentId: this.participants.boss.agent.id,
-          changedFileNames,
-          consentDecision: input.consentDecision,
-        });
+          ...(changedFileNames !== undefined ? { changedFileNames } : {}),
+          ...(input.consentDecision !== undefined ? { consentDecision: input.consentDecision } : {}),
+        };
+
+        const result = await this.participants.reviewer.runner.run(reviewerInput);
 
         if (result.verdict.kind === "defectsFound") {
           // `defects_found` from `reviewing` either advances to
@@ -1190,8 +1194,16 @@ export async function resumeTask(
   );
   const prompt = (handoff?.payload as any)?.text ?? "";
 
-  const apiKey = options.apiKey ?? { providerId: "stub", secretId: "stub" };
-  const defaultModel = options.defaultModel ?? { providerId: "stub", modelId: "stub" };
+  const apiKey: SecretRef = options.apiKey ?? {
+    provider: "stub",
+    scope: { kind: "local", deviceId: "stub" },
+    expiresAt: new Date(0).toISOString(),
+  };
+  const defaultModel: ModelRef = options.defaultModel ?? {
+    provider: "stub",
+    modelId: "stub",
+    source: "user-api-key",
+  };
 
   if (decision.kind === "cancel") {
     // Transition using user_cancelled to stopped_limit

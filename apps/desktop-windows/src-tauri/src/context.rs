@@ -618,7 +618,25 @@ fn is_static_website_creation_prompt(prompt: &str) -> bool {
         || lower.contains("способност")
         || lower.contains("персонаж")
         || lower.contains("карточ");
-    asks_for_site && asks_to_create && has_page_shape
+    let explicit_website_files = lower.contains("index.html")
+        || lower.contains("styles.css")
+        || lower.contains("script.js")
+        || lower.contains("readme.md");
+    let unicode_site_signals = lower.contains("сайт")
+        || lower.contains("лендинг")
+        || lower.contains("страниц");
+    let unicode_create_signals = lower.contains("созда")
+        || lower.contains("сдела")
+        || lower.contains("постро")
+        || lower.contains("сгенер")
+        || lower.contains("реализ");
+    let unicode_page_shape = lower.contains("способност")
+        || lower.contains("персонаж")
+        || lower.contains("энерг")
+        || lower.contains("карточ");
+    (asks_for_site || explicit_website_files || unicode_site_signals)
+        && (asks_to_create || unicode_create_signals)
+        && (has_page_shape || explicit_website_files || unicode_page_shape)
 }
 
 fn is_ui_work_prompt(prompt: &str) -> bool {
@@ -792,10 +810,7 @@ pub fn shell_build_task_context(
         .iter()
         .filter(|e| e.score > -50.0)
         .filter(|e| {
-            if is_static_website_creation
-                && explicit_paths.is_empty()
-                && is_low_signal_static_site_context(&e.relative_path)
-            {
+            if is_static_website_creation && is_low_signal_static_site_context(&e.relative_path) {
                 return false;
             }
             if is_ui_work_query
@@ -1181,6 +1196,25 @@ mod tests {
             !selected.contains(&"src/random-notes.txt"),
             "random txt files should not become static website context: {:?}",
             selected
+        );
+
+        let explicit_pkg = shell_build_task_context(
+            root.to_string_lossy().to_string(),
+            "Создай файлы сайта. Это file-changing задача, используй Agent Mode и staged artifacts. Создай: src/karo-demo-site/index.html, src/karo-demo-site/styles.css, src/karo-demo-site/script.js, src/karo-demo-site/README.md. Сайт: modern landing page для Minecraft JJK mod. Нужны validation, Apply Changes, provider timeout recovery и fallback только как emergency.".to_string(),
+            Some(BuildTaskContextOptions {
+                max_files: Some(8),
+                max_total_chars: Some(20000),
+                include_content: Some(true),
+                include_file_tree: Some(true),
+                selected_files: None,
+                current_file: None,
+            }),
+        ).unwrap();
+        let explicit_selected = explicit_pkg.selected_files.iter().map(|f| f.relative_path.as_str()).collect::<Vec<_>>();
+        assert!(
+            !explicit_selected.contains(&"src/karo-test-output.txt"),
+            "explicit website creation prompt should not select old test output: {:?}",
+            explicit_selected
         );
     }
 

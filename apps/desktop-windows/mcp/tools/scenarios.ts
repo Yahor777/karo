@@ -87,6 +87,7 @@ export const ALL_SCENARIOS: ReadonlyArray<readonly [string, ScenarioFn]> = [
   ["dangerous_command", runScenarioDangerousCommand],
   ["timeline_order", runScenarioTimelineOrder],
   ["agent_route_guardrails", runScenarioAgentRouteGuardrails],
+  ["website_creation_not_security_review", runScenarioWebsiteCreationNotSecurityReview],
   ["one_prompt_website_creation_preview", runScenarioOnePromptWebsiteCreationPreview],
   ["model_switching", runScenarioModelSwitching],
   ["right_panel_tabs", runScenarioRightPanelTabs],
@@ -743,6 +744,53 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
       },
     );
     bag.screenshots.push((await karoScreenshot(ctx, { name: "one-prompt-website-creation-preview" })).path);
+  });
+}
+
+export async function runScenarioWebsiteCreationNotSecurityReview(ctx: KaroAutomationContext): Promise<ScenarioResult> {
+  return runScenario(ctx, "website_creation_not_security_review", async (bag) => {
+    await ctx.openApp();
+    await resetToNewChat(ctx);
+    await karoClick(ctx, { testId: TEST_IDS.composerModeAgent });
+    const prompt =
+      'Create file src/karo-demo-site/index.html with text <!doctype html><html><body><main><section class="hero">Minecraft JJK Mod</section><section class="abilities">Abilities</section><section class="characters">Characters and energy</section><section class="features">Features</section><section class="faq">FAQ</section></main></body></html> This is a file-changing website task. Use Agent Mode and staged artifacts. Mention validation, Apply Changes, provider timeout recovery, and emergency fallback only.';
+    await sendLocalMessage(ctx, prompt);
+    await waitShort(ctx);
+    bag.assertions.push(
+      await assertVisible(ctx, { selector: ".kw-modal", name: "website-routing-confirmation-modal-visible" }),
+      await assertNotVisible(ctx, { testId: TEST_IDS.securityReviewResult, name: "website-routing-no-security-before-confirmation" }),
+    );
+    await ctx.page.locator(".kw-modal-confirm").click();
+    await ctx.page.waitForSelector(byTestId(TEST_IDS.agentCard), { timeout: 10_000 });
+    await waitShort(ctx);
+    const threadText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
+    const diagnostics = await ctx.page.evaluate(() => ({
+      mode: localStorage.getItem("karo.diagnostics.lastDecisionMode"),
+      intent: localStorage.getItem("karo.diagnostics.lastDecisionIntent"),
+      allowFileChanges: localStorage.getItem("karo.diagnostics.lastDecisionAllowFileChanges"),
+    }));
+    bag.assertions.push(
+      {
+        name: "website-routing-agent-mode",
+        passed: diagnostics.mode === "agent" && diagnostics.allowFileChanges === "true",
+        details: JSON.stringify(diagnostics),
+      },
+      {
+        name: "website-routing-not-security-review",
+        passed: diagnostics.intent !== "security_review" && !/Security Review Result/i.test(threadText ?? ""),
+        details: `diagnostics=${JSON.stringify(diagnostics)} text=${threadText ?? ""}`,
+      },
+      await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "website-routing-staged-artifact-apply-visible" }),
+    );
+    await karoClick(ctx, { testId: TEST_IDS.rightTabChanges });
+    await waitShort(ctx);
+    const changesText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
+    bag.assertions.push({
+      name: "website-routing-staged-index-artifact-visible",
+      passed: /src\/karo-demo-site\/index\.html/i.test(changesText ?? ""),
+      details: changesText ?? "",
+    });
+    bag.screenshots.push((await karoScreenshot(ctx, { name: "website-creation-not-security-review" })).path);
   });
 }
 

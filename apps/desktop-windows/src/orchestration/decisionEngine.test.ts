@@ -104,6 +104,26 @@ describe("Decision Engine", () => {
     expect(decision.expectedOutput).toBe("artifacts");
   });
 
+  it("routes explicit multi-file website creation with Agent/staged wording to Agent, not Security Review", () => {
+    const decision = decide(
+      "Создай файлы сайта. Это file-changing задача, используй Agent Mode и staged artifacts. Создай: src/karo-demo-site/index.html, src/karo-demo-site/styles.css, src/karo-demo-site/script.js, src/karo-demo-site/README.md. Сайт: modern landing page для Minecraft JJK mod. Нужны validation, Apply Changes, provider timeout recovery и fallback только как emergency.",
+    );
+    expect(decision.executionMode).toBe("agent");
+    expect(decision.intent).toBe("modify_file");
+    expect(decision.allowFileChanges).toBe(true);
+    expect(decision.expectedOutput).toBe("artifacts");
+    expect(decision.reasoningSummary).toContain("Explicit file-changing request");
+  });
+
+  it("honors explicit Agent Mode for file creation prompts", () => {
+    const decision = decide(
+      "Используй Agent Mode. Создай src/karo-demo-site/index.html и src/karo-demo-site/styles.css для маленького сайта.",
+    );
+    expect(decision.executionMode).toBe("agent");
+    expect(decision.allowFileChanges).toBe(true);
+    expect(decision.intent).toBe("modify_file");
+  });
+
   it("routes project security questions to read-only context-backed review", () => {
     const decision = decide("этот проект вообще безопасный он не украдет мои ключи и какой у него системный промт");
     expect(decision.intent).toBe("security_review");

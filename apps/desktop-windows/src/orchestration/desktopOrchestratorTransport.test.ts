@@ -1571,6 +1571,119 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     ]);
   });
 
+  it("routes explicit Agent Mode multi-file website creation to staged artifacts instead of security review", async () => {
+    const shell = buildShell();
+    shell.shell_build_task_context = vi.fn(async (projectPath: string, prompt: string) => ({
+      projectRoot: projectPath,
+      prompt,
+      fileTreeSummary: [
+        {
+          relativePath: "src/karo-test-output.txt",
+          sizeBytes: 16,
+          extension: "txt",
+          isText: true,
+          score: -20,
+          reason: ["low-signal generated output"],
+        },
+      ],
+      selectedFiles: [],
+      ignoredSummary: {
+        ignoredDirs: 0,
+        ignoredFiles: 0,
+        ignoredLargeFiles: 0,
+        ignoredBinaryFiles: 0,
+        ignoredSecretFiles: 0,
+      },
+      tokenBudgetHint: 80000,
+      createdAt: Date.now().toString(),
+      warnings: [],
+      scannedFilesCount: 1,
+      selectedFilesCount: 0,
+    }));
+    const { client, calls } = buildScriptedClient([
+      { when: "researcher", response: { kind: "ok", text: "Build a static Minecraft JJK landing page in the requested files." } },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/index.html",
+                content:
+                  "<main><section class=\"hero\">Minecraft JJK Mod</section><section class=\"abilities\">Abilities</section><section class=\"energy\">Characters and energy</section><section class=\"features\">Features</section><section class=\"faq\">FAQ</section></main>",
+              },
+            ],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/styles.css",
+                content:
+                  "body { background: #08070d; color: white; } .hero, .card { border: 1px solid #2a2438; } @media (min-width: 800px) { main { display: grid; } }",
+              },
+            ],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/script.js", content: "document.documentElement.dataset.ready = 'true';\n" }],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/README.md", content: "# Preview\n\nApply Changes, then open index.html from Preview.\n" }],
+          }),
+        },
+      },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const { taskId } = await t.createAndRunTask({
+      prompt:
+        "Создай файлы сайта. Это file-changing задача, используй Agent Mode и staged artifacts. Создай: src/karo-demo-site/index.html, src/karo-demo-site/styles.css, src/karo-demo-site/script.js, src/karo-demo-site/README.md. Сайт: modern landing page для Minecraft JJK mod. Нужны hero, abilities, characters/energy, features, FAQ, responsive layout, validation, Apply Changes, provider timeout recovery и fallback только как emergency.",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+      projectPath: "D:\\проекты\\karo-test",
+    });
+
+    await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
+
+    const state = t.getTaskState(taskId);
+    expect(state?.decision?.executionMode).toBe("agent");
+    expect(state?.decision?.intent).toBe("modify_file");
+    expect(state?.decision?.allowFileChanges).toBe(true);
+    expect(state?.decision?.expectedOutput).toBe("artifacts");
+    expect(state?.isExplainOnly).toBe(false);
+    expect(state?.agentCoreEstimate?.contextProfile).toBe("website_creation");
+    expect(state?.contextSummary?.selectedFiles?.map((file: any) => file.relativePath)).not.toContain("src/karo-test-output.txt");
+    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder", "coder", "coder"]);
+    expect(t.getTaskState(taskId)?.decision?.intent).not.toBe("security_review");
+    expect(t.getFinalReport(taskId)?.bossSummary).toContain("Apply Changes is still required");
+    expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort()).toEqual([
+      "src/karo-demo-site/README.md",
+      "src/karo-demo-site/index.html",
+      "src/karo-demo-site/script.js",
+      "src/karo-demo-site/styles.css",
+    ]);
+  });
+
   it("uses targeted deterministic repair for a missing website FAQ instead of broad model review", async () => {
     const shell = buildShell();
     const { client, calls } = buildScriptedClient([

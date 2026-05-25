@@ -56,6 +56,47 @@ function isLikelyShellCommand(prompt: string): boolean {
   return /^(git|cargo|pnpm|npm|yarn|node|python|powershell|pwsh|cmd|dir|ls|rg|grep)\b/i.test(prompt.trim());
 }
 
+function hasExplicitFilePath(prompt: string): boolean {
+  return /(?:^|[\s,;:])(?:[A-Za-z0-9_.-]+[\\/])+[A-Za-z0-9_.-]+\.(?:html|htm|css|js|mjs|ts|tsx|jsx|json|md|txt|rs|toml|yml|yaml|scss|svg)\b/iu.test(prompt) ||
+    /\b(?:index\.html|styles\.css|script\.js|readme\.md|package\.json)\b/iu.test(prompt);
+}
+
+function hasExplicitAgentModeRequest(prompt: string): boolean {
+  return /\b(?:agent\s*mode|use\s+agent|use\s+agent\s+mode)\b/iu.test(prompt) ||
+    /\u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\s+agent|\u0440\u0435\u0436\u0438\u043c\s+agent|agent\s+\u0440\u0435\u0436\u0438\u043c/iu.test(prompt);
+}
+
+function hasWebsiteCreationSignal(prompt: string): boolean {
+  const siteSignal =
+    /\b(?:landing|landing page|website|site|web app|homepage)\b/iu.test(prompt) ||
+    /\u0441\u0430\u0439\u0442|\u043b\u0435\u043d\u0434\u0438\u043d\u0433|\u0441\u0442\u0440\u0430\u043d\u0438\u0446/iu.test(prompt) ||
+    /\b(?:index\.html|styles\.css|script\.js|readme\.md)\b/iu.test(prompt);
+  const createSignal =
+    /\b(?:create|build|make|generate|implement|write|modify|add)\b/iu.test(prompt) ||
+    /\u0441\u043e\u0437\u0434\u0430|\u0441\u0434\u0435\u043b\u0430|\u043f\u043e\u0441\u0442\u0440\u043e|\u0441\u0433\u0435\u043d\u0435\u0440|\u0440\u0435\u0430\u043b\u0438\u0437|\u0434\u043e\u0431\u0430\u0432/iu.test(prompt);
+  return siteSignal && createSignal;
+}
+
+function hasExplicitFileChangingIntent(prompt: string, fileIntent: boolean): boolean {
+  const text = prompt.toLowerCase();
+  if (!fileIntent && !hasExplicitAgentModeRequest(text)) return false;
+  return (
+    hasExplicitFilePath(text) ||
+    hasExplicitAgentModeRequest(text) ||
+    hasWebsiteCreationSignal(text) ||
+    /\bfile-changing\b|\bstaged artifacts?\b|\bapply changes\b/iu.test(text) ||
+    /\u0441\u043e\u0437\u0434\u0430\u0439\s+\u0444\u0430\u0439\u043b|\u0441\u043e\u0437\u0434\u0430\u0439\s+\u0444\u0430\u0439\u043b\u044b|\u0441\u043e\u0437\u0434\u0430\u0439\s+\u0441\u0430\u0439\u0442/iu.test(text)
+  );
+}
+
+function isActualSecurityReviewPrompt(prompt: string, securityIntent: boolean, explicitFileChangingIntent: boolean): boolean {
+  if (!securityIntent || explicitFileChangingIntent) return false;
+  return (
+    /\b(?:security|security review|security audit|audit|vulnerability|vulnerabilities|steal|leak|leaks|secret|secrets|api keys?|tokens?|system prompt|credential|credentials|safe|unsafe)\b/iu.test(prompt) ||
+    /\u043f\u0440\u043e\u0432\u0435\u0440\w*.*\u0431\u0435\u0437\u043e\u043f\u0430\u0441|\u0431\u0435\u0437\u043e\u043f\u0430\u0441|\u0430\u0443\u0434\u0438\u0442|\u0443\u043a\u0440\u0430\w*|\u043a\u043b\u044e\u0447|\u0441\u0435\u043a\u0440\u0435\u0442|\u0442\u043e\u043a\u0435\u043d/iu.test(prompt)
+  );
+}
+
 export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision {
   const p = input.prompt.toLowerCase().trim();
   const hasActiveProject = input.hasActiveProject;
@@ -185,6 +226,8 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
     "audit",
   ];
   const securityIntent = containsAny(p, securityKeywords);
+  const explicitFileChangingIntent = hasExplicitFileChangingIntent(input.prompt, fileIntent);
+  const securityReviewIntent = isActualSecurityReviewPrompt(input.prompt, securityIntent, explicitFileChangingIntent);
 
   const casualChatKeywords = [
     "\u043f\u0440\u0438\u0432\u0435\u0442",
@@ -278,7 +321,7 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
 
   const planningIntent = /(plan|planning|architecture|architect|roadmap|design|implementation strategy|test plan|risk analysis|план|спланир|архитектур|продумай|спроектир|разбей на этап|как лучше реализовать|переделки ui)/iu.test(p)
     || /\u043f\u043b\u0430\u043d|\u0441\u043f\u043b\u0430\u043d\u0438\u0440|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442\u0443\u0440|\u0441\u043f\u0440\u043e\u0435\u043a\u0442\u0438\u0440|\u0440\u0430\u0437\u0431\u0435\u0439\s+\u043d\u0430\s+\u044d\u0442\u0430\u043f|\u043a\u0430\u043a\s+\u043b\u0443\u0447\u0448\u0435\s+\u0440\u0435\u0430\u043b\u0438\u0437/iu.test(p);
-  if (input.selectedMode === "plan" || (input.selectedMode === "auto" && planningIntent)) {
+  if (input.selectedMode === "plan" || (input.selectedMode === "auto" && planningIntent && !explicitFileChangingIntent)) {
     intent = localProjectQuery || hasActiveProject ? "analyze_project" : "explain_general";
     executionMode = "plan";
     confidence = 0.86;
@@ -333,7 +376,7 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
     };
   }
 
-  if (securityIntent && hasActiveProject) {
+  if (securityReviewIntent && hasActiveProject) {
     intent = "security_review";
     executionMode = input.selectedMode === "auto" ? "assist" : input.selectedMode;
     confidence = 0.9;
@@ -366,14 +409,16 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
     allowCommands = false;
     requiresContextEngine = false;
     reasoningSummary = "Пользователь уточнил, что хочет обычный разговор без изменения файлов.";
-  } else if (fileIntent) {
+  } else if (fileIntent || explicitFileChangingIntent) {
     intent = p.includes("баг") || p.includes("bug") || p.includes("ошибк") ? "fix_bug" : "modify_file";
     allowFileChanges = true;
     requiresContextEngine = localProjectQuery || hasActiveProject;
     executionMode = input.selectedMode === "auto" ? "agent" : input.selectedMode;
     expectedOutput = "artifacts";
     riskLevel = "medium";
-    reasoningSummary = "Запрошено изменение файлов локального проекта.";
+    reasoningSummary = explicitFileChangingIntent
+      ? "Explicit file-changing request with target files or Agent Mode. Route to staged artifacts; read-only/security analysis must not override it."
+      : "Запрошено изменение файлов локального проекта.";
     if (requiresContextEngine && !input.projectRoot && input.selectedMode === "auto" && !isTest) {
       needsClarification = true;
       executionMode = "clarify";

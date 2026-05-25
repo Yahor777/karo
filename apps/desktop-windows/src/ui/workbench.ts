@@ -31,7 +31,12 @@ import type {
   Session,
 } from "@ai-agent-orchestrator/shared-core";
 
-import type { DesktopShell, TerminalProfile } from "../shell/types.js";
+import type {
+  BuildTaskContextOptions,
+  DesktopShell,
+  TaskContextPackage,
+  TerminalProfile,
+} from "../shell/types.js";
 import type {
   ArtifactVersion,
   ArtifactMetadata,
@@ -157,6 +162,7 @@ const WEB_PAGE_TEXT_PREVIEW_CHARS = 6_000;
 type ComposerMode = "auto" | "chat" | "plan" | "agent";
 type IntentKind = "casual_message" | "question" | "assist_request" | "coding_task" | "unclear_task";
 type ResolvedWorkMode = "chat" | "plan" | "assist" | "agent";
+type ReadOnlyContextProfile = "project_explain" | "apply_changes_explain" | "security_review" | "ui_work";
 
 interface ChatMessageView {
   readonly id: string;
@@ -170,6 +176,34 @@ interface ChatMessageView {
   readonly intent?: IntentKind;
   readonly pending?: boolean;
   readonly error?: boolean;
+  readonly chatContext?: ChatReadOnlyContextView;
+}
+
+interface ChatReadOnlyContextView {
+  readonly profile: ReadOnlyContextProfile;
+  readonly selectedFilesCount: number;
+  readonly scannedFilesCount: number;
+  readonly selectedFiles: readonly string[];
+  readonly warnings: readonly string[];
+}
+
+interface ChatReadOnlyContext extends ChatReadOnlyContextView {
+  readonly modelContext: string;
+}
+
+interface StructuredPlanView {
+  readonly goal: string;
+  readonly assumptions: readonly string[];
+  readonly fileAreas: readonly string[];
+  readonly implementationSteps: readonly string[];
+  readonly risks: readonly string[];
+  readonly tests: readonly string[];
+  readonly estimatedComplexity: string;
+  readonly expectedBudget: string;
+  readonly suggestedExecutionMode: string;
+  readonly acceptanceCriteria: readonly string[];
+  readonly whatNotToDoYet: readonly string[];
+  readonly repairedFromText: boolean;
 }
 
 interface RunView {
@@ -1589,6 +1623,9 @@ export function mountWorkspaceShell(
       } else {
         body.append(renderMarkdownBlock(doc, message.text));
       }
+      if (message.chatContext !== undefined) {
+        body.append(buildChatReadOnlyContextSummary(doc, message.chatContext));
+      }
       if (looksSilentlyTruncated(message.text)) {
         const notice = doc.createElement("div");
         notice.className = "kw-truncation-notice";
@@ -1614,6 +1651,33 @@ export function mountWorkspaceShell(
     }
     wrap.append(author, body);
     return wrap;
+  }
+
+  function buildChatReadOnlyContextSummary(doc: Document, context: ChatReadOnlyContextView): HTMLElement {
+    const details = doc.createElement("details");
+    details.className = "kw-chat-readonly-context";
+    details.dataset["testid"] = "chat-readonly-context";
+    const summary = doc.createElement("summary");
+    summary.textContent = `Read-only context · ${String(context.selectedFilesCount)} files · ${context.profile}`;
+    details.append(summary);
+    if (context.selectedFiles.length > 0) {
+      const list = doc.createElement("ul");
+      list.className = "kw-context-file-list";
+      for (const file of context.selectedFiles.slice(0, 8)) {
+        const item = doc.createElement("li");
+        item.className = "kw-context-file-item";
+        item.textContent = file;
+        list.append(item);
+      }
+      details.append(list);
+    }
+    if (context.warnings.length > 0) {
+      const warn = doc.createElement("p");
+      warn.className = "kw-context-warning";
+      warn.textContent = context.warnings.join(" ");
+      details.append(warn);
+    }
+    return details;
   }
 
   function buildContextUsedBlock(doc: Document, summary: any): HTMLElement {
@@ -2034,7 +2098,13 @@ export function mountWorkspaceShell(
 
     // Calculate agent statuses for horizontal pipeline
     const events = transport.getTraceEvents(taskId);
-    const groups = groupTraceByAgent(events);
+    const artifactMap = buildArtifactFileNameMap(transport.getArtifacts(taskId));
+    const locale = detectActivityLocale(taskState.originalPrompt);
+    const includeRouteCard = !isQuickEdit && taskState.decision?.executionMode !== "chat";
+    const groups = withSyntheticActivityGroups(
+      groupTraceByAgent(events, { includeOrchestrator: includeRouteCard }),
+      taskState,
+    );
 
     function getAgentStatusInPipeline(
       agentId: BuiltinAgentRole,
@@ -2140,6 +2210,9 @@ export function mountWorkspaceShell(
       err.className = "kw-chat-error";
       err.textContent = taskState.errorReason;
       wrap.append(err);
+    }
+    if (taskState.recoveryState !== undefined) {
+      wrap.append(buildInlineRecoverySummary(doc, taskState, locale));
     }
 
     if (taskState.status === "waiting_consent") {
@@ -2483,14 +2556,20 @@ export function mountWorkspaceShell(
       const list = doc.createElement("ol");
       list.className = "kw-agent-timeline";
       for (const group of groups) {
-        list.append(buildAgentGroupCard(doc, group));
+        list.append(buildAgentGroupCard(doc, group, artifactMap, taskState, locale));
       }
       wrap.append(list);
     }
     return wrap;
   }
 
-  function buildAgentGroupCard(doc: Document, group: AgentGroup): HTMLElement {
+  function buildAgentGroupCard(
+    doc: Document,
+    group: AgentGroup,
+    artifactMap: ReadonlyMap<string, string>,
+    taskState: TaskStateSnapshot,
+    locale: ActivityLocale,
+  ): HTMLElement {
     const li = doc.createElement("li");
     li.className = "kw-agent-step kw-agent-card";
     li.dataset["testid"] = "agent-card";
@@ -2508,25 +2587,55 @@ export function mountWorkspaceShell(
     name.textContent = readableAgentName(group.agentId);
     const role = doc.createElement("span");
     role.className = "kw-agent-step-role";
-    role.textContent = agentRoleLine(group.agentId);
+    role.textContent = agentRoleLine(group.agentId, locale);
     titleWrap.append(name, role);
     const stat = doc.createElement("span");
     stat.className = "kw-agent-step-status";
     stat.dataset["status"] = group.status;
-    stat.textContent = describeAgentStatus(group.status);
+    stat.textContent = describeAgentStatus(group.status, locale);
     head.append(avatar, titleWrap, stat);
     li.append(head);
 
     const starter = doc.createElement("p");
     starter.className = "kw-agent-step-starter";
-    starter.textContent = agentStartPhrase(group.agentId);
+    starter.textContent = agentStartPhrase(group.agentId, locale);
     li.append(starter);
 
-    if (group.summary.length > 0) {
+    const publicSummary = publicActivitySummary(group, artifactMap, taskState, locale);
+    if (publicSummary.length > 0) {
       const summary = doc.createElement("p");
       summary.className = "kw-agent-step-summary";
-      summary.textContent = truncateLongThought(group.summary);
+      summary.textContent = publicSummary;
       li.append(summary);
+    }
+
+    const fileNames = groupFileNames(group, artifactMap);
+    if (fileNames.length > 0) {
+      const chips = doc.createElement("div");
+      chips.className = "kw-agent-file-chips";
+      chips.setAttribute("aria-label", "Files touched by this activity");
+      for (const fileName of fileNames.slice(0, 6)) {
+        const chip = doc.createElement("span");
+        chip.className = "kw-agent-file-chip";
+        chip.title = fileName;
+        chip.textContent = fileName;
+        chips.append(chip);
+      }
+      if (fileNames.length > 6) {
+        const more = doc.createElement("span");
+        more.className = "kw-agent-file-chip";
+        more.textContent = `+${String(fileNames.length - 6)} more`;
+        chips.append(more);
+      }
+      li.append(chips);
+    }
+
+    const elapsed = formatAgentElapsed(group);
+    if (elapsed !== null) {
+      const meta = doc.createElement("p");
+      meta.className = "kw-agent-step-meta";
+      meta.textContent = elapsed;
+      li.append(meta);
     }
 
     if (group.events.length > 0) {
@@ -2542,13 +2651,47 @@ export function mountWorkspaceShell(
         const item = doc.createElement("li");
         item.className = "kw-agent-step-event";
         item.dataset["kind"] = ev.record.kind;
-        item.textContent = formatTraceEvent(ev);
+        item.textContent = formatTraceEvent(ev, artifactMap, locale);
         list.append(item);
       }
       detailsWrap.append(list);
       li.append(detailsWrap);
     }
     return li;
+  }
+
+  function buildInlineRecoverySummary(
+    doc: Document,
+    taskState: TaskStateSnapshot,
+    locale: ActivityLocale,
+  ): HTMLElement {
+    const recovery = taskState.recoveryState!;
+    const wrap = doc.createElement("section");
+    wrap.className = "kw-agent-recovery-summary";
+    wrap.dataset["testid"] = "agent-recovery-summary";
+    const title = doc.createElement("h4");
+    title.textContent = locale === "ru" ? "\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e" : "Recovery available";
+    const body = doc.createElement("p");
+    const failed = recovery.failedFile ?? recovery.failedStage;
+    const preserved = recovery.partialArtifacts.length;
+    body.textContent =
+      locale === "ru"
+        ? `\u0421\u0431\u043e\u0439: ${failed}. \u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e staged \u0444\u0430\u0439\u043b\u043e\u0432: ${String(preserved)}. \u0421\u0442\u0430\u0442\u0443\u0441 \u043d\u0435 completed, fallback \u043d\u0435 \u0441\u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044f \u0443\u0441\u043f\u0435\u0445\u043e\u043c.`
+        : `Failed: ${failed}. Preserved staged files: ${String(preserved)}. This is not completed, and fallback is not success.`;
+    wrap.append(title, body);
+    if (recovery.partialArtifacts.length > 0) {
+      const chips = doc.createElement("div");
+      chips.className = "kw-agent-file-chips";
+      for (const artifact of recovery.partialArtifacts) {
+        const chip = doc.createElement("span");
+        chip.className = "kw-agent-file-chip";
+        chip.title = artifact.fileName;
+        chip.textContent = artifact.fileName;
+        chips.append(chip);
+      }
+      wrap.append(chips);
+    }
+    return wrap;
   }
 
   function buildFinalReportMessage(
@@ -2641,7 +2784,13 @@ export function mountWorkspaceShell(
     }
 
     if (isExplainOnly && report.status === "error") {
-      wrap.append(buildReadOnlyFailureRecovery(doc, report, taskState, () => setRightTab("usage")));
+      wrap.append(
+        buildReadOnlyFailureRecovery(doc, report, taskState, {
+          openUsage: () => setRightTab("usage"),
+          retryFailedStage: () => options.transport!.resumeTask(report.taskId, { kind: "retryFailedStage" }),
+          retryReducedContext: () => options.transport!.resumeTask(report.taskId, { kind: "retryReducedContext" }),
+        }),
+      );
     }
 
     if (!isExplainOnly && report.status === "error" && isCoderTimeoutReport(report, taskState)) {
@@ -2650,6 +2799,9 @@ export function mountWorkspaceShell(
           openChanges,
           openLogs: () => setRightTab("logs"),
           openModels: () => navigate("models"),
+          retryFailedStage: () => options.transport!.resumeTask(report.taskId, { kind: "retryFailedStage" }),
+          retryReducedContext: () => options.transport!.resumeTask(report.taskId, { kind: "retryReducedContext" }),
+          continuePartial: () => options.transport!.resumeTask(report.taskId, { kind: "continuePartial" }),
         }),
       );
     }
@@ -3162,6 +3314,23 @@ export function mountWorkspaceShell(
       ].join("\n");
     }
 
+    function buildChatModeFileChangeRefusal(promptText: string): string {
+      const trimmed = compactUiText(promptText, 180);
+      return [
+        "Chat Mode is read-only, so I did not create, modify, stage, or apply any files.",
+        "",
+        `Request that needs file changes: ${trimmed}`,
+        "",
+        "Use Agent Mode or Auto Mode for file changes. Karo will prepare staged artifacts first, and Apply Changes is still required before anything is written to disk.",
+      ].join("\n");
+    }
+
+    function isExplicitFileChangePrompt(promptText: string): boolean {
+      const text = promptText.toLowerCase();
+      return /\b(create|write|modify|change|edit|fix|delete|remove|add|implement|refactor|generate)\b/iu.test(text) ||
+        /\u0441\u043e\u0437\u0434\u0430\u0439|\u0437\u0430\u043f\u0438\u0448\u0438|\u0438\u0437\u043c\u0435\u043d\u0438|\u0438\u0441\u043f\u0440\u0430\u0432\u044c|\u0434\u043e\u0431\u0430\u0432\u044c|\u0443\u0434\u0430\u043b\u0438|\u0440\u0435\u0430\u043b\u0438\u0437\u0443\u0439|\u043d\u0430\u043f\u0438\u0448\u0438/iu.test(text);
+    }
+
     async function handleComposerSubmit(): Promise<void> {
       if (textarea.value.trim().length === 0) {
         status.textContent = "Prompt cannot be empty.";
@@ -3205,6 +3374,22 @@ export function mountWorkspaceShell(
         textarea.value = "";
         status.textContent = "Safety system blocked automatic command execution.";
         status.dataset["state"] = "warn";
+        renderRoute();
+        return;
+      }
+      if (mode === "chat" && isExplicitFileChangePrompt(promptText)) {
+        appendChatMessage({ role: "user", text: promptText, intent, kind: "chat" });
+        appendChatMessage({
+          role: "assistant",
+          text: buildChatModeFileChangeRefusal(promptText),
+          mode: "chat",
+          badgeMode: "chat",
+          intent,
+          kind: "chat",
+        });
+        textarea.value = "";
+        status.textContent = "Chat Mode is read-only. No file changes were staged.";
+        status.dataset["state"] = "info";
         renderRoute();
         return;
       }
@@ -3295,6 +3480,7 @@ export function mountWorkspaceShell(
             : `Chat model call failed: ${answer.error}. Проверь модель/API key.`,
           pending: false,
           error: !answer.ok,
+          ...(answer.ok && answer.context !== undefined ? { chatContext: answer.context } : {}),
         });
         status.textContent = answer.ok ? "Answered in Chat Mode." : "Chat model call failed.";
         status.dataset["state"] = answer.ok ? "success" : "error";
@@ -3318,13 +3504,14 @@ export function mountWorkspaceShell(
         startBtn.disabled = true;
         status.textContent = "Calling planning model...";
         status.dataset["state"] = "info";
-        const answer = await runAssistMode(promptText, "plan");
+        const answer = await runPlanMode(promptText);
         updateChatMessage(assistantId, {
           text: answer.ok
-            ? formatPlanResult(answer.text)
-            : `Plan model call failed: ${answer.error}. Проверь модель/API key.`,
+            ? answer.text
+            : buildPlanFailureMessage(promptText, answer.error, answer.context),
           pending: false,
           error: !answer.ok,
+          ...(answer.context !== undefined ? { chatContext: answer.context } : {}),
         });
         status.textContent = answer.ok
           ? "Plan Mode completed without file changes."
@@ -3577,21 +3764,22 @@ export function mountWorkspaceShell(
   async function runChatMode(
     prompt: string,
     activeComposerMode?: ComposerMode,
-  ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; text: string; context?: ChatReadOnlyContext } | { ok: false; error: string }> {
     if (state.metadata.modelId === undefined || state.metadata.modelId.length === 0) {
       return { ok: false, error: "model_not_found: pick a model in the Models tab first" };
     }
     try {
-      const [apiKey, webContext] = await Promise.all([
+      const [apiKey, webContext, readOnlyContext] = await Promise.all([
         resolveApiKeyForUi(),
         buildWebContextForPrompt(prompt),
+        buildReadOnlyChatContext(prompt),
       ]);
       const request = chatModelClient.chat({
         provider: state.metadata.provider,
         modelId: state.metadata.modelId,
         ...(state.metadata.baseUrl !== undefined ? { baseUrl: state.metadata.baseUrl } : {}),
         apiKey,
-        messages: buildChatMessages(prompt, webContext, activeComposerMode),
+        messages: buildChatMessages(prompt, webContext, activeComposerMode, readOnlyContext),
         maxTokens: 4096,
         temperature: 0.4,
       });
@@ -3599,11 +3787,75 @@ export function mountWorkspaceShell(
         activeComposerMode === "plan"
           ? await withTimeout(request, PLAN_MODE_TIMEOUT_MS, "plan_timeout: Plan Mode did not finish in time. Try reducing context or switching model.")
           : await request;
-      if (response.kind === "ok") return { ok: true, text: stripModePreamble(response.text) };
+      if (response.kind === "ok") {
+        return {
+          ok: true,
+          text: stripModePreamble(response.text),
+          ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+        };
+      }
       pushLog("error", `chat model failed: ${response.providerCode}: ${response.providerMessage}`);
       return { ok: false, error: `${response.providerCode}: ${response.providerMessage}` };
     } catch (err) {
       return { ok: false, error: describeError(err) };
+    }
+  }
+
+  async function runPlanMode(
+    prompt: string,
+  ): Promise<{ ok: true; text: string; context?: ChatReadOnlyContext } | { ok: false; error: string; context?: ChatReadOnlyContext }> {
+    if (state.metadata.modelId === undefined || state.metadata.modelId.length === 0) {
+      return { ok: false, error: "model_not_found: pick a model in the Models tab first" };
+    }
+    let readOnlyContext: ChatReadOnlyContext | undefined;
+    try {
+      const [apiKey, webContext, planContext] = await Promise.all([
+        resolveApiKeyForUi(),
+        buildWebContextForPrompt(prompt),
+        buildReadOnlyPlanContext(prompt),
+      ]);
+      readOnlyContext = planContext;
+      const request = chatModelClient.chat({
+        provider: state.metadata.provider,
+        modelId: state.metadata.modelId,
+        ...(state.metadata.baseUrl !== undefined ? { baseUrl: state.metadata.baseUrl } : {}),
+        apiKey,
+        messages: buildPlanMessages(prompt, webContext, planContext),
+        maxTokens: 4096,
+        temperature: 0.25,
+      });
+      const response = await withTimeout(
+        request,
+        PLAN_MODE_TIMEOUT_MS,
+        "plan_timeout: Plan Mode did not finish in time. Try Retry Plan, reduced context, or a different model.",
+      );
+      if (response.kind !== "ok") {
+        pushLog("error", `plan model failed: ${response.providerCode}: ${response.providerMessage}`);
+        return {
+          ok: false,
+          error: `${response.providerCode}: ${response.providerMessage}`,
+          ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+        };
+      }
+      const structured = buildStructuredPlanView(prompt, response.text);
+      if (structured === null) {
+        return {
+          ok: false,
+          error: "plan_parse_failed: model output was not a usable structured plan after one local repair attempt",
+          ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+        };
+      }
+      return {
+        ok: true,
+        text: renderStructuredPlanResult(prompt, structured, readOnlyContext),
+        ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: describeError(err),
+        ...(readOnlyContext !== undefined ? { context: readOnlyContext } : {}),
+      };
     }
   }
 
@@ -3652,10 +3904,146 @@ export function mountWorkspaceShell(
     }
   }
 
+  async function buildReadOnlyChatContext(prompt: string): Promise<ChatReadOnlyContext | undefined> {
+    const profile = inferReadOnlyChatContextProfile(prompt);
+    if (profile === null || state.project === null) return undefined;
+    if (options.desktopShell.shell_build_task_context === undefined) return undefined;
+    try {
+      const pkg = await options.desktopShell.shell_build_task_context(
+        state.project.path,
+        prompt,
+        chatContextOptionsForProfile(profile),
+      );
+      state.lastContextBuildCalled = true;
+      state.lastContextProjectRoot = pkg.projectRoot;
+      state.lastContextNormalizedRoot = pkg.projectRoot;
+      state.lastContextFileCount = pkg.scannedFilesCount;
+      state.lastContextSelectedFiles = pkg.selectedFiles.map((file) => file.relativePath);
+      state.lastContextError = null;
+      state.lastContextWarnings = [...pkg.warnings];
+      return formatReadOnlyChatContext(profile, pkg);
+    } catch (err) {
+      state.lastContextBuildCalled = true;
+      state.lastContextError = describeError(err);
+      state.lastContextWarnings = [state.lastContextError];
+      pushLog("warn", `read-only chat context failed: ${state.lastContextError}`);
+      return undefined;
+    }
+  }
+
+  async function buildReadOnlyPlanContext(prompt: string): Promise<ChatReadOnlyContext | undefined> {
+    const profile = inferPlanContextProfile(prompt);
+    if (profile === null || state.project === null) return undefined;
+    if (options.desktopShell.shell_build_task_context === undefined) return undefined;
+    try {
+      const pkg = await options.desktopShell.shell_build_task_context(
+        state.project.path,
+        prompt,
+        planContextOptionsForProfile(profile),
+      );
+      state.lastContextBuildCalled = true;
+      state.lastContextProjectRoot = pkg.projectRoot;
+      state.lastContextNormalizedRoot = pkg.projectRoot;
+      state.lastContextFileCount = pkg.scannedFilesCount;
+      state.lastContextSelectedFiles = pkg.selectedFiles.map((file) => file.relativePath);
+      state.lastContextError = null;
+      state.lastContextWarnings = [...pkg.warnings];
+      return formatReadOnlyChatContext(profile, pkg);
+    } catch (err) {
+      state.lastContextBuildCalled = true;
+      state.lastContextError = describeError(err);
+      state.lastContextWarnings = [state.lastContextError];
+      pushLog("warn", `read-only plan context failed: ${state.lastContextError}`);
+      return undefined;
+    }
+  }
+
+  function inferReadOnlyChatContextProfile(
+    prompt: string,
+  ): ReadOnlyContextProfile | null {
+    const text = prompt.toLowerCase();
+    if (isSecurityLikeChatPrompt(text)) return "security_review";
+    if (isApplyChangesLikeChatPrompt(text)) return "apply_changes_explain";
+    if (isProjectAwareChatPrompt(text)) return "project_explain";
+    return null;
+  }
+
+  function inferPlanContextProfile(prompt: string): ReadOnlyContextProfile | null {
+    const text = prompt.toLowerCase();
+    if (isSecurityLikeChatPrompt(text)) return "security_review";
+    if (isApplyChangesLikeChatPrompt(text)) return "apply_changes_explain";
+    const uiSpecific =
+      /\b(karo|ui|ux|interface|workbench|agent activity|composer|sidebar|inspector|timeline|mcp|playwright)\b/iu.test(text) ||
+      /\u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441|\u0432\u043e\u0440\u043a\u0431\u0435\u043d\u0447|\u043a\u043e\u043c\u043f\u043e\u0437\u0435\u0440|\u0441\u0430\u0439\u0434\u0431\u0430\u0440|\u0442\u0430\u0439\u043c\u043b\u0430\u0439\u043d|\u0430\u0433\u0435\u043d\u0442/iu.test(text);
+    if (uiSpecific) return "ui_work";
+    if (isProjectAwareChatPrompt(text)) return "project_explain";
+    return null;
+  }
+
+  function isSecurityLikeChatPrompt(text: string): boolean {
+    return /\b(security|safe|secret|api key|credential|token|steal|stolen|leak|privacy)\b/iu.test(text) ||
+      /\u0431\u0435\u0437\u043e\u043f\u0430\u0441|\u0441\u0435\u043a\u0440\u0435\u0442|\u043a\u043b\u044e\u0447|\u0442\u043e\u043a\u0435\u043d|\u0443\u043a\u0440\u0430\u0434|\u0443\u0442\u0435\u0447/iu.test(text);
+  }
+
+  function isApplyChangesLikeChatPrompt(text: string): boolean {
+    return /\b(apply changes|apply|staging|staged|artifact|artifacts|nativebindings|desktoporchestratortransport|workbench)\b/iu.test(text) ||
+      /\u043f\u0440\u0438\u043c\u0435\u043d|\u0441\u0442\u0435\u0439\u0434\u0436|\u0430\u0440\u0442\u0435\u0444\u0430\u043a\u0442/iu.test(text);
+  }
+
+  function isProjectAwareChatPrompt(text: string): boolean {
+    return /\b(project|repo|repository|codebase|architecture|source|file|files|component|module|how does this work)\b/iu.test(text) ||
+      /\u043f\u0440\u043e\u0435\u043a\u0442|\u043a\u043e\u0434|\u0444\u0430\u0439\u043b|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442|\u043a\u043e\u043c\u043f\u043e\u043d\u0435\u043d\u0442/iu.test(text);
+  }
+
+  function chatContextOptionsForProfile(profile: ReadOnlyContextProfile): BuildTaskContextOptions {
+    if (profile === "security_review") {
+      return { maxFiles: 10, maxTotalChars: 70_000, includeContent: true, includeFileTree: true };
+    }
+    if (profile === "apply_changes_explain") {
+      return { maxFiles: 8, maxTotalChars: 50_000, includeContent: true, includeFileTree: true };
+    }
+    return { maxFiles: 8, maxTotalChars: 45_000, includeContent: true, includeFileTree: true };
+  }
+
+  function planContextOptionsForProfile(profile: ReadOnlyContextProfile): BuildTaskContextOptions {
+    if (profile === "ui_work") {
+      return { maxFiles: 8, maxTotalChars: 48_000, includeContent: true, includeFileTree: true };
+    }
+    return chatContextOptionsForProfile(profile);
+  }
+
+  function formatReadOnlyChatContext(
+    profile: ReadOnlyContextProfile,
+    pkg: TaskContextPackage,
+  ): ChatReadOnlyContext {
+    const selectedFiles = pkg.selectedFiles.map((file) => file.relativePath);
+    const fileBlocks = pkg.selectedFiles.map((file) =>
+      [
+        `### ${file.relativePath}`,
+        `Score: ${file.score.toFixed(1)}${file.truncated ? " (truncated)" : ""}`,
+        compactUiText(file.content, 2_400),
+      ].join("\n"),
+    );
+    return {
+      profile,
+      selectedFilesCount: pkg.selectedFilesCount,
+      scannedFilesCount: pkg.scannedFilesCount,
+      selectedFiles,
+      warnings: [...pkg.warnings],
+      modelContext: [
+        `Context profile: ${profile}`,
+        `Selected files: ${String(pkg.selectedFilesCount)} / scanned ${String(pkg.scannedFilesCount)}`,
+        ...fileBlocks,
+        pkg.warnings.length > 0 ? `Warnings: ${pkg.warnings.join("; ")}` : "",
+      ].filter((line) => line.length > 0).join("\n\n"),
+    };
+  }
+
   function buildChatMessages(
     prompt: string,
     webContext: string,
     activeComposerMode?: ComposerMode,
+    readOnlyContext?: ChatReadOnlyContext,
   ): readonly ChatMessage[] {
     let systemInstruction =
       "Ты KARO, AI Agent Orchestrator в desktop IDE-like приложении. Сейчас режим Chat Mode. " +
@@ -3700,7 +4088,46 @@ export function mountWorkspaceShell(
     return [
       { role: "system", content: systemInstruction },
       ...buildConversationHistoryMessages(prompt),
-      { role: "user", content: `User request:\n${prompt}\n\nWeb context:\n${webContext}` },
+      {
+        role: "user",
+        content:
+          `User request:\n${prompt}\n\n` +
+          `Web context:\n${webContext}\n\n` +
+          `Read-only project context:\n${readOnlyContext?.modelContext ?? "No project files were read for this chat response."}`,
+      },
+    ];
+  }
+
+  function buildPlanMessages(
+    prompt: string,
+    webContext: string,
+    readOnlyContext?: ChatReadOnlyContext,
+  ): readonly ChatMessage[] {
+    const language = isLikelyRussian(prompt) ? "Russian" : "the user's language";
+    let systemInstruction =
+      "You are KARO in Plan Mode. Plan Mode is read-only: never create artifacts, never modify files, never show Apply Changes as available, and never run the Agent file-changing pipeline. " +
+      "Use one structured planning call. Expose public planning stages only; do not reveal hidden chain-of-thought. " +
+      "If context is missing, state the assumption instead of inventing facts. " +
+      `Write visible user-facing content in ${language}. ` +
+      "Return a machine-readable JSON object only, with these keys: goal, assumptions, relevantFileAreas, implementationSteps, risks, tests, estimatedComplexity, expectedModelCallsContextBudget, suggestedExecutionMode, acceptanceCriteria, whatNotToDoYet. " +
+      "All list fields must be arrays of short strings. suggestedExecutionMode must be Chat, Plan, Agent, Quick Edit, or Safety.";
+    const customSystemPrompt = localStorage.getItem("karo.systemPrompt")?.trim();
+    if (customSystemPrompt !== undefined && customSystemPrompt.length > 0) {
+      systemInstruction += `\n\nUser custom system prompt override:\n${customSystemPrompt}`;
+    }
+    return [
+      { role: "system", content: systemInstruction },
+      ...buildConversationHistoryMessages(prompt),
+      {
+        role: "user",
+        content:
+          `User planning request:\n${prompt}\n\n` +
+          `Selected model: ${state.metadata.modelId ?? "not selected"}\n` +
+          `Project path: ${state.project?.path ?? "not selected"}\n\n` +
+          `Plan context profile: ${readOnlyContext?.profile ?? "none"}\n` +
+          `Read-only project context:\n${readOnlyContext?.modelContext ?? "No project files were read for this plan."}\n\n` +
+          `External capability note:\n${webContext}`,
+      },
     ];
   }
 
@@ -5478,8 +5905,13 @@ export function mountWorkspaceShell(
     doc: Document,
     report: FinalReportSummary,
     taskState: TaskStateSnapshot | null | undefined,
-    openUsage: () => void,
+    actionsIn: {
+      readonly openUsage: () => void;
+      readonly retryFailedStage: () => Promise<void>;
+      readonly retryReducedContext: () => Promise<void>;
+    },
   ): HTMLElement {
+    const recovery = taskState?.recoveryState;
     const card = doc.createElement("section");
     card.className = "kw-recovery-card";
     card.dataset["testid"] = "model-timeout-recovery";
@@ -5497,8 +5929,9 @@ export function mountWorkspaceShell(
     retry.type = "button";
     retry.className = "kw-button kw-button-secondary";
     retry.textContent = "Retry same model";
-    retry.disabled = true;
-    retry.title = "Retry wiring is planned; re-submit the prompt from the composer for now.";
+    retry.disabled = !(recovery?.canRetryFailedStage ?? false);
+    retry.title = retry.disabled ? "Retry is unavailable for this failure." : "Retry the same read-only stage.";
+    retry.addEventListener("click", () => void actionsIn.retryFailedStage());
 
     const switchModel = doc.createElement("button");
     switchModel.type = "button";
@@ -5510,14 +5943,17 @@ export function mountWorkspaceShell(
     reduce.type = "button";
     reduce.className = "kw-button kw-button-secondary";
     reduce.textContent = "Reduce context and retry";
-    reduce.disabled = true;
-    reduce.title = "Automatic context reduction is not wired yet.";
+    reduce.disabled = !(recovery?.canRetryReducedContext ?? false);
+    reduce.title = reduce.disabled
+      ? "Reduced-context retry is unavailable for this failure."
+      : "Retry the same read-only stage with reduced context.";
+    reduce.addEventListener("click", () => void actionsIn.retryReducedContext());
 
     const showFiles = doc.createElement("button");
     showFiles.type = "button";
     showFiles.className = "kw-button kw-button-secondary";
     showFiles.textContent = "Show selected files";
-    showFiles.addEventListener("click", openUsage);
+    showFiles.addEventListener("click", actionsIn.openUsage);
 
     const copy = doc.createElement("button");
     copy.type = "button";
@@ -5562,23 +5998,28 @@ export function mountWorkspaceShell(
       readonly openChanges: () => void;
       readonly openLogs: () => void;
       readonly openModels: () => void;
+      readonly retryFailedStage: () => Promise<void>;
+      readonly retryReducedContext: () => Promise<void>;
+      readonly continuePartial: () => Promise<void>;
     },
   ): HTMLElement {
     const latestCoderFailure = [...(taskState?.providerDiagnostics ?? [])]
       .reverse()
       .find((diagnostic) => diagnostic.agentId === "coder" && diagnostic.errorType !== undefined);
+    const recovery = taskState?.recoveryState;
     const card = doc.createElement("section");
     card.className = "kw-recovery-card";
     card.dataset["testid"] = "coder-timeout-recovery";
     const title = doc.createElement("h4");
-    title.textContent = "Coder timed out";
+    title.textContent = recovery?.failedFile ? `Coder recovery: ${recovery.failedFile}` : "Coder timed out";
     const body = doc.createElement("p");
     const elapsed =
       latestCoderFailure !== undefined
         ? ` Last call ran for ${String(Math.round(latestCoderFailure.elapsedMs / 1000))}s with an estimated ${String(latestCoderFailure.inputTokenEstimate)} input tokens.`
         : "";
     body.textContent =
-      "Karo kept the Researcher/Planner output and any staged draft files, but this run is not completed. Emergency fallback is available only as an explicit recovery choice, not as a success path." +
+      (recovery?.recoveryReasonUser ??
+        "Karo kept the Researcher/Planner output and any staged draft files, but this run is not completed. Emergency fallback is available only as an explicit recovery choice, not as a success path.") +
       elapsed;
     const actions = doc.createElement("div");
     actions.className = "kw-recovery-actions";
@@ -5586,33 +6027,52 @@ export function mountWorkspaceShell(
     const retry = doc.createElement("button");
     retry.type = "button";
     retry.className = "kw-button kw-button-secondary";
-    retry.textContent = "Retry Coder";
-    retry.disabled = true;
-    retry.title = "Retry wiring is planned; re-submit the prompt or use a smaller context for now.";
+    retry.textContent = "Retry failed stage";
+    retry.disabled = !(recovery?.canRetryFailedStage ?? false);
+    retry.title = retry.disabled ? "Retry is unavailable for this failure." : "Retry only the failed stage/file.";
+    retry.addEventListener("click", () => void actionsIn.retryFailedStage());
 
     const reduce = doc.createElement("button");
     reduce.type = "button";
     reduce.className = "kw-button kw-button-secondary";
     reduce.textContent = "Retry with reduced context";
-    reduce.disabled = true;
-    reduce.title = "Karo already attempted one reduced-context retry for the failed file.";
+    reduce.disabled = !(recovery?.canRetryReducedContext ?? false);
+    reduce.title = reduce.disabled
+      ? "Reduced-context retry is unavailable or was already attempted for this failure."
+      : "Retry the failed stage/file with a smaller prompt/context.";
+    reduce.addEventListener("click", () => void actionsIn.retryReducedContext());
 
     const switchModel = doc.createElement("button");
     switchModel.type = "button";
     switchModel.className = "kw-button kw-button-secondary";
     switchModel.textContent = "Switch model";
+    switchModel.disabled = recovery?.canSwitchModel === false;
+    switchModel.title = switchModel.disabled
+      ? "Inline switch is not wired; choose another model from Models and retry."
+      : "Open Models to choose another model.";
     switchModel.addEventListener("click", actionsIn.openModels);
 
     const partial = doc.createElement("button");
     partial.type = "button";
     partial.className = "kw-button kw-button-secondary";
     partial.textContent = "Continue from partial artifacts";
-    partial.disabled = report.finalArtifacts.length === 0;
+    partial.disabled = !(recovery?.canContinueFromPartial ?? report.finalArtifacts.length > 0);
     partial.title =
-      report.finalArtifacts.length === 0
+      partial.disabled
         ? "No partial artifacts were staged before the timeout."
-        : "Open Changes to inspect the partial files that were staged before the timeout.";
-    partial.addEventListener("click", actionsIn.openChanges);
+        : "Continue from the first missing/failed file while preserving existing staged artifacts.";
+    partial.addEventListener("click", () => void actionsIn.continuePartial());
+
+    const inspect = doc.createElement("button");
+    inspect.type = "button";
+    inspect.className = "kw-button kw-button-secondary";
+    inspect.textContent = "Show preserved files";
+    inspect.disabled = report.finalArtifacts.length === 0;
+    inspect.title =
+      report.finalArtifacts.length === 0
+        ? "No staged files were preserved."
+        : "Open Changes to inspect preserved staged artifacts.";
+    inspect.addEventListener("click", actionsIn.openChanges);
 
     const emergency = doc.createElement("button");
     emergency.type = "button";
@@ -5655,7 +6115,7 @@ export function mountWorkspaceShell(
       );
     });
 
-    actions.append(retry, reduce, switchModel, partial, emergency, logs, copy);
+    actions.append(retry, reduce, switchModel, partial, inspect, emergency, logs, copy);
     card.append(title, body, actions);
     return card;
   }
@@ -6792,7 +7252,7 @@ export function mountWorkspaceShell(
       wrap.append(agentSection);
     }
 
-    if (taskState?.decision !== undefined || (taskState?.providerDiagnostics?.length ?? 0) > 0) {
+    if (taskState?.decision !== undefined || taskState?.agentCoreEstimate !== undefined || (taskState?.providerDiagnostics?.length ?? 0) > 0) {
       const modeSection = doc.createElement("div");
       const modeTitle = doc.createElement("h4");
       modeTitle.textContent = "Mode and model calls";
@@ -6803,6 +7263,7 @@ export function mountWorkspaceShell(
       modeSection.append(modeTitle);
 
       const decision = taskState?.decision;
+      const estimate = taskState?.agentCoreEstimate;
       const diagnostics = taskState?.providerDiagnostics ?? [];
       const modelCalls = diagnostics.length;
       const elapsedMs = diagnostics.reduce((sum: number, diagnostic: any) => sum + (diagnostic.elapsedMs ?? 0), 0);
@@ -6815,14 +7276,21 @@ export function mountWorkspaceShell(
       table.style.borderCollapse = "collapse";
       table.style.fontSize = "12px";
       const metrics = [
-        { label: "Mode selected", value: decision?.executionMode ?? "unknown" },
-        { label: "Route reason", value: decision?.reasoningSummary ?? "No route decision recorded." },
+        { label: "Mode selected", value: estimate?.mode ?? decision?.executionMode ?? "unknown" },
+        { label: "Route reason", value: estimate?.routeReasonUser ?? decision?.reasoningSummary ?? "No route decision recorded." },
+        { label: "Context profile", value: estimate?.contextProfile ?? "unknown" },
+        { label: "Expected model calls", value: estimate !== undefined ? `${String(estimate.expectedModelCalls)} max ${String(estimate.maxExpectedModelCalls)}` : "unknown" },
+        { label: "Risk level", value: estimate?.riskLevel ?? decision?.riskLevel ?? "unknown" },
+        { label: "Allows artifacts", value: estimate !== undefined ? String(estimate.allowsArtifacts) : "unknown" },
+        { label: "Allows commands", value: estimate !== undefined ? String(estimate.allowsCommands) : String(decision?.allowCommands ?? "unknown") },
         { label: "Selected files", value: String(taskState?.contextSummary?.selectedFilesCount ?? 0) },
         { label: "Context tokens", value: String(breakdown.selectedFilesTokens + breakdown.projectContextTokens) },
         { label: "Model calls", value: String(modelCalls) },
         { label: "Elapsed model time", value: elapsedMs > 0 ? `${(elapsedMs / 1000).toFixed(1)}s` : "n/a" },
         { label: "Artifacts", value: String(artifactsCount) },
         { label: "Fallback used", value: fallbackUsed ? "yes" : "no" },
+        { label: "Timeout policy", value: estimate?.timeoutPolicy ?? "n/a" },
+        { label: "Recovery policy", value: estimate?.recoveryPolicy ?? "n/a" },
       ];
       for (const metric of metrics) {
         const tr = doc.createElement("tr");
@@ -7169,57 +7637,226 @@ function formatComposerModeLabel(mode: ComposerMode): string {
 
 function shouldRouteToPlan(prompt: string): boolean {
   const text = prompt.toLowerCase();
-  return /(план|спланир|архитектур|roadmap|design|designer|продумай|спроектир|разбей на этап|implementation strategy|test plan|risk analysis|как лучше реализовать|переделки ui)/iu.test(text);
+  return /(план|спланир|архитектур|roadmap|design|designer|продумай|спроектир|разбей на этап|implementation strategy|test plan|risk analysis|как лучше реализовать|переделки ui)/iu.test(text) ||
+    /\u043f\u043b\u0430\u043d|\u0441\u043f\u043b\u0430\u043d\u0438\u0440|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442|\u043f\u0440\u043e\u0434\u0443\u043c\u0430\u0439|\u0441\u043f\u0440\u043e\u0435\u043a\u0442\u0438\u0440|\u0440\u0430\u0437\u0431\u0435\u0439\s+\u043d\u0430\s+\u044d\u0442\u0430\u043f|\u043a\u0430\u043a\s+\u043b\u0443\u0447\u0448\u0435\s+\u0440\u0435\u0430\u043b\u0438\u0437|\u0440\u0438\u0441\u043a|\u0442\u0435\u0441\u0442-\u043f\u043b\u0430\u043d/iu.test(text);
 }
 
-function formatPlanResult(answer: string): string {
+function buildStructuredPlanView(prompt: string, answer: string): StructuredPlanView | null {
   const trimmed = answer.trim();
-  const body =
-    /^#{1,3}\s*Plan Result/im.test(trimmed) || /Plan Result/i.test(trimmed.slice(0, 80))
-      ? trimmed
-      : `## Plan Result\n\n${trimmed}`;
-  const requiredSections = [
-    {
-      heading: "Goal",
-      fallback: "Turn the request into a safe, reviewable implementation path without changing files in Plan Mode.",
-    },
-    {
-      heading: "Assumptions",
-      fallback: "The current answer is a read-only plan. Any file changes must be run later through Agent Mode and Apply Changes.",
-    },
-    {
-      heading: "File areas",
-      fallback: "Use project context when available; otherwise verify target files before implementation.",
-    },
-    {
-      heading: "Implementation steps",
-      fallback: "Follow the plan above as the first draft of the implementation sequence.",
-    },
-    {
-      heading: "Risks",
-      fallback: "Watch for unclear scope, missing project context, failing tests, and changes that should be split smaller.",
-    },
-    {
-      heading: "Tests",
-      fallback: "Run the smallest relevant unit, type, GUI, and runtime checks before applying or publishing the work.",
-    },
-    {
-      heading: "Estimated complexity",
-      fallback: "Medium by default; reduce to low only when the target files and behavior are fully known.",
-    },
-    {
-      heading: "Suggested mode for execution",
-      fallback: "Use Agent Mode only when you are ready to create staged file changes. Stay in Chat or Plan for questions and design review.",
-    },
-  ];
-  const additions: string[] = [];
-  for (const section of requiredSections) {
-    const pattern = new RegExp(`^#{1,4}\\s*${section.heading}\\b`, "im");
-    if (!pattern.test(body)) {
-      additions.push(`### ${section.heading}\n${section.fallback}`);
+  if (trimmed.length < 8) return null;
+  const parsed = parsePlanJson(trimmed);
+  if (parsed !== null) return parsed;
+  if (/^[{[]/u.test(trimmed)) return null;
+  return repairPlanFromText(prompt, trimmed);
+}
+
+function parsePlanJson(text: string): StructuredPlanView | null {
+  const candidates = [
+    text,
+    text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1],
+    text.match(/<plan_json>\s*([\s\S]*?)\s*<\/plan_json>/iu)?.[1],
+  ].filter((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0);
+  for (const candidate of candidates) {
+    try {
+      const value = JSON.parse(candidate.trim()) as Record<string, unknown>;
+      const view = structuredPlanFromRecord(value, false);
+      if (view !== null) return view;
+    } catch {
+      // Try the next extraction candidate; invalid JSON does not become a fake plan.
     }
   }
-  return [body, ...additions].join("\n\n");
+  return null;
+}
+
+function structuredPlanFromRecord(value: Record<string, unknown>, repairedFromText: boolean): StructuredPlanView | null {
+  const goal = stringValue(value["goal"]);
+  const implementationSteps = stringArrayValue(value["implementationSteps"]);
+  if (goal.length === 0 || implementationSteps.length === 0) return null;
+  return {
+    goal,
+    assumptions: stringArrayValue(value["assumptions"]),
+    fileAreas: stringArrayValue(value["relevantFileAreas"] ?? value["fileAreas"]),
+    implementationSteps,
+    risks: stringArrayValue(value["risks"]),
+    tests: stringArrayValue(value["tests"]),
+    estimatedComplexity: stringValue(value["estimatedComplexity"]) || "medium",
+    expectedBudget: stringValue(value["expectedModelCallsContextBudget"]) || "One bounded planning call; context only if the request is project-specific.",
+    suggestedExecutionMode: stringValue(value["suggestedExecutionMode"]) || "Plan",
+    acceptanceCriteria: stringArrayValue(value["acceptanceCriteria"]),
+    whatNotToDoYet: stringArrayValue(value["whatNotToDoYet"]),
+    repairedFromText,
+  };
+}
+
+function repairPlanFromText(prompt: string, text: string): StructuredPlanView | null {
+  const lines = text.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) return null;
+  const projectSpecific = /\bkaro\b|ui|ux|project|repo|\u043f\u0440\u043e\u0435\u043a\u0442|\u043a\u043e\u0434|\u0438\u043d\u0442\u0435\u0440\u0444\u0435\u0439\u0441/iu.test(prompt);
+  const extractedSteps = extractPlanBullets(lines, ["step", "steps", "implementation", "phase", "phases", "шаг", "этап"]);
+  const steps = extractedSteps.length > 0 ? extractedSteps : lines.slice(0, 8);
+  if (steps.join(" ").length < 12) return null;
+  return {
+    goal: firstSentence(text) || "Create a safe read-only plan.",
+    assumptions: projectSpecific
+      ? ["Project-specific details should be verified against selected files before Agent execution."]
+      : ["This is a planning answer only; no project files were changed."],
+    fileAreas: projectSpecific ? ["Relevant files depend on the selected project context."] : ["No project files needed for this generic plan."],
+    implementationSteps: steps,
+    risks: extractPlanBullets(lines, ["risk", "risks", "риск"]).slice(0, 6),
+    tests: extractPlanBullets(lines, ["test", "tests", "verify", "провер", "тест"]).slice(0, 6),
+    estimatedComplexity: /large|hard|сложн|high/iu.test(text) ? "high" : "medium",
+    expectedBudget: "One structured planning model call; no artifacts and no commands.",
+    suggestedExecutionMode: /create|implement|change|fix|созда|реализ|измени|исправ/iu.test(prompt) ? "Agent" : "Plan",
+    acceptanceCriteria: ["The user can review the plan before any Agent run.", "No files are staged or applied by Plan Mode."],
+    whatNotToDoYet: ["Do not create artifacts in Plan Mode.", "Do not run command execution from Plan Mode."],
+    repairedFromText: true,
+  };
+}
+
+function renderStructuredPlanResult(
+  prompt: string,
+  plan: StructuredPlanView,
+  context?: ChatReadOnlyContext,
+): string {
+  const ru = isLikelyRussian(prompt);
+  const labels = ru
+    ? {
+        activity: "Публичные этапы Plan Mode",
+        goal: "Цель",
+        assumptions: "Предпосылки",
+        fileAreas: "Зоны файлов",
+        steps: "Шаги реализации",
+        risks: "Риски",
+        tests: "Проверки",
+        complexity: "Оценка сложности",
+        budget: "Бюджет модели/контекста",
+        mode: "Рекомендуемый режим выполнения",
+        acceptance: "Критерии приемки",
+        notYet: "Что пока не делать",
+        repair: "Примечание",
+      }
+    : {
+        activity: "Public Plan Mode stages",
+        goal: "Goal",
+        assumptions: "Assumptions",
+        fileAreas: "Relevant file areas",
+        steps: "Implementation steps",
+        risks: "Risks",
+        tests: "Tests / verification",
+        complexity: "Estimated complexity",
+        budget: "Expected model calls / context budget",
+        mode: "Suggested execution mode",
+        acceptance: "Acceptance criteria",
+        notYet: "What not to do yet",
+        repair: "Note",
+      };
+  const activity = ru
+    ? [
+        `Проверяю, нужен ли контекст проекта: ${context === undefined ? "не нужен или не выбран" : `выбрано ${String(context.selectedFilesCount)} файлов (${context.profile})`}.`,
+        "Составляю план: выполнен один структурированный provider call.",
+        "Проверяю риски: включены отдельным разделом плана.",
+        "Финализирую план: artifacts не создавались, Apply Changes недоступен.",
+      ]
+    : [
+        `Checking whether project context is needed: ${context === undefined ? "not needed or not selected" : `${String(context.selectedFilesCount)} files selected (${context.profile})`}.`,
+        "Building plan: one structured provider call was used.",
+        "Reviewing risks: captured as a separate plan section.",
+        "Finalizing plan: no artifacts were created and Apply Changes is unavailable.",
+      ];
+  return [
+    "## Plan Result",
+    section(labels.activity, activity),
+    section(labels.goal, [plan.goal]),
+    section(labels.assumptions, fallbackList(plan.assumptions, ru ? "Нет дополнительных предпосылок от модели." : "No additional model assumptions.")),
+    section(labels.fileAreas, fallbackList(plan.fileAreas, context === undefined ? (ru ? "Контекст проекта не использовался." : "Project context was not used.") : context.selectedFiles.join(", "))),
+    section(labels.steps, plan.implementationSteps),
+    section(labels.risks, fallbackList(plan.risks, ru ? "Явных рисков модель не указала; проверь scope и стоимость перед Agent Mode." : "No explicit model risks; verify scope and cost before Agent Mode.")),
+    section(labels.tests, fallbackList(plan.tests, ru ? "Подбери минимальные проверки перед запуском Agent Mode." : "Choose the smallest useful checks before Agent Mode.")),
+    section(labels.complexity, [plan.estimatedComplexity]),
+    section(labels.budget, [plan.expectedBudget]),
+    section(labels.mode, [plan.suggestedExecutionMode]),
+    section(labels.acceptance, fallbackList(plan.acceptanceCriteria, ru ? "План можно выполнить только после отдельного Agent/Quick Edit запуска." : "The plan can be executed only by a separate Agent/Quick Edit run.")),
+    section(labels.notYet, fallbackList(plan.whatNotToDoYet, ru ? "Не менять файлы в Plan Mode." : "Do not change files in Plan Mode.")),
+    ...(plan.repairedFromText ? [section(labels.repair, [ru ? "Модель не вернула JSON; Karo один раз структурировал ее текстовый ответ без создания artifacts." : "The model did not return JSON; Karo structured the text once without creating artifacts."])] : []),
+  ].join("\n\n");
+}
+
+function buildPlanFailureMessage(
+  prompt: string,
+  error: string,
+  context?: ChatReadOnlyContext,
+): string {
+  const ru = isLikelyRussian(prompt);
+  if (ru) {
+    return [
+      "## Plan Mode could not complete",
+      "",
+      `Ошибка: ${error}`,
+      "",
+      "Файлы не менялись, artifacts не создавались, Apply Changes недоступен.",
+      context !== undefined ? `Контекст был выбран до ошибки: ${String(context.selectedFilesCount)} файлов (${context.profile}).` : "Контекст проекта не использовался или не был выбран до ошибки.",
+      "",
+      "### Recovery options",
+      "- Retry Plan: повторить тот же planning prompt.",
+      "- Retry with reduced context: уменьшить выбранный контекст и повторить.",
+      "- Switch model: выбери другую text/code модель на странице Models, если текущая недоступна.",
+    ].join("\n");
+  }
+  return [
+    "## Plan Mode could not complete",
+    "",
+    `Error: ${error}`,
+    "",
+    "No files were changed, no artifacts were created, and Apply Changes is unavailable.",
+    context !== undefined ? `Context selected before failure: ${String(context.selectedFilesCount)} files (${context.profile}).` : "No project context was used or selected before the failure.",
+    "",
+    "### Recovery options",
+    "- Retry Plan: re-submit the same planning prompt.",
+    "- Retry with reduced context: reduce selected context and try again.",
+    "- Switch model: choose another text/code model on the Models page if this one is unavailable.",
+  ].join("\n");
+}
+
+function section(title: string, values: readonly string[]): string {
+  return [`### ${title}`, ...values.map((value) => `- ${value}`)].join("\n");
+}
+
+function fallbackList(values: readonly string[], fallback: string): readonly string[] {
+  return values.length > 0 ? values : [fallback];
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function stringArrayValue(value: unknown): readonly string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter((item) => item.length > 0).slice(0, 12);
+  }
+  if (typeof value === "string" && value.trim().length > 0) return [value.trim()];
+  return [];
+}
+
+function firstSentence(text: string): string {
+  return text.replace(/\s+/gu, " ").split(/(?<=[.!?])\s/u)[0]?.trim().slice(0, 220) ?? "";
+}
+
+function extractPlanBullets(lines: readonly string[], headings: readonly string[]): readonly string[] {
+  const lowered = headings.map((heading) => heading.toLowerCase());
+  const result: string[] = [];
+  let collecting = false;
+  for (const line of lines) {
+    const normalized = line.replace(/^#+\s*/u, "").toLowerCase();
+    if (lowered.some((heading) => normalized.includes(heading))) {
+      collecting = true;
+      continue;
+    }
+    if (collecting && /^#{1,4}\s/u.test(line)) break;
+    if (collecting) {
+      result.push(line.replace(/^[-*\d.)\s]+/u, "").trim());
+    }
+  }
+  return result.filter((item) => item.length > 0).slice(0, 10);
 }
 
 function detectPreviewCommand(): string {
@@ -7610,12 +8247,20 @@ function savePersistedConversation(conversation: PersistedConversationView): voi
 
 interface AgentGroup {
   readonly agentId: AgentId;
-  readonly status: "pending" | "started" | "finished" | "error";
+  readonly status: "pending" | "started" | "finished" | "error" | "skipped";
   readonly summary: string;
   readonly events: readonly TraceEvent[];
+  readonly startedAtMs?: number | undefined;
+  readonly endedAtMs?: number | undefined;
+  readonly syntheticReason?: "deterministic_validation_passed" | undefined;
 }
 
-function groupTraceByAgent(events: readonly TraceEvent[]): readonly AgentGroup[] {
+type ActivityLocale = "en" | "ru";
+
+function groupTraceByAgent(
+  events: readonly TraceEvent[],
+  options: { readonly includeOrchestrator?: boolean } = {},
+): readonly AgentGroup[] {
   const order: AgentId[] = [];
   const map = new Map<
     AgentId,
@@ -7623,20 +8268,27 @@ function groupTraceByAgent(events: readonly TraceEvent[]): readonly AgentGroup[]
       status: AgentGroup["status"];
       summary: string;
       events: TraceEvent[];
+      startedAtMs?: number | undefined;
+      endedAtMs?: number | undefined;
     }
   >();
   for (const ev of events) {
-    if (ev.agentId === "orchestrator") continue;
+    if (ev.agentId === "orchestrator" && options.includeOrchestrator !== true) continue;
     if (!map.has(ev.agentId)) {
       order.push(ev.agentId);
       map.set(ev.agentId, { status: "pending", summary: "", events: [] });
     }
     const slot = map.get(ev.agentId)!;
     slot.events.push(ev);
+    const eventTime = Date.parse(ev.at);
+    if (!Number.isNaN(eventTime)) {
+      slot.startedAtMs = slot.startedAtMs === undefined ? eventTime : Math.min(slot.startedAtMs, eventTime);
+      slot.endedAtMs = slot.endedAtMs === undefined ? eventTime : Math.max(slot.endedAtMs, eventTime);
+    }
     if (ev.record.kind === "status") {
       slot.status = ev.record.status;
     } else if (ev.record.kind === "thought") {
-      slot.summary = truncateLongThought(ev.record.text);
+      slot.summary = truncatePublicActivity(ev.record.text);
     } else if (ev.record.kind === "artifact_change" && slot.summary.length === 0) {
       slot.summary = `Wrote ${ev.record.artifactId.slice(0, 8)}@v${String(ev.record.version)}`;
     }
@@ -7646,10 +8298,48 @@ function groupTraceByAgent(events: readonly TraceEvent[]): readonly AgentGroup[]
     status: map.get(id)!.status,
     summary: map.get(id)!.summary,
     events: map.get(id)!.events,
+    startedAtMs: map.get(id)!.startedAtMs,
+    endedAtMs: map.get(id)!.endedAtMs,
   }));
 }
 
-function describeAgentStatus(status: AgentGroup["status"]): string {
+function withSyntheticActivityGroups(
+  groups: readonly AgentGroup[],
+  taskState: TaskStateSnapshot,
+): readonly AgentGroup[] {
+  const validation = taskState.deterministicValidation;
+  if (validation?.skipModelReview !== true || groups.some((group) => group.agentId === "reviewer")) {
+    return groups;
+  }
+  const reviewer: AgentGroup = {
+    agentId: "reviewer",
+    status: "skipped",
+    summary: "Deterministic validation passed; model review was not needed.",
+    events: [],
+    syntheticReason: "deterministic_validation_passed",
+  };
+  const validatorIndex = groups.findIndex((group) => group.agentId === "validator");
+  const coderIndex = groups.findIndex((group) => group.agentId === "coder");
+  const insertAfter = validatorIndex >= 0 ? validatorIndex : coderIndex;
+  if (insertAfter < 0) return [...groups, reviewer];
+  return [...groups.slice(0, insertAfter + 1), reviewer, ...groups.slice(insertAfter + 1)];
+}
+
+function describeAgentStatus(status: AgentGroup["status"], locale: ActivityLocale = "en"): string {
+  if (locale === "ru") {
+    switch (status) {
+      case "pending":
+        return "\u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438";
+      case "started":
+        return "\u0432 \u0440\u0430\u0431\u043e\u0442\u0435";
+      case "finished":
+        return "\u0433\u043e\u0442\u043e\u0432\u043e";
+      case "error":
+        return "\u043e\u0448\u0438\u0431\u043a\u0430";
+      case "skipped":
+        return "\u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d";
+    }
+  }
   switch (status) {
     case "pending":
       return "pending";
@@ -7659,6 +8349,8 @@ function describeAgentStatus(status: AgentGroup["status"]): string {
       return "done";
     case "error":
       return "error";
+    case "skipped":
+      return "skipped";
   }
 }
 
@@ -7690,18 +8382,31 @@ function describeStatus(status: TaskStatus): {
   }
 }
 
-function formatTraceEvent(ev: TraceEvent): string {
+function formatTraceEvent(
+  ev: TraceEvent,
+  artifactMap: ReadonlyMap<string, string> = new Map(),
+  locale: ActivityLocale = "en",
+): string {
   if (ev.record.kind === "thought") {
-    return `activity · ${ev.record.text.length > 200 ? `${ev.record.text.slice(0, 197)}...` : ev.record.text}`;
+    return locale === "ru"
+      ? `\u0410\u043a\u0442\u0438\u0432\u043d\u043e\u0441\u0442\u044c - ${truncatePublicActivity(ev.record.text, 200)}`
+      : `Activity - ${truncatePublicActivity(ev.record.text, 200)}`;
   }
   if (ev.record.kind === "tool_call") {
-    return `tool call · ${ev.record.tool}`;
+    return locale === "ru"
+      ? `\u0418\u043d\u0441\u0442\u0440\u0443\u043c\u0435\u043d\u0442 - ${ev.record.tool}`
+      : `Tool call - ${ev.record.tool}`;
   }
   if (ev.record.kind === "artifact_change") {
-    return `artifact prepared · ${ev.record.artifactId.slice(0, 8)}@v${String(ev.record.version)}`;
+    const fileName = artifactMap.get(ev.record.artifactId) ?? ev.record.artifactId.slice(0, 8);
+    return locale === "ru"
+      ? `\u0410\u0440\u0442\u0438\u0444\u0430\u043a\u0442 staged - ${fileName}@v${String(ev.record.version)}`
+      : `Artifact staged - ${fileName}@v${String(ev.record.version)}`;
   }
   if (ev.record.kind === "status") {
-    return `status · ${ev.record.status}`;
+    return locale === "ru"
+      ? `\u0421\u0442\u0430\u0442\u0443\u0441 - ${describeAgentStatus(ev.record.status, locale)}`
+      : `Status - ${describeAgentStatus(ev.record.status, locale)}`;
   }
   return "activity";
 }
@@ -7710,10 +8415,12 @@ function readableAgentName(agentId: AgentId): string {
   if (agentId === "boss") return "Finalizer";
   const known = BUILTIN_AGENTS.find((a) => a.id === agentId);
   if (known !== undefined) return known.displayName;
+  if (agentId === "planner") return "Planner";
   if (agentId === "quick_edit") return "Quick Edit";
   if (agentId === "validator") return "Deterministic Validator";
   if (agentId === "finalizer") return "Finalizer";
   if (agentId === "orchestrator") return "Orchestrator";
+  if (agentId === "safety_check") return "Safety Check";
   return agentId;
 }
 
@@ -7728,24 +8435,57 @@ function agentInitials(agentId: AgentId): string {
     case "fixer":
       return "F";
     case "boss":
-      return "B";
+      return "FN";
+    case "planner":
+      return "P";
     case "quick_edit":
       return "QE";
     case "validator":
       return "V";
     case "finalizer":
-      return "F";
+      return "FN";
     case "orchestrator":
       return "O";
+    case "safety_check":
+      return "SC";
     default:
       return agentId.slice(0, 2).toUpperCase();
   }
 }
 
-function agentRoleLine(agentId: AgentId): string {
+function agentRoleLine(agentId: AgentId, locale: ActivityLocale = "en"): string {
+  if (locale === "ru") {
+    switch (agentId) {
+      case "researcher":
+        return "\u041d\u0430\u0445\u043e\u0434\u0438\u0442 \u043c\u0438\u043d\u0438\u043c\u0430\u043b\u044c\u043d\u044b\u0439 \u0440\u0435\u043b\u0435\u0432\u0430\u043d\u0442\u043d\u044b\u0439 \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442";
+      case "planner":
+        return "\u041f\u0440\u0435\u0432\u0440\u0430\u0449\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0443 \u0432 \u043f\u043b\u0430\u043d \u0438\u0441\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f";
+      case "coder":
+        return "\u0413\u043e\u0442\u043e\u0432\u0438\u0442 staged \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f";
+      case "reviewer":
+        return "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u0442 \u043a\u0430\u0447\u0435\u0441\u0442\u0432\u043e \u0438 \u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u043e\u0441\u0442\u044c";
+      case "fixer":
+        return "\u0427\u0438\u043d\u0438\u0442 \u043a\u043e\u043d\u043a\u0440\u0435\u0442\u043d\u044b\u0435 \u0434\u0435\u0444\u0435\u043a\u0442\u044b";
+      case "boss":
+      case "finalizer":
+        return "\u0421\u043e\u0431\u0438\u0440\u0430\u0435\u0442 \u0447\u0435\u0441\u0442\u043d\u044b\u0439 \u0438\u0442\u043e\u0433 \u0438 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0435 \u0448\u0430\u0433\u0438";
+      case "quick_edit":
+        return "\u0413\u043e\u0442\u043e\u0432\u0438\u0442 deterministic staged \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f";
+      case "validator":
+        return "\u0417\u0430\u043f\u0443\u0441\u043a\u0430\u0435\u0442 \u0434\u0435\u0448\u0435\u0432\u044b\u0435 deterministic \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438";
+      case "orchestrator":
+        return "\u0412\u044b\u0431\u0438\u0440\u0430\u0435\u0442 \u043d\u0443\u0436\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c \u0438 \u0431\u044e\u0434\u0436\u0435\u0442";
+      case "safety_check":
+        return "\u0411\u043b\u043e\u043a\u0438\u0440\u0443\u0435\u0442 \u043e\u043f\u0430\u0441\u043d\u044b\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u044b";
+      default:
+        return "\u0410\u0433\u0435\u043d\u0442";
+    }
+  }
   switch (agentId) {
     case "researcher":
       return "Finds minimal relevant project context";
+    case "planner":
+      return "Turns the task into a structured execution plan";
     case "coder":
       return "Creates staged file changes";
     case "reviewer":
@@ -7762,45 +8502,134 @@ function agentRoleLine(agentId: AgentId): string {
       return "Summarizes result and next steps";
     case "orchestrator":
       return "Routes to Chat, Plan, Agent, Safety, or Quick Edit";
+    case "safety_check":
+      return "Blocks dangerous commands before execution";
     default:
       return "Agent";
   }
 }
 
-function agentStartPhrase(agentId: AgentId): string {
-  const phraseByAgent: Partial<Record<AgentId, string>> = {
-    researcher: "Ищу минимально достаточный контекст.",
-    coder: "Готовлю staged изменения.",
-    reviewer: "Проверяю результат и риски.",
-    fixer: "Исправляю конкретные найденные проблемы.",
-    boss: "Собираю честный итог и следующие шаги.",
-    quick_edit: "Готовлю точечное изменение без модели и полного pipeline.",
-    orchestrator: "Выбираю минимально достаточный режим.",
-  };
-  const phrase = phraseByAgent[agentId];
-  if (phrase !== undefined) return phrase;
+function agentStartPhrase(agentId: AgentId, locale: ActivityLocale = "en"): string {
+  if (locale === "ru") {
+    const phraseByAgent: Partial<Record<AgentId, string>> = {
+      researcher: "\u0418\u0449\u0443 \u043c\u0438\u043d\u0438\u043c\u0430\u043b\u044c\u043d\u043e \u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u044b\u0439 \u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442.",
+      planner: "\u041f\u043b\u0430\u043d\u0438\u0440\u0443\u044e \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f \u043f\u0435\u0440\u0435\u0434 coding.",
+      coder: "\u0413\u043e\u0442\u043e\u0432\u043b\u044e staged \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f.",
+      reviewer: "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u044e \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442 \u0438 \u0440\u0438\u0441\u043a\u0438.",
+      fixer: "\u0418\u0441\u043f\u0440\u0430\u0432\u043b\u044f\u044e \u043a\u043e\u043d\u043a\u0440\u0435\u0442\u043d\u044b\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u043d\u044b\u0435 \u043f\u0440\u043e\u0431\u043b\u0435\u043c\u044b.",
+      boss: "\u0421\u043e\u0431\u0438\u0440\u0430\u044e \u0447\u0435\u0441\u0442\u043d\u044b\u0439 \u0438\u0442\u043e\u0433 \u0438 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0435 \u0448\u0430\u0433\u0438.",
+      quick_edit: "\u0413\u043e\u0442\u043e\u0432\u043b\u044e \u0442\u043e\u0447\u0435\u0447\u043d\u043e\u0435 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435 \u0431\u0435\u0437 \u043c\u043e\u0434\u0435\u043b\u0438 \u0438 \u043f\u043e\u043b\u043d\u043e\u0433\u043e pipeline.",
+      validator: "\u0417\u0430\u043f\u0443\u0441\u043a\u0430\u044e deterministic \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0438.",
+      finalizer: "\u0424\u0438\u043d\u0430\u043b\u0438\u0437\u0438\u0440\u0443\u044e staged \u0440\u0435\u0437\u0443\u043b\u044c\u0442\u0430\u0442.",
+      orchestrator: "\u0412\u044b\u0431\u0438\u0440\u0430\u044e \u043c\u0438\u043d\u0438\u043c\u0430\u043b\u044c\u043d\u043e \u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c.",
+      safety_check: "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u044e \u043a\u043e\u043c\u0430\u043d\u0434\u0443 \u043d\u0430 \u0440\u0438\u0441\u043a.",
+    };
+    return phraseByAgent[agentId] ?? "\u0412\u044b\u043f\u043e\u043b\u043d\u044f\u044e \u0448\u0430\u0433.";
+  }
   switch (agentId) {
     case "researcher":
-      return "Разбираю задачу и контекст.";
+      return "Selecting the minimum project context needed.";
+    case "planner":
+      return "Building an implementation plan.";
     case "coder":
-      return "Готовлю изменения.";
+      return "Preparing staged changes.";
     case "reviewer":
-      return "Проверяю результат.";
+      return "Checking quality and risks.";
     case "fixer":
-      return "Исправляю найденные проблемы.";
+      return "Repairing targeted defects.";
     case "boss":
-      return "Сверяю результат с запросом.";
+    case "finalizer":
+      return "Summarizing staged files, checks, and next steps.";
     case "quick_edit":
-      return "Готовлю точечное изменение без полного агентского pipeline.";
+      return "Preparing a deterministic staged edit without a model call.";
+    case "validator":
+      return "Running deterministic checks before any expensive review.";
     case "orchestrator":
-      return "Координирую запуск.";
+      return "Choosing the smallest safe route for this request.";
+    case "safety_check":
+      return "Checking command risk before execution.";
     default:
-      return "Выполняю шаг.";
+      return "Running a public activity step.";
   }
 }
 
-function truncateLongThought(text: string): string {
-  return text.length > 360 ? `${text.slice(0, 357)}...` : text;
+function truncatePublicActivity(text: string, maxLength = 360): string {
+  const sanitized = text
+    .replace(/\bchain[-\s]?of[-\s]?thought\b/giu, "private reasoning")
+    .replace(/\bthoughts?\b/giu, "activity")
+    .replace(/\breasoning\b/giu, "analysis")
+    .trim();
+  return sanitized.length > maxLength ? `${sanitized.slice(0, Math.max(0, maxLength - 3))}...` : sanitized;
+}
+
+function detectActivityLocale(text: string): ActivityLocale {
+  return /[\u0400-\u04ff]/u.test(text) ? "ru" : "en";
+}
+
+function buildArtifactFileNameMap(artifacts: readonly ArtifactMetadata[]): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  for (const artifact of artifacts) {
+    out.set(artifact.id, artifact.fileName);
+  }
+  return out;
+}
+
+function groupFileNames(group: AgentGroup, artifactMap: ReadonlyMap<string, string>): readonly string[] {
+  const names: string[] = [];
+  for (const ev of group.events) {
+    if (ev.record.kind !== "artifact_change") continue;
+    const fileName = artifactMap.get(ev.record.artifactId);
+    if (fileName !== undefined && !names.includes(fileName)) {
+      names.push(fileName);
+    }
+  }
+  return names;
+}
+
+function publicActivitySummary(
+  group: AgentGroup,
+  artifactMap: ReadonlyMap<string, string>,
+  taskState: TaskStateSnapshot,
+  locale: ActivityLocale,
+): string {
+  if (group.syntheticReason === "deterministic_validation_passed") {
+    return locale === "ru"
+      ? "\u041f\u0440\u043e\u043f\u0443\u0449\u0435\u043d: deterministic validation \u043f\u0440\u043e\u0448\u043b\u0430, \u0434\u043e\u0440\u043e\u0433\u043e\u0439 model review \u043d\u0435 \u043d\u0443\u0436\u0435\u043d."
+      : "Skipped: deterministic validation passed, so model review was not needed.";
+  }
+  const files = groupFileNames(group, artifactMap);
+  if (group.agentId === "finalizer" || group.agentId === "boss") {
+    const count = files.length;
+    if (count > 0) {
+      return locale === "ru"
+        ? `\u041f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u043e staged \u0444\u0430\u0439\u043b\u043e\u0432: ${String(count)}. Apply Changes \u0432\u0441\u0435 \u0435\u0449\u0435 \u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u0435\u043d.`
+        : `Staged files: ${String(count)}. Apply Changes is still required.`;
+    }
+    if (taskState.deterministicValidation?.status === "passed") {
+      return locale === "ru"
+        ? "Deterministic validation \u043f\u0440\u043e\u0439\u0434\u0435\u043d\u0430; \u0438\u0442\u043e\u0433 \u043d\u0435 \u043e\u0437\u043d\u0430\u0447\u0430\u0435\u0442 auto-apply."
+        : "Deterministic validation passed; the result is still staged, not applied.";
+    }
+  }
+  if (group.summary.length > 0) {
+    return truncatePublicActivity(group.summary);
+  }
+  if (files.length > 0) {
+    return locale === "ru"
+      ? `\u041f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u043b\u0435\u043d\u044b staged \u0444\u0430\u0439\u043b\u044b: ${String(files.length)}.`
+      : `Staged ${String(files.length)} file${files.length === 1 ? "" : "s"}.`;
+  }
+  if (group.status === "skipped") {
+    return locale === "ru" ? "\u0428\u0430\u0433 \u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d." : "Step skipped.";
+  }
+  return "";
+}
+
+function formatAgentElapsed(group: AgentGroup): string | null {
+  if (group.startedAtMs === undefined || group.endedAtMs === undefined) return null;
+  const elapsedMs = Math.max(0, group.endedAtMs - group.startedAtMs);
+  if (elapsedMs < 1000) return "<1s";
+  return `${String(Math.round(elapsedMs / 1000))}s`;
 }
 
 function formatProvider(p: ProviderId): string {

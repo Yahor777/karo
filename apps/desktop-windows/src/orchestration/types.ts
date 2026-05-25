@@ -148,6 +148,7 @@ export interface TaskStateSnapshot {
   readonly tokenUsage?: TaskUsageSummary | undefined;
   readonly currentContextUsage?: TokenUsageBreakdown | undefined;
   readonly providerDiagnostics?: readonly ProviderCallDiagnostic[] | undefined;
+  readonly recoveryState?: TaskRecoveryState | undefined;
   readonly agentCoreEstimate?: AgentCoreEstimate | undefined;
   readonly deterministicValidation?: DeterministicValidationSummary | undefined;
   readonly decision?: TaskDecision | undefined;
@@ -170,6 +171,43 @@ export interface ProviderCallDiagnostic {
   readonly partialOutputReceived: boolean;
   readonly artifactsCreated: boolean;
   readonly createdAt: string;
+}
+
+export type RecoveryActionKind =
+  | "retry_failed_stage"
+  | "retry_reduced_context"
+  | "continue_partial"
+  | "switch_model"
+  | "emergency_fallback";
+
+export interface RecoveryArtifactSummary {
+  readonly artifactId: string;
+  readonly version: number;
+  readonly fileName: string;
+}
+
+export interface TaskRecoveryState {
+  readonly failedStage: string;
+  readonly failedAgent: AgentId;
+  readonly failedFile?: string | undefined;
+  readonly provider: string;
+  readonly model: string;
+  readonly elapsedMs: number;
+  readonly timeoutMs: number;
+  readonly selectedFiles: readonly string[];
+  readonly contextTokens: number;
+  readonly partialArtifacts: readonly RecoveryArtifactSummary[];
+  readonly retryCount: number;
+  readonly lastSuccessfulStage?: string | undefined;
+  readonly lastSuccessfulArtifact?: RecoveryArtifactSummary | undefined;
+  readonly recommendedAction: RecoveryActionKind;
+  readonly fallbackUsed: boolean;
+  readonly canRetryFailedStage: boolean;
+  readonly canRetryReducedContext: boolean;
+  readonly canContinueFromPartial: boolean;
+  readonly canSwitchModel: boolean;
+  readonly recoveryReasonUser: string;
+  readonly recoveryReasonInternal: string;
 }
 
 export type SelectedContextFileSummary = {
@@ -315,7 +353,10 @@ export type ConsentDecision =
   | { kind: "reject" }
   | { kind: "overrideCommand"; command: string; args: readonly string[] }
   | { kind: "cancel" }
-  | { kind: "clarify"; selectedOptionId?: string | undefined; customAnswer?: string | undefined };
+  | { kind: "clarify"; selectedOptionId?: string | undefined; customAnswer?: string | undefined }
+  | { kind: "retryFailedStage" }
+  | { kind: "retryReducedContext" }
+  | { kind: "continuePartial" };
 
 export interface OrchestratorTransport {
   createAndRunTask(input: StartTaskInput): Promise<StartTaskResult>;
@@ -461,6 +502,16 @@ export type AgentCoreMode =
   | "safety"
   | "clarify";
 
+export type AgentContextProfile =
+  | "casual_chat"
+  | "conversation_memory"
+  | "project_explain"
+  | "apply_changes_explain"
+  | "security_review"
+  | "website_creation"
+  | "ui_work"
+  | "none";
+
 export type AgentCoreStageId =
   | "router"
   | "chat_assistant"
@@ -485,15 +536,23 @@ export interface AgentCoreStageEstimate {
 export interface AgentCoreEstimate {
   readonly mode: AgentCoreMode;
   readonly routeReason: string;
+  readonly routeReasonUser: string;
+  readonly routeReasonInternal: string;
   readonly expectedModelCalls: number;
   readonly maxExpectedModelCalls: number;
   readonly baselineSingleModelCalls: number;
   readonly avoidedFullPipelineModelCalls: number;
+  readonly expectedContextTokens: number;
   readonly contextTokensEstimate: number;
   readonly selectedFilesEstimate: number;
+  readonly contextProfile: AgentContextProfile;
   readonly requiresProjectContext: boolean;
+  readonly allowsCommands: boolean;
+  readonly riskLevel: TaskRiskLevel;
   readonly allowsArtifacts: boolean;
   readonly timeoutRisk: "low" | "medium" | "high";
+  readonly timeoutPolicy: string;
+  readonly recoveryPolicy: string;
   readonly fallbackCountsAsSuccess: false;
   readonly stages: readonly AgentCoreStageEstimate[];
   readonly warnings: readonly string[];

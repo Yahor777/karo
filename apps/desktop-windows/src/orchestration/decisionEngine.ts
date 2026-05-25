@@ -80,6 +80,17 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
   const webIntent = containsAny(p, webKeywords);
 
   const fileKeywords = [
+    "\u0441\u043e\u0437\u0434\u0430\u0439",
+    "\u0437\u0430\u043f\u0438\u0448\u0438",
+    "\u0438\u0437\u043c\u0435\u043d\u0438",
+    "\u0438\u0441\u043f\u0440\u0430\u0432\u044c",
+    "\u0434\u043e\u0431\u0430\u0432\u044c",
+    "\u0443\u0434\u0430\u043b\u0438",
+    "\u0440\u0435\u0430\u043b\u0438\u0437\u0443\u0439",
+    "\u0441\u0434\u0435\u043b\u0430\u0439",
+    "\u0443\u043b\u0443\u0447\u0448\u0438",
+    "\u043d\u0430\u043f\u0438\u0448\u0438",
+    "\u043f\u043e\u0441\u0442\u0440\u043e\u0439",
     "создай",
     "запиши",
     "измени",
@@ -176,6 +187,10 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
   const securityIntent = containsAny(p, securityKeywords);
 
   const casualChatKeywords = [
+    "\u043f\u0440\u0438\u0432\u0435\u0442",
+    "\u043a\u0430\u043a \u0434\u0435\u043b\u0430",
+    "\u043a\u0442\u043e \u0442\u044b",
+    "\u0447\u0442\u043e \u0442\u044b \u0443\u043c\u0435\u0435\u0448\u044c",
     "просто поговорим",
     "давай поговорим",
     "давай просто поговорим",
@@ -261,7 +276,8 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
     };
   }
 
-  const planningIntent = /(plan|planning|architecture|architect|roadmap|design|implementation strategy|test plan|risk analysis|план|спланир|архитектур|продумай|спроектир|разбей на этап|как лучше реализовать|переделки ui)/iu.test(p);
+  const planningIntent = /(plan|planning|architecture|architect|roadmap|design|implementation strategy|test plan|risk analysis|план|спланир|архитектур|продумай|спроектир|разбей на этап|как лучше реализовать|переделки ui)/iu.test(p)
+    || /\u043f\u043b\u0430\u043d|\u0441\u043f\u043b\u0430\u043d\u0438\u0440|\u0430\u0440\u0445\u0438\u0442\u0435\u043a\u0442\u0443\u0440|\u0441\u043f\u0440\u043e\u0435\u043a\u0442\u0438\u0440|\u0440\u0430\u0437\u0431\u0435\u0439\s+\u043d\u0430\s+\u044d\u0442\u0430\u043f|\u043a\u0430\u043a\s+\u043b\u0443\u0447\u0448\u0435\s+\u0440\u0435\u0430\u043b\u0438\u0437/iu.test(p);
   if (input.selectedMode === "plan" || (input.selectedMode === "auto" && planningIntent)) {
     intent = localProjectQuery || hasActiveProject ? "analyze_project" : "explain_general";
     executionMode = "plan";
@@ -336,10 +352,10 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
     reasoningSummary = "Запрошена актуальная или внешняя информация, web search разрешен.";
   } else if (isCommand && !fileIntent) {
     intent = "run_command";
-    allowCommands = true;
     executionMode = input.selectedMode === "auto" ? "agent" : input.selectedMode;
     expectedOutput = "command_result";
     riskLevel = p.includes("rm -rf") || p.includes("reset --hard") || p.includes("clean -fdx") ? "destructive" : "medium";
+    allowCommands = riskLevel !== "destructive";
     reasoningSummary = "Запрос содержит shell-команду или просьбу выполнить команду.";
   } else if (casualChatIntent) {
     intent = "casual_chat";
@@ -378,7 +394,7 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
     executionMode = input.selectedMode === "auto" ? "assist" : input.selectedMode;
     expectedOutput = intent === "analyze_project" ? "analysis" : "explanation";
     reasoningSummary = "Запрос касается объяснения или анализа локального проекта. Нужен Context Engine.";
-  } else if (containsAny(p, ["привет", "hello", "как дела", "кто ты"])) {
+  } else if (containsAny(p, ["\u043f\u0440\u0438\u0432\u0435\u0442", "hello", "\u043a\u0430\u043a \u0434\u0435\u043b\u0430", "\u043a\u0442\u043e \u0442\u044b", "\u0447\u0442\u043e \u0442\u044b \u0443\u043c\u0435\u0435\u0448\u044c"])) {
     intent = "casual_chat";
     executionMode = "chat";
     expectedOutput = "chat";

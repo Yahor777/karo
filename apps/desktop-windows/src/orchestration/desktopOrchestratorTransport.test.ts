@@ -423,7 +423,9 @@ describe("DesktopOrchestratorTransport — happy path", () => {
     expect(state?.reviewCycles).toBe(0);
     expect(state?.agentCoreEstimate?.mode).toBe("quick_edit");
     expect(state?.agentCoreEstimate?.expectedModelCalls).toBe(0);
+    expect(state?.agentCoreEstimate?.contextProfile).toBe("none");
     expect(calls).toHaveLength(0);
+    expect(shell.shell_build_task_context).not.toHaveBeenCalled();
 
     const artifacts = t.getArtifacts(taskId);
     expect(artifacts).toHaveLength(1);
@@ -464,6 +466,7 @@ describe("DesktopOrchestratorTransport — happy path", () => {
 
     expect(calls).toHaveLength(0);
     expect(t.getTaskState(taskId)?.participants).toEqual(["quick_edit"]);
+    expect(shell.shell_build_task_context).not.toHaveBeenCalled();
     expect(t.getArtifacts(taskId)[0]?.fileName).toBe("src/karo-mcp-proof.txt");
   });
 
@@ -489,6 +492,7 @@ describe("DesktopOrchestratorTransport — happy path", () => {
 
     expect(calls).toHaveLength(0);
     expect(t.getTaskState(taskId)?.participants).toEqual(["quick_edit"]);
+    expect(shell.shell_build_task_context).not.toHaveBeenCalled();
     const artifacts = t.getArtifacts(taskId);
     expect(artifacts).toHaveLength(1);
     expect(artifacts[0]?.fileName).toBe("src/karo-demo-site/index.html");
@@ -1553,10 +1557,93 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     expect(t.getTaskState(taskId)?.agentCoreEstimate?.expectedModelCalls).toBe(5);
     expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
     expect(t.getTaskState(taskId)?.deterministicValidation?.skipModelReview).toBe(true);
-    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "coder", "validator", "finalizer"]);
+    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "planner", "coder", "validator", "finalizer"]);
+    expect(t.getFinalReport(taskId)?.bossSummary).toContain("Apply Changes is still required");
+    expect(t.getFinalReport(taskId)?.bossSummary).toContain("Fallback used: no");
     expect(t.getFinalReport(taskId)?.outstandingIssues ?? []).not.toContain(
       "No diff preview was generated for the requested show-changes-before-apply workflow.",
     );
+    expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort()).toEqual([
+      "src/karo-demo-site/README.md",
+      "src/karo-demo-site/index.html",
+      "src/karo-demo-site/script.js",
+      "src/karo-demo-site/styles.css",
+    ]);
+  });
+
+  it("uses targeted deterministic repair for a missing website FAQ instead of broad model review", async () => {
+    const shell = buildShell();
+    const { client, calls } = buildScriptedClient([
+      { when: "researcher", response: { kind: "ok", text: "Use a small static site." } },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/index.html",
+                content:
+                  "<main><section class=\"hero\">JJK landing</section><section class=\"abilities\">Abilities</section><section class=\"energy\">Characters and energy</section><section class=\"features\">Features</section></main>",
+              },
+            ],
+            summary: "Prepared HTML without FAQ.",
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/styles.css",
+                content: "body { background: #08070d; } .card { border: 1px solid #2a2438; } @media (min-width: 800px) { main { display: grid; } }",
+              },
+            ],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/script.js", content: "document.documentElement.dataset.ready = 'true';\n" }],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/README.md", content: "# Preview\n\nApply Changes, then open index.html.\n" }],
+          }),
+        },
+      },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const { taskId } = await t.createAndRunTask({
+      prompt: "Create a modern landing page website with hero, abilities, characters, energy, features, FAQ, responsive cards, and preview.",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+    });
+
+    await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
+    expect(t.getTaskState(taskId)?.status).toBe("completed");
+    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder", "coder", "coder"]);
+    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "planner", "coder", "validator", "fixer", "finalizer"]);
+    expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
+
+    const indexMeta = t.getArtifacts(taskId).find((artifact) => artifact.fileName === "src/karo-demo-site/index.html");
+    expect(indexMeta?.latestVersion).toBe(2);
+    const fixedIndex = indexMeta ? t.getArtifactVersion(taskId, indexMeta.id, indexMeta.latestVersion)?.content ?? "" : "";
+    expect(fixedIndex).toContain("faq");
     expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort()).toEqual([
       "src/karo-demo-site/README.md",
       "src/karo-demo-site/index.html",
@@ -1640,8 +1727,19 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     const state = t.getTaskState(taskId);
     expect(state?.status).toBe("error");
     expect(state?.decision?.executionMode).toBe("agent");
+    expect(state?.agentCoreEstimate?.contextProfile).toBe("website_creation");
     expect(state?.reviewCycles).toBe(0);
     expect(apply).not.toHaveBeenCalled();
+    expect(shell.shell_build_task_context).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({
+        maxFiles: 6,
+        maxTotalChars: 24000,
+        includeContent: true,
+        includeFileTree: true,
+      }),
+    );
     expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder"]);
     expect(calls.filter((call) => call.which === "coder").every((call) => call.timeoutMs === 120000)).toBe(true);
 
@@ -1652,6 +1750,22 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     expect(state?.errorReason).toContain("This run is not completed");
     expect(state?.providerDiagnostics?.filter((diagnostic) => diagnostic.agentId === "coder")).toHaveLength(2);
     expect(state?.providerDiagnostics?.some((diagnostic) => diagnostic.errorType === "provider_timeout")).toBe(true);
+    expect(state?.recoveryState).toMatchObject({
+      failedStage: "chunked_coder",
+      failedAgent: "coder",
+      failedFile: "src/karo-demo-site/index.html",
+      provider: SAMPLE_METADATA.provider,
+      model: SAMPLE_METADATA.modelId,
+      partialArtifacts: [],
+      retryCount: 0,
+      lastSuccessfulStage: "planner",
+      recommendedAction: "retry_reduced_context",
+      fallbackUsed: false,
+      canRetryFailedStage: true,
+      canRetryReducedContext: true,
+      canContinueFromPartial: false,
+      canSwitchModel: false,
+    });
 
     const report = t.getFinalReport(taskId);
     expect(report?.status).toBe("error");
@@ -1716,6 +1830,354 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     expect(t.getFinalReport(taskId)?.status).toBe("error");
     expect(t.getFinalReport(taskId)?.finalArtifacts).toHaveLength(1);
     expect(t.getTaskState(taskId)?.errorReason).toContain("Saved staged drafts before failure: 1 file(s)");
+    expect(t.getTaskState(taskId)?.recoveryState).toMatchObject({
+      failedStage: "chunked_coder",
+      failedAgent: "coder",
+      failedFile: "src/karo-demo-site/styles.css",
+      partialArtifacts: [
+        expect.objectContaining({
+          fileName: "src/karo-demo-site/index.html",
+        }),
+      ],
+      lastSuccessfulStage: "chunked_coder",
+      lastSuccessfulArtifact: expect.objectContaining({
+        fileName: "src/karo-demo-site/index.html",
+      }),
+      fallbackUsed: false,
+      canRetryFailedStage: true,
+      canRetryReducedContext: true,
+      canContinueFromPartial: true,
+      canSwitchModel: false,
+    });
+  });
+
+  it("continues chunked website recovery from the failed file without deleting preserved drafts", async () => {
+    const shell = buildShell();
+    const { client, calls } = buildScriptedClient([
+      { when: "researcher", response: { kind: "ok", text: "Build a static Minecraft JJK landing page." } },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/index.html",
+                content:
+                  "<main><section class=\"hero\">JJK landing</section><section class=\"abilities\">Abilities</section><section class=\"energy\">Characters and energy</section><section class=\"features\">Features</section><section class=\"faq\">FAQ</section></main>",
+              },
+            ],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/styles.css",
+                content:
+                  "body { background: #08070d; } .card { border: 1px solid #2a2438; } @media (min-width: 800px) { main { display: grid; } }",
+              },
+            ],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "script timeout",
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "script reduced timeout",
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/script.js", content: "document.documentElement.dataset.ready = 'true';\n" }],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [{ fileName: "src/karo-demo-site/README.md", content: "# Preview\n\nApply Changes, then open index.html.\n" }],
+          }),
+        },
+      },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const { taskId } = await t.createAndRunTask({
+      prompt: "Create a modern landing page website with hero, abilities, characters, energy, features, FAQ, responsive cards, and preview.",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+      projectPath: "D:\\projects\\karo-test",
+    });
+    await flushUntil(() => t.getTaskState(taskId)?.status === "error");
+    expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName)).toEqual([
+      "src/karo-demo-site/index.html",
+      "src/karo-demo-site/styles.css",
+    ]);
+    expect(t.getTaskState(taskId)?.recoveryState?.failedFile).toBe("src/karo-demo-site/script.js");
+
+    await t.resumeTask(taskId, { kind: "continuePartial" });
+    await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
+
+    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder", "coder", "coder", "coder", "coder"]);
+    expect(t.getTaskState(taskId)?.recoveryState).toBeUndefined();
+    expect(t.getFinalReport(taskId)?.status).toBe("completed");
+    expect(t.getFinalReport(taskId)?.bossSummary).toContain("Apply Changes is still required");
+    expect(t.getFinalReport(taskId)?.bossSummary).toContain("Fallback used: no");
+    expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort()).toEqual([
+      "src/karo-demo-site/README.md",
+      "src/karo-demo-site/index.html",
+      "src/karo-demo-site/script.js",
+      "src/karo-demo-site/styles.css",
+    ]);
+  });
+
+  it("retry with reduced context retries only the failed website chunk and preserves existing artifacts", async () => {
+    const shell = buildShell();
+    const { client, calls } = buildScriptedClient([
+      { when: "researcher", response: { kind: "ok", text: "Build a static Minecraft JJK landing page with detailed brand constraints and section notes." } },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/index.html",
+                content:
+                  "<main><section class=\"hero\">JJK landing</section><section class=\"abilities\">Abilities</section><section class=\"energy\">Characters and energy</section><section class=\"features\">Features</section><section class=\"faq\">FAQ</section></main>",
+              },
+            ],
+          }),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "styles timeout",
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "styles reduced timeout",
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: JSON.stringify({
+            artifacts: [
+              {
+                fileName: "src/karo-demo-site/styles.css",
+                content:
+                  "body { background: #08070d; } .card { border: 1px solid #2a2438; } @media (min-width: 800px) { main { display: grid; } }",
+              },
+            ],
+          }),
+        },
+      },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const { taskId } = await t.createAndRunTask({
+      prompt: "Create a modern landing page website with hero, abilities, characters, energy, features, FAQ, responsive cards, and preview.",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+      projectPath: "D:\\projects\\karo-test",
+    });
+    await flushUntil(() => t.getTaskState(taskId)?.status === "error");
+    const promptBeforeRetry = calls[2]?.messages[1]?.content ?? "";
+    expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName)).toEqual(["src/karo-demo-site/index.html"]);
+
+    await t.resumeTask(taskId, { kind: "retryReducedContext" });
+    await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
+
+    const promptAfterRetry = calls[calls.length - 1]?.messages[1]?.content ?? "";
+    expect(promptAfterRetry.length).toBeLessThan(promptBeforeRetry.length);
+    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder", "coder", "coder"]);
+    expect(t.getTaskState(taskId)?.recoveryState).toBeUndefined();
+    expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort()).toEqual([
+      "src/karo-demo-site/README.md",
+      "src/karo-demo-site/index.html",
+      "src/karo-demo-site/script.js",
+      "src/karo-demo-site/styles.css",
+    ]);
+  });
+
+  it("keeps Chat provider timeout as recoverable read-only error without artifacts", async () => {
+    const shell = buildShell();
+    const { client } = buildScriptedClient([
+      {
+        when: "researcher",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "chat timed out",
+        },
+      },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const { taskId } = await t.createAndRunTask({
+      prompt: "hello who are you",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+    });
+    await flushUntil(() => t.getTaskState(taskId)?.status === "error");
+
+    const state = t.getTaskState(taskId);
+    expect(state?.status).toBe("error");
+    expect(state?.decision?.executionMode).toBe("chat");
+    expect(t.getArtifacts(taskId)).toHaveLength(0);
+    expect(t.getFinalReport(taskId)?.status).toBe("error");
+    expect(state?.recoveryState).toMatchObject({
+      failedAgent: "orchestrator",
+      fallbackUsed: false,
+      canRetryFailedStage: true,
+      canContinueFromPartial: false,
+    });
+  });
+
+  it("keeps Plan provider timeout as recoverable read-only error without artifacts", async () => {
+    const shell = buildShell();
+    const { client } = buildScriptedClient([
+      {
+        when: "researcher",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "plan timed out",
+        },
+      },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const { taskId } = await t.createAndRunTask({
+      prompt: "make a plan for improving the Karo UI",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+      projectPath: "D:\\projects\\karo",
+    });
+    await flushUntil(() => t.getTaskState(taskId)?.status === "error");
+
+    const state = t.getTaskState(taskId);
+    expect(state?.status).toBe("error");
+    expect(state?.decision?.executionMode).toBe("plan");
+    expect(t.getArtifacts(taskId)).toHaveLength(0);
+    expect(t.getFinalReport(taskId)?.status).toBe("error");
+    expect(state?.recoveryState).toMatchObject({
+      fallbackUsed: false,
+      canRetryFailedStage: true,
+      canContinueFromPartial: false,
+    });
+  });
+
+  it("retry with reduced context lowers read-only context budget and preserves mode", async () => {
+    const shell = buildShell();
+    const buildContext = vi.fn(async (projectPath: string, prompt: string) => ({
+      projectRoot: projectPath,
+      prompt,
+      fileTreeSummary: [],
+      selectedFiles: [
+        {
+          relativePath: "src/security.ts",
+          content: "export function redactSecret() {}",
+          sizeBytes: 32,
+          score: 42,
+          reason: ["security-sensitive source"],
+          truncated: false,
+        },
+      ],
+      ignoredSummary: {
+        ignoredDirs: 0,
+        ignoredFiles: 0,
+        ignoredLargeFiles: 0,
+        ignoredBinaryFiles: 0,
+        ignoredSecretFiles: 0,
+      },
+      tokenBudgetHint: 80000,
+      createdAt: Date.now().toString(),
+      warnings: [],
+      scannedFilesCount: 10,
+      selectedFilesCount: 1,
+    }));
+    shell.shell_build_task_context = buildContext;
+    const { client } = buildScriptedClient([
+      {
+        when: "researcher",
+        response: {
+          kind: "error",
+          providerCode: "provider_timeout",
+          providerMessage: "security review timed out",
+        },
+      },
+      { when: "researcher", response: { kind: "ok", text: "Security review completed after reduced context retry." } },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const { taskId } = await t.createAndRunTask({
+      prompt: "check project security and code, not only README",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+      projectPath: "D:\\projects\\karo",
+    });
+    await flushUntil(() => t.getTaskState(taskId)?.status === "error");
+    expect(t.getTaskState(taskId)?.decision?.allowFileChanges).toBe(false);
+    expect(t.getTaskState(taskId)?.recoveryState?.canRetryReducedContext).toBe(true);
+
+    await t.resumeTask(taskId, { kind: "retryReducedContext" });
+    await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
+
+    expect(buildContext).toHaveBeenNthCalledWith(
+      1,
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({ maxFiles: 12, maxTotalChars: 80000 }),
+    );
+    expect(buildContext).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({ maxFiles: 6, maxTotalChars: 40000 }),
+    );
+    expect(t.getTaskState(taskId)?.decision?.allowFileChanges).toBe(false);
+    expect(t.getArtifacts(taskId)).toHaveLength(0);
+    expect(t.getFinalReport(taskId)?.status).toBe("completed");
   });
 
   describe("resumeTask", () => {

@@ -378,7 +378,7 @@ async function runWebsiteCreationScenario(): Promise<RuntimeScenario> {
     bool("agent-route-selected", state?.decision?.executionMode === "agent", state?.decision?.executionMode),
     bool("website-task-allows-file-changes", state?.decision?.allowFileChanges === true, String(state?.decision?.allowFileChanges)),
     bool("not-quick-edit", !traceAgents.includes("quick_edit"), traceAgents.join(", ")),
-    bool("chunked-agent-path-used", ["researcher", "coder", "validator"].every((agent) => traceAgents.includes(agent)), traceAgents.join(", ")),
+    bool("chunked-agent-path-used", ["researcher", "planner", "coder", "validator", "finalizer"].every((agent) => traceAgents.includes(agent)), traceAgents.join(", ")),
     bool("reviewer-boss-skipped-after-deterministic-validation", !traceAgents.includes("reviewer") && !traceAgents.includes("boss"), traceAgents.join(", ")),
     bool("website-artifacts-created", artifactNames.length >= 2, artifactNames.join(", ")),
     bool(
@@ -445,6 +445,13 @@ async function runWebsiteCoderTimeoutFallbackScenario(): Promise<RuntimeScenario
     bool("agent-route-selected", state?.decision?.executionMode === "agent", state?.decision?.executionMode),
     bool("timeout-is-error-not-completed", state?.status === "error", state?.status),
     bool("fallback-not-created-automatically", artifactNames.length === 0, artifactNames.join(", ")),
+    bool("recovery-state-created", state?.recoveryState !== undefined, JSON.stringify(state?.recoveryState ?? null)),
+    bool("recovery-failed-stage-coder", state?.recoveryState?.failedStage === "chunked_coder", state?.recoveryState?.failedStage),
+    bool("recovery-failed-file-recorded", state?.recoveryState?.failedFile === "src/karo-demo-site/index.html", state?.recoveryState?.failedFile),
+    bool("recovery-fallback-used-false", state?.recoveryState?.fallbackUsed === false, String(state?.recoveryState?.fallbackUsed)),
+    bool("recovery-retry-wired", state?.recoveryState?.canRetryFailedStage === true, String(state?.recoveryState?.canRetryFailedStage)),
+    bool("recovery-reduced-context-wired", state?.recoveryState?.canRetryReducedContext === true, String(state?.recoveryState?.canRetryReducedContext)),
+    bool("recovery-partial-empty-for-first-file-timeout", (state?.recoveryState?.partialArtifacts.length ?? -1) === 0, String(state?.recoveryState?.partialArtifacts.length ?? -1)),
     bool("benchmark-does-not-pass-on-fallback-only", report?.status !== "completed", report?.status),
     bool("provider-diagnostics-recorded", (state?.providerDiagnostics?.length ?? 0) >= 2, String(state?.providerDiagnostics?.length ?? 0)),
     bool(

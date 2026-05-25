@@ -79,6 +79,7 @@ export const ALL_SCENARIOS: ReadonlyArray<readonly [string, ScenarioFn]> = [
   ["composer", runScenarioComposer],
   ["context_popover", runScenarioContextPopover],
   ["casual_chat", runScenarioCasualChat],
+  ["chat_mode_readonly", runScenarioChatModeReadonly],
   ["clarification", runScenarioClarification],
   ["plan_mode", runScenarioPlanMode],
   ["project_explain", runScenarioProjectExplain],
@@ -347,6 +348,28 @@ export async function runScenarioCasualChat(ctx: KaroAutomationContext): Promise
   });
 }
 
+export async function runScenarioChatModeReadonly(ctx: KaroAutomationContext): Promise<ScenarioResult> {
+  return runScenario(ctx, "chat_mode_readonly", async (bag) => {
+    await ctx.openApp();
+    await resetToNewChat(ctx);
+    await karoClick(ctx, { testId: TEST_IDS.composerModeChat });
+    await sendLocalMessage(ctx, "\u0441\u043e\u0437\u0434\u0430\u0439 \u0444\u0430\u0439\u043b src/chat-mode-should-not-write.txt \u0441 \u0442\u0435\u043a\u0441\u0442\u043e\u043c hello");
+    await waitForAssistantSettled(ctx, 4_000);
+    const text = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
+    bag.assertions.push(
+      {
+        name: "chat-mode-refuses-file-changes",
+        passed: /Chat Mode is read-only/i.test(text ?? "") && /Agent Mode|Auto Mode/i.test(text ?? ""),
+        details: text ?? "",
+      },
+      await assertNotVisible(ctx, { selector: ".kw-pipeline-bar", name: "chat-mode-no-agent-pipeline" }),
+      await assertNotVisible(ctx, { selector: ".kw-chat-final", name: "chat-mode-no-final-report" }),
+      await assertNotVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "chat-mode-no-apply" }),
+    );
+    bag.screenshots.push((await karoScreenshot(ctx, { name: "chat-mode-readonly" })).path);
+  });
+}
+
 export async function runScenarioClarification(ctx: KaroAutomationContext): Promise<ScenarioResult> {
   return runScenario(ctx, "clarification", async (bag) => {
     await ctx.openApp();
@@ -388,20 +411,29 @@ export async function runScenarioPlanMode(ctx: KaroAutomationContext): Promise<S
       await assertVisible(ctx, { selector: `${byTestId(TEST_IDS.chatMessagePlan)}, ${byTestId(TEST_IDS.chatMessageAnalysis)}` }),
       await assertNotVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "plan-no-apply" }),
       await assertNotVisible(ctx, { selector: ".kw-pipeline-bar", name: "plan-no-agent-pipeline" }),
+      await assertNotVisible(ctx, { selector: ".kw-chat-final", name: "plan-no-final-report" }),
     );
     const planText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
-    const planFailedHonestly = /Plan model call failed|model_not_found|No encrypted API key/i.test(planText ?? "");
+    const planFailedHonestly = /Plan model call failed|Plan Mode could not complete|model_not_found|No encrypted API key/i.test(planText ?? "");
+    const hasEnglishSections =
+      /Plan Result/i.test(planText ?? "") &&
+      /Goal/i.test(planText ?? "") &&
+      /Assumptions/i.test(planText ?? "") &&
+      /Implementation steps/i.test(planText ?? "") &&
+      /Risks/i.test(planText ?? "") &&
+      /Tests/i.test(planText ?? "") &&
+      /Suggested mode/i.test(planText ?? "");
+    const hasRussianSections =
+      /Plan Result/i.test(planText ?? "") &&
+      /\u0426\u0435\u043b\u044c/u.test(planText ?? "") &&
+      /\u041f\u0440\u0435\u0434\u043f\u043e\u0441/u.test(planText ?? "") &&
+      /\u0428\u0430\u0433\u0438/u.test(planText ?? "") &&
+      /\u0420\u0438\u0441\u043a/u.test(planText ?? "") &&
+      /\u041f\u0440\u043e\u0432\u0435\u0440/u.test(planText ?? "") &&
+      /\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434/u.test(planText ?? "");
     bag.assertions.push({
       name: "plan-result-has-mode-contract-sections",
-      passed:
-        planFailedHonestly ||
-        (/Plan Result/i.test(planText ?? "") &&
-          /Goal/i.test(planText ?? "") &&
-          /Assumptions/i.test(planText ?? "") &&
-          /Implementation steps/i.test(planText ?? "") &&
-          /Risks/i.test(planText ?? "") &&
-          /Tests/i.test(planText ?? "") &&
-          /Suggested mode for execution/i.test(planText ?? "")),
+      passed: planFailedHonestly || hasEnglishSections || hasRussianSections,
       details: planText ?? "",
     });
     bag.screenshots.push((await karoScreenshot(ctx, { name: "plan-mode" })).path);
@@ -571,12 +603,15 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
       await assertNotVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "no-apply-before-agent-confirmation" }),
     );
     await ctx.page.locator(".kw-modal-confirm").click();
-    await ctx.page.waitForSelector(".kw-agent-card", { timeout: 10_000 });
+    await ctx.page.waitForSelector(byTestId(TEST_IDS.agentCard), { timeout: 10_000 });
+    const firstAgentCard = ctx.page.locator(byTestId(TEST_IDS.agentCard)).first();
+    const firstAgentText = await firstAgentCard.textContent() ?? "";
+    const threadText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent() ?? "";
     bag.assertions.push(
       {
         name: "quick-edit-agent-card-rendered",
-        passed: /Quick edit|Prepared 1 file|Prepared changes/i.test(await ctx.page.locator(".kw-agent-card").first().textContent() ?? ""),
-        details: await ctx.page.locator(".kw-agent-card").first().textContent() ?? "",
+        passed: /Quick edit|Prepared 1 file|Prepared changes/i.test(firstAgentText),
+        details: firstAgentText,
       },
       {
         name: "quick-edit-does-not-render-full-five-agent-pipeline",
@@ -586,25 +621,50 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
       {
         name: "quick-edit-hides-review-cycles-counter",
         passed: !/0\/2 cycles|review cycles performed|Researcher|Coder|Reviewer|Fixer|Boss/i.test(
-          await ctx.page.locator('[data-testid="chat-thread"]').textContent() ?? "",
+          threadText,
         ),
         details: "Quick Edit should not expose review cycle or full-pipeline labels.",
       },
       {
         name: "quick-edit-raw-events-collapsed",
-        passed: (await ctx.page.locator(".kw-agent-step-details[open]").count()) === 0,
+        passed: (await ctx.page.locator(`${byTestId(TEST_IDS.agentActivityDetails)}[open]`).count()) === 0,
         details: "raw event details should be collapsed by default",
       },
       {
         name: "quick-edit-shows-user-facing-activity-not-thoughts",
         passed:
           /Show activity details|Prepares deterministic staged changes/i.test(
-            await ctx.page.locator(".kw-agent-card").first().textContent() ?? "",
+            firstAgentText,
           ) &&
-          !/thought\s*[·В]/i.test(await ctx.page.locator('[data-testid="chat-thread"]').textContent() ?? ""),
-        details: await ctx.page.locator(".kw-agent-card").first().textContent() ?? "",
+          !/\bthought\b/i.test(threadText),
+        details: firstAgentText,
+      },
+      {
+        name: "quick-edit-file-chip-visible",
+        passed: /src\/karo-mcp-proof\.txt/i.test(firstAgentText),
+        details: firstAgentText,
       },
       await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "apply-available-after-quick-edit-artifact" }),
+    );
+    await karoClick(ctx, { testId: TEST_IDS.rightTabUsage });
+    await waitShort(ctx);
+    const usageText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
+    bag.assertions.push(
+      {
+        name: "quick-edit-usage-shows-zero-model-call-contract",
+        passed: /Expected model calls/i.test(usageText ?? "") && /0 max 0/i.test(usageText ?? ""),
+        details: usageText ?? "",
+      },
+      {
+        name: "quick-edit-usage-shows-none-context-profile",
+        passed: /Context profile\s*none/i.test(usageText ?? ""),
+        details: usageText ?? "",
+      },
+      {
+        name: "quick-edit-usage-shows-no-command-permission",
+        passed: /Allows commands\s*false/i.test(usageText ?? ""),
+        details: usageText ?? "",
+      },
     );
     bag.screenshots.push((await karoScreenshot(ctx, { name: "agent-route-guardrails" })).path);
   });
@@ -624,7 +684,7 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
       await assertNotVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "website-no-apply-before-confirmation" }),
     );
     await ctx.page.locator(".kw-modal-confirm").click();
-    await ctx.page.waitForSelector(".kw-agent-card", { timeout: 10_000 });
+    await ctx.page.waitForSelector(byTestId(TEST_IDS.agentCard), { timeout: 10_000 });
     const threadText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
     bag.assertions.push(
       {
@@ -636,6 +696,11 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
         name: "website-quick-edit-no-full-pipeline",
         passed: !/0\/2 cycles|review cycles performed|Researcher|Reviewer|Fixer|Boss/i.test(threadText ?? ""),
         details: "Static index.html should use Quick Edit, not the full review pipeline.",
+      },
+      {
+        name: "website-activity-no-visible-thoughts",
+        passed: !/\bthought\b/i.test(threadText ?? "") && (await ctx.page.locator(`${byTestId(TEST_IDS.agentActivityDetails)}[open]`).count()) === 0,
+        details: "Activity details should stay collapsed and should not expose thought labels.",
       },
       await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "website-apply-visible-after-staging" }),
     );

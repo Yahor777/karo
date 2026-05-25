@@ -547,7 +547,22 @@ describe("workbench ??? chat workbench", () => {
 
   it("Plan Mode answers with a Plan Result and does not start the agent pipeline", async () => {
     const opts = buildOptions();
-    opts.chatModelClient.nextResponse = { kind: "ok", text: "Summary\nImplementation Phases\nTest Plan" };
+    opts.chatModelClient.nextResponse = {
+      kind: "ok",
+      text: JSON.stringify({
+        goal: "Улучшить UX Karo без изменения файлов в Plan Mode.",
+        assumptions: ["Нужен review текущего UI."],
+        relevantFileAreas: ["workbench.ts", "main.css"],
+        implementationSteps: ["Проверить composer", "Проверить right inspector", "Составить Agent task после ревью"],
+        risks: ["Scope может расползтись."],
+        tests: ["gui:check", "tsc"],
+        estimatedComplexity: "medium",
+        expectedModelCallsContextBudget: "One planning call.",
+        suggestedExecutionMode: "Agent",
+        acceptanceCriteria: ["План понятен пользователю."],
+        whatNotToDoYet: ["Не создавать artifacts в Plan Mode."],
+      }),
+    };
     mountWorkspaceShell(root, opts);
     root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
     const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
@@ -561,16 +576,241 @@ describe("workbench ??? chat workbench", () => {
       .map((el) => el.textContent ?? "")
       .join("\n");
     expect(answer).toContain("Plan Result");
-    expect(answer).toContain("Goal");
-    expect(answer).toContain("Assumptions");
-    expect(answer).toContain("File areas");
-    expect(answer).toContain("Implementation steps");
-    expect(answer).toContain("Risks");
-    expect(answer).toContain("Tests");
-    expect(answer).toContain("Estimated complexity");
-    expect(answer).toContain("Suggested mode for execution");
+    expect(answer).toContain("Цель");
+    expect(answer).toContain("Предпосылки");
+    expect(answer).toContain("Зоны файлов");
+    expect(answer).toContain("Шаги реализации");
+    expect(answer).toContain("Риски");
+    expect(answer).toContain("Проверки");
+    expect(answer).toContain("Оценка сложности");
+    expect(answer).toContain("Рекомендуемый режим");
     expect(opts.transport.createCalls).toHaveLength(0);
+    expect(opts.shell.readProjectSummary).not.toHaveBeenCalled();
     expect(root.querySelector(".kw-chat-final")).toBeNull();
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("generic Plan Mode does not read project context", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = {
+      kind: "ok",
+      text: JSON.stringify({
+        goal: "Build a one-week Python learning plan.",
+        assumptions: ["The learner can study daily."],
+        relevantFileAreas: [],
+        implementationSteps: ["Day 1: syntax", "Day 2: functions", "Day 3: small script"],
+        risks: ["Too much theory."],
+        tests: ["Write one runnable script."],
+        estimatedComplexity: "low",
+        expectedModelCallsContextBudget: "One planning call, no project context.",
+        suggestedExecutionMode: "Plan",
+        acceptanceCriteria: ["The learner has a daily checklist."],
+        whatNotToDoYet: ["Do not scan the local project."],
+      }),
+    };
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "составь план изучения Python на неделю";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(opts.chatModelClient.calls).toHaveLength(1);
+    expect(opts.shell.readProjectSummary).not.toHaveBeenCalled();
+    const userPayload = opts.chatModelClient.calls[0]!.messages.at(-1)!.content;
+    expect(userPayload).toContain("Plan context profile: none");
+    expect(root.querySelector("[data-testid='chat-readonly-context']")).toBeNull();
+    expect(opts.transport.createCalls).toHaveLength(0);
+  });
+
+  it("project-specific Plan Mode uses minimal read-only Context Engine", async () => {
+    const built = buildShell();
+    built.reads.set("recentProject", {
+      path: "D:\\projects\\karo",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    });
+    built.shell.shell_build_task_context = vi.fn(async () => ({
+      projectRoot: "D:\\projects\\karo",
+      prompt: "спланируй как переделать Agent Activity UI в Karo",
+      fileTreeSummary: [],
+      selectedFiles: [
+        {
+          relativePath: "apps/desktop-windows/src/ui/workbench.ts",
+          content: "function buildChatMessage() {}",
+          sizeBytes: 64,
+          score: 40,
+          reason: ["ui work"],
+          truncated: false,
+        },
+        {
+          relativePath: "apps/desktop-windows/src/ui/main.css",
+          content: ".kw-agent-card {}",
+          sizeBytes: 32,
+          score: 36,
+          reason: ["visual work"],
+          truncated: false,
+        },
+      ],
+      ignoredSummary: {
+        ignoredDirs: 0,
+        ignoredFiles: 0,
+        ignoredLargeFiles: 0,
+        ignoredBinaryFiles: 0,
+        ignoredSecretFiles: 0,
+      },
+      tokenBudgetHint: 48000,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      warnings: [],
+      scannedFilesCount: 20,
+      selectedFilesCount: 2,
+    }));
+    const chat = new FakeChatModelClient();
+    chat.nextResponse = {
+      kind: "ok",
+      text: JSON.stringify({
+        goal: "Спланировать Agent Activity UI.",
+        assumptions: ["Контекст выбран read-only."],
+        relevantFileAreas: ["workbench.ts", "main.css"],
+        implementationSteps: ["Описать карточки", "Проверить scroll", "Добавить GUI assertions"],
+        risks: ["Не показывать hidden chain-of-thought."],
+        tests: ["workbench.test.ts", "gui:check"],
+        estimatedComplexity: "medium",
+        expectedModelCallsContextBudget: "One planning call plus selected UI context.",
+        suggestedExecutionMode: "Agent",
+        acceptanceCriteria: ["План не создает artifacts."],
+        whatNotToDoYet: ["Не делать redesign."],
+      }),
+    };
+    mountWorkspaceShell(root, {
+      session: SAMPLE_SESSION,
+      metadata: SAMPLE_METADATA,
+      desktopShell: built.shell,
+      transport: new FakeTransport(),
+      chatModelClient: chat,
+      onSignOut: vi.fn(),
+    });
+    await flush();
+    (root as any)._karoState.project = {
+      path: "D:\\projects\\karo",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    };
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "спланируй как переделать Agent Activity UI в Karo";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(built.shell.shell_build_task_context).toHaveBeenCalledWith(
+      "D:\\projects\\karo",
+      "спланируй как переделать Agent Activity UI в Karo",
+      expect.objectContaining({ maxFiles: 8, includeContent: true }),
+    );
+    const payload = chat.calls[0]!.messages.at(-1)!.content;
+    expect(payload).toContain("Plan context profile: ui_work");
+    expect(payload).toContain("workbench.ts");
+    expect(root.querySelector("[data-testid='chat-readonly-context']")?.textContent).toContain("2 files");
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("Plan Mode provider timeout is an honest recovery state, not fake success", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = {
+      kind: "error",
+      providerCode: "provider_timeout",
+      providerMessage: "model timed out",
+    };
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "сделай план улучшения UI Karo";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    const text = root.textContent ?? "";
+    expect(text).toContain("Plan Mode could not complete");
+    expect(text).toContain("Retry Plan");
+    expect(text).toContain("provider_timeout");
+    expect(text).not.toContain("Artifacts staged");
+    expect(opts.transport.createCalls).toHaveLength(0);
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("Plan Mode missing API key is honest failure, not fake success", async () => {
+    const built = buildShell();
+    built.reads.delete("secret:apiKey:fireworks");
+    const opts = buildOptions({ desktopShell: built.shell });
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "сделай план улучшения UI Karo";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    const text = root.textContent ?? "";
+    expect(text).toContain("Plan Mode could not complete");
+    expect(text).toContain("API key");
+    expect(opts.chatModelClient.calls).toHaveLength(0);
+    expect(opts.transport.createCalls).toHaveLength(0);
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("Plan Mode invalid JSON does not become a fake plan", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = { kind: "ok", text: "{not valid json" };
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "сделай план рефакторинга";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    const text = root.textContent ?? "";
+    expect(text).toContain("Plan Mode could not complete");
+    expect(text).toContain("plan_parse_failed");
+    expect(text).not.toContain("Шаги реализации");
+    expect(opts.transport.createCalls).toHaveLength(0);
+  });
+
+  it("Auto routes planning prompts to Plan Mode without artifacts", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = {
+      kind: "ok",
+      text: JSON.stringify({
+        goal: "Plan recovery work.",
+        assumptions: ["No file changes yet."],
+        relevantFileAreas: [],
+        implementationSteps: ["Define states", "Add tests"],
+        risks: ["Timeouts need honest recovery."],
+        tests: ["unit tests"],
+        estimatedComplexity: "medium",
+        expectedModelCallsContextBudget: "One planning call.",
+        suggestedExecutionMode: "Agent",
+        acceptanceCriteria: ["Plan is reviewable."],
+        whatNotToDoYet: ["Do not stage files."],
+      }),
+    };
+    mountWorkspaceShell(root, opts);
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "спланируй как лучше реализовать recovery";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(opts.chatModelClient.calls).toHaveLength(1);
+    expect(opts.transport.createCalls).toHaveLength(0);
+    expect(root.querySelector('[data-testid="chat-message-plan"]')?.textContent).toContain("Plan Result");
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
   });
 
   it("New chat creates a new persisted conversation without deleting the previous messages", async () => {
@@ -853,6 +1093,133 @@ describe("workbench ??? chat workbench", () => {
     expect(serialized).toContain("first question");
     expect(serialized).toContain("first answer");
     expect(serialized).toContain("second question");
+  });
+
+  it("new chat does not leak previous conversation history into Chat Mode payload", async () => {
+    const opts = buildOptions();
+    opts.chatModelClient.nextResponse = { kind: "ok", text: "noted" };
+    mountWorkspaceShell(root, opts);
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "remember the word watermelon";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    root.querySelector<HTMLButtonElement>(".kw-sidebar-new-chat")!.click();
+    await flush();
+    opts.chatModelClient.nextResponse = { kind: "ok", text: "I only see this chat." };
+    const secondPrompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    secondPrompt.value = "what was the previous message in this chat?";
+    secondPrompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(opts.chatModelClient.calls).toHaveLength(2);
+    const serialized = opts.chatModelClient.calls[1]!.messages
+      .map((message) => `${message.role}:${message.content}`)
+      .join("\n");
+    expect(serialized).toContain("what was the previous message");
+    expect(serialized).not.toContain("watermelon");
+  });
+
+  it("Chat Mode file-change request is blocked without model call or artifacts", async () => {
+    const opts = buildOptions();
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-chat"]')!.click();
+    await flush();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "\u0441\u043e\u0437\u0434\u0430\u0439 \u0444\u0430\u0439\u043b src/chat-mode-should-not-write.txt \u0441 \u0442\u0435\u043a\u0441\u0442\u043e\u043c hello";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(opts.transport.createCalls).toHaveLength(0);
+    expect(opts.chatModelClient.calls).toHaveLength(0);
+    const text = root.textContent ?? "";
+    expect(text).toContain("Chat Mode is read-only");
+    expect(text).toContain("Agent Mode");
+    expect(root.querySelector(".kw-chat-final")).toBeNull();
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("Chat Mode project question uses read-only Context Engine payload", async () => {
+    const built = buildShell();
+    built.reads.set("recentProject", {
+      path: "D:\\projects\\karo",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    });
+    built.shell.shell_build_task_context = vi.fn(async () => ({
+      projectRoot: "D:\\projects\\karo",
+      prompt: "what handles Apply Changes?",
+      fileTreeSummary: [],
+      selectedFiles: [
+        {
+          relativePath: "apps/desktop-windows/src/shell/nativeBindings.ts",
+          content: "export const shellApplyChanges = 'apply changes native binding';",
+          sizeBytes: 64,
+          score: 42,
+          reason: ["apply changes target"],
+          truncated: false,
+        },
+        {
+          relativePath: "apps/desktop-windows/src/orchestration/desktopOrchestratorTransport.ts",
+          content: "export class DesktopOrchestratorTransport {}",
+          sizeBytes: 64,
+          score: 40,
+          reason: ["transport"],
+          truncated: false,
+        },
+      ],
+      ignoredSummary: {
+        ignoredDirs: 0,
+        ignoredFiles: 0,
+        ignoredLargeFiles: 0,
+        ignoredBinaryFiles: 0,
+        ignoredSecretFiles: 0,
+      },
+      tokenBudgetHint: 50000,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      warnings: [],
+      scannedFilesCount: 12,
+      selectedFilesCount: 2,
+    }));
+    const chat = new FakeChatModelClient();
+    chat.nextResponse = { kind: "ok", text: "Apply Changes is handled by native bindings and transport." };
+    mountWorkspaceShell(root, {
+      session: SAMPLE_SESSION,
+      metadata: SAMPLE_METADATA,
+      desktopShell: built.shell,
+      transport: new FakeTransport(),
+      chatModelClient: chat,
+      onSignOut: vi.fn(),
+    });
+    await flush();
+    (root as any)._karoState.project = {
+      path: "D:\\projects\\karo",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    };
+    root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-chat"]')!.click();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "what handles Apply Changes?";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    expect(built.shell.shell_build_task_context).toHaveBeenCalledWith(
+      "D:\\projects\\karo",
+      "what handles Apply Changes?",
+      expect.objectContaining({ maxFiles: 8, includeContent: true }),
+    );
+    const serialized = chat.calls[0]!.messages.map((message) => message.content).join("\n");
+    expect(serialized).toContain("nativeBindings.ts");
+    expect(serialized).toContain("desktopOrchestratorTransport.ts");
+    expect(root.querySelector("[data-testid='chat-readonly-context']")?.textContent).toContain("2 files");
+    expect(root.querySelector(".kw-chat-final")).toBeNull();
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
   });
 
   it("agent tasks include a short conversation summary without mixing chats", async () => {
@@ -1240,6 +1607,18 @@ describe("workbench ??? chat workbench", () => {
       at: "2026-05-17T12:00:00.000Z",
       record: { kind: "artifact_change", artifactId: "a", version: 1 },
     });
+    opts.transport.emitArtifact(
+      {
+        id: "a",
+        taskId: "task-2",
+        fileName: "src/example.ts",
+        latestVersion: 1,
+        latestContentHash: "hash-a",
+        authoredByAgentId: "coder",
+        updatedAt: "2026-05-17T12:00:01.000Z",
+      },
+      "export const value = 1;",
+    );
 
     // Mount AFTER seeding, then simulate the activeTaskId by clicking
     // Start; simpler: directly seed by calling Start through composer.
@@ -1270,15 +1649,154 @@ describe("workbench ??? chat workbench", () => {
         )!;
         expect(researcherStep.textContent).toContain("Enriched prompt.");
         expect(researcherStep.querySelector(".kw-agent-avatar")?.textContent).toBe("R");
-        expect(researcherStep.textContent).toContain(
-          "\u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442",
-        );
+        expect(researcherStep.textContent).toContain("Selecting the minimum project context needed.");
         expect(researcherStep.textContent).toContain("Finds minimal relevant project context");
         expect(researcherStep.textContent).toContain("Show activity details");
         expect(researcherStep.textContent).not.toContain("thought");
         expect(researcherStep.querySelector(".kw-agent-step-details")?.hasAttribute("open")).toBe(false);
         expect(researcherStep.dataset["status"]).toBe("finished");
+        const coderStep = root.querySelector<HTMLElement>('.kw-agent-step[data-agent-id="coder"]')!;
+        expect(coderStep.querySelector(".kw-agent-file-chip")?.textContent).toBe("src/example.ts");
       });
+  });
+
+  it("shows skipped reviewer and file chips when deterministic validation passes", async () => {
+    const opts = buildOptions();
+    opts.transport.emitTaskState({
+      id: "website-activity",
+      status: "completed",
+      currentAgentId: null,
+      reviewCycles: 0,
+      maxReviewCycles: 2,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:00:05.000Z",
+      originalPrompt: "создай landing page",
+      modelId: "x",
+      provider: "fireworks",
+      participants: ["planner", "coder", "validator", "finalizer"],
+      deterministicValidation: {
+        status: "passed",
+        skipModelReview: true,
+        issues: [],
+        checkedSignals: ["hero", "faq", "responsive"],
+        reason: "Website acceptance signals passed.",
+      },
+    });
+    for (const [sequence, agentId, status] of [
+      [1, "planner", "finished"],
+      [2, "coder", "finished"],
+      [4, "validator", "finished"],
+      [5, "finalizer", "finished"],
+    ] as const) {
+      opts.transport.emitTraceEvent({
+        taskId: "website-activity",
+        agentId,
+        sequence,
+        at: `2026-05-17T12:00:0${String(sequence)}.000Z`,
+        record: { kind: "status", status },
+      });
+    }
+    opts.transport.emitTraceEvent({
+      taskId: "website-activity",
+      agentId: "coder",
+      sequence: 3,
+      at: "2026-05-17T12:00:03.000Z",
+      record: { kind: "artifact_change", artifactId: "site-css", version: 1 },
+    });
+    opts.transport.emitArtifact(
+      {
+        id: "site-css",
+        taskId: "website-activity",
+        fileName: "src/karo-demo-site/styles.css",
+        latestVersion: 1,
+        latestContentHash: "hash-css",
+        authoredByAgentId: "coder",
+        updatedAt: "2026-05-17T12:00:03.000Z",
+      },
+      ".hero { display: grid; }",
+    );
+
+    mountWorkspaceShell(root, opts);
+    opts.transport.createImpl = async () => ({ taskId: "website-activity" });
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "создай landing page";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    root.querySelector<HTMLButtonElement>(".kw-modal-confirm")!.click();
+    await flush();
+
+    const ids = Array.from(root.querySelectorAll<HTMLElement>(".kw-agent-step"))
+      .map((step) => step.dataset["agentId"]);
+    expect(ids).toEqual(expect.arrayContaining(["planner", "coder", "validator", "reviewer", "finalizer"]));
+    const reviewer = root.querySelector<HTMLElement>('.kw-agent-step[data-agent-id="reviewer"]')!;
+    expect(reviewer.dataset["status"]).toBe("skipped");
+    expect(reviewer.textContent).toContain("Пропущен");
+    expect(reviewer.textContent).toContain("deterministic validation");
+    const coder = root.querySelector<HTMLElement>('.kw-agent-step[data-agent-id="coder"]')!;
+    expect(coder.querySelector(".kw-agent-file-chip")?.textContent).toBe("src/karo-demo-site/styles.css");
+    expect(root.querySelectorAll(".kw-agent-step-details[open]")).toHaveLength(0);
+    expect(root.querySelector('[data-testid="chat-thread"]')?.textContent).not.toMatch(/\bthought\b/i);
+  });
+
+  it("shows recovery summary without marking a failed run completed", async () => {
+    const opts = buildOptions();
+    opts.transport.emitTaskState({
+      id: "recovery-activity",
+      status: "error",
+      currentAgentId: "coder",
+      reviewCycles: 0,
+      maxReviewCycles: 2,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:01:00.000Z",
+      originalPrompt: "создай сайт",
+      modelId: "x",
+      provider: "fireworks",
+      participants: ["coder"],
+      errorReason: "Coder timed out",
+      recoveryState: {
+        failedStage: "chunked_coder",
+        failedAgent: "coder",
+        failedFile: "src/karo-demo-site/script.js",
+        provider: "fireworks",
+        model: "x",
+        elapsedMs: 60_000,
+        timeoutMs: 60_000,
+        selectedFiles: [],
+        contextTokens: 800,
+        partialArtifacts: [
+          { artifactId: "site-html", version: 1, fileName: "src/karo-demo-site/index.html" },
+          { artifactId: "site-css", version: 1, fileName: "src/karo-demo-site/styles.css" },
+        ],
+        retryCount: 0,
+        lastSuccessfulStage: "chunked_coder",
+        lastSuccessfulArtifact: { artifactId: "site-css", version: 1, fileName: "src/karo-demo-site/styles.css" },
+        recommendedAction: "retry_failed_stage",
+        fallbackUsed: false,
+        canRetryFailedStage: true,
+        canRetryReducedContext: true,
+        canContinueFromPartial: true,
+        canSwitchModel: false,
+        recoveryReasonUser: "Coder timed out while generating script.js.",
+        recoveryReasonInternal: "provider_timeout",
+      },
+    });
+
+    mountWorkspaceShell(root, opts);
+    opts.transport.createImpl = async () => ({ taskId: "recovery-activity" });
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value = "создай сайт";
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    root.querySelector<HTMLButtonElement>(".kw-modal-confirm")!.click();
+    await flush();
+
+    const recovery = root.querySelector<HTMLElement>('[data-testid="agent-recovery-summary"]')!;
+    expect(recovery.textContent).toContain("src/karo-demo-site/script.js");
+    expect(recovery.textContent).toContain("src/karo-demo-site/index.html");
+    expect(recovery.textContent).toContain("fallback");
+    expect(recovery.textContent).not.toContain("Completed");
   });
 
   it("renders a Final Report card with Copy report and Open artifacts buttons", async () => {
@@ -1356,6 +1874,26 @@ describe("workbench ??? chat workbench", () => {
         allowCommands: false,
         reason: "local security question",
       } as any,
+      recoveryState: {
+        failedStage: "Security review",
+        failedAgent: "researcher",
+        provider: SAMPLE_METADATA.provider,
+        model: SAMPLE_METADATA.modelId!,
+        elapsedMs: 60000,
+        timeoutMs: 60000,
+        selectedFiles: ["src/security.ts", "src/settings.ts"],
+        contextTokens: 1200,
+        partialArtifacts: [],
+        retryCount: 0,
+        recommendedAction: "retry_failed_stage",
+        fallbackUsed: false,
+        canRetryFailedStage: true,
+        canRetryReducedContext: true,
+        canContinueFromPartial: false,
+        canSwitchModel: false,
+        recoveryReasonUser: "Security review timed out. No artifacts were created.",
+        recoveryReasonInternal: "provider_timeout",
+      },
     });
     const stateObj = (root as any)._karoState || (window as any)._karoState;
     if (stateObj) {
@@ -1452,6 +1990,124 @@ describe("workbench ??? chat workbench", () => {
     expect(finalCard?.textContent).toContain("Reduce context and retry");
     expect(finalCard?.textContent).toContain("Show selected files");
     expect(finalCard?.textContent).toContain("Copy context summary");
+
+    const buttons = Array.from(finalCard?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    expect(buttons.find((button) => button.textContent?.includes("Retry same model") === true)).not.toBeUndefined();
+    expect(buttons.find((button) => button.textContent?.includes("Reduce context and retry") === true)).not.toBeUndefined();
+  });
+
+  it("wires Coder recovery actions to retry/continue decisions and disables fake model switch", async () => {
+    const opts = buildOptions();
+    mountWorkspaceShell(root, opts);
+    opts.transport.emitTaskState({
+      id: "website-recovery",
+      status: "error",
+      currentAgentId: null,
+      reviewCycles: 0,
+      maxReviewCycles: 1,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:01:00.000Z",
+      originalPrompt: "Create a landing page website",
+      modelId: SAMPLE_METADATA.modelId!,
+      provider: SAMPLE_METADATA.provider,
+      participants: ["researcher", "planner", "coder"],
+      isExplainOnly: false,
+      providerDiagnostics: [
+        {
+          id: "diag-1",
+          agentId: "coder",
+          stageName: "Coder",
+          provider: SAMPLE_METADATA.provider,
+          modelId: SAMPLE_METADATA.modelId!,
+          inputTokenEstimate: 3200,
+          selectedFilesCount: 0,
+          contextTokens: 0,
+          timeoutMs: 120000,
+          elapsedMs: 120200,
+          errorType: "provider_timeout",
+          partialOutputReceived: false,
+          artifactsCreated: true,
+          createdAt: "2026-05-17T12:01:00.000Z",
+        },
+      ],
+      recoveryState: {
+        failedStage: "chunked_coder",
+        failedAgent: "coder",
+        failedFile: "src/karo-demo-site/script.js",
+        provider: SAMPLE_METADATA.provider,
+        model: SAMPLE_METADATA.modelId!,
+        elapsedMs: 120200,
+        timeoutMs: 120000,
+        selectedFiles: [],
+        contextTokens: 0,
+        partialArtifacts: [
+          { artifactId: "art-index", version: 1, fileName: "src/karo-demo-site/index.html" },
+        ],
+        retryCount: 0,
+        lastSuccessfulStage: "chunked_coder",
+        lastSuccessfulArtifact: { artifactId: "art-index", version: 1, fileName: "src/karo-demo-site/index.html" },
+        recommendedAction: "continue_partial",
+        fallbackUsed: false,
+        canRetryFailedStage: true,
+        canRetryReducedContext: true,
+        canContinueFromPartial: true,
+        canSwitchModel: false,
+        recoveryReasonUser: "Coder timed out while generating script.js. One staged artifact was preserved.",
+        recoveryReasonInternal: "provider_timeout",
+      },
+    });
+    opts.transport.emitArtifact(
+      {
+        id: "art-index",
+        taskId: "website-recovery",
+        fileName: "src/karo-demo-site/index.html",
+        latestVersion: 1,
+        latestContentHash: "hash",
+        authoredByAgentId: "coder",
+        updatedAt: "2026-05-17T12:00:30.000Z",
+      },
+      "<main><section class=\"hero\">Hero</section></main>",
+    );
+    const stateObj = (root as any)._karoState || (window as any)._karoState;
+    if (stateObj) {
+      stateObj.activeTaskId = "website-recovery";
+      stateObj.routeId = "chat";
+    }
+    opts.transport.emitFinalReport({
+      taskId: "website-recovery",
+      status: "error",
+      originalPrompt: "Create a landing page website",
+      participants: ["researcher", "planner", "coder"],
+      reviewCyclesPerformed: 0,
+      finalArtifacts: [
+        {
+          artifactId: "art-index",
+          version: 1,
+          fileName: "src/karo-demo-site/index.html",
+        },
+      ],
+      outstandingIssues: [
+        "Coder timed out while generating src/karo-demo-site/script.js. Retry Coder or continue from partial artifacts.",
+      ],
+      createdAt: "2026-05-17T12:01:00.000Z",
+    });
+    await flush();
+
+    const recovery = root.querySelector<HTMLElement>('[data-testid="coder-timeout-recovery"]');
+    expect(recovery).not.toBeNull();
+    expect(recovery?.textContent).toContain("Coder recovery: src/karo-demo-site/script.js");
+    const buttons = Array.from(recovery?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    expect(buttons.find((button) => button.textContent === "Switch model")?.disabled).toBe(true);
+
+    buttons.find((button) => button.textContent === "Retry failed stage")?.click();
+    buttons.find((button) => button.textContent === "Retry with reduced context")?.click();
+    buttons.find((button) => button.textContent === "Continue from partial artifacts")?.click();
+    await flush();
+    expect(opts.transport.resumeCalls).toEqual([
+      { taskId: "website-recovery", decision: { kind: "retryFailedStage" } },
+      { taskId: "website-recovery", decision: { kind: "retryReducedContext" } },
+      { taskId: "website-recovery", decision: { kind: "continuePartial" } },
+    ]);
   });
 
   it("keeps delayed security report attached before a later safety command", async () => {

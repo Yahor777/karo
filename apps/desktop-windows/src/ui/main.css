@@ -2459,6 +2459,35 @@ html, body {
   word-break: break-word;
 }
 
+.kw-final-request-details {
+  margin-top: 2px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.kw-final-request-details summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  color: var(--karo-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kw-final-request-details summary:hover {
+  color: var(--karo-text);
+}
+
+.kw-final-request-details pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 0 10px 10px;
+  color: var(--karo-text-muted);
+  font: 11.5px/1.45 var(--karo-font-mono);
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
 .kw-final-section-title {
   margin: 8px 0 4px 0;
   font-size: 12px;

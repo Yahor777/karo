@@ -2255,6 +2255,79 @@ describe("workbench ??? chat workbench", () => {
     ).toBe(true);
   });
 
+  it("renders Quick Edit result without dumping raw HTML in the main report", async () => {
+    const opts = buildOptions();
+    mountWorkspaceShell(root, opts);
+    const taskId = "quick-edit-site";
+    const prompt =
+      'create file src/karo-demo-site/index.html with text <!doctype html><html><body><main><section class="hero">Minecraft JJK Mod</section><section class="abilities">Abilities</section><section class="characters">Characters and energy</section><section class="features">Features</section><section class="faq">FAQ</section></main></body></html>';
+    const stateObj = (root as any)._karoState || (window as any)._karoState;
+    stateObj.activeTaskId = taskId;
+    opts.transport.emitTaskState({
+      id: taskId,
+      status: "completed",
+      currentAgentId: null,
+      reviewCycles: 0,
+      maxReviewCycles: 0,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:00:01.000Z",
+      originalPrompt: prompt,
+      modelId: SAMPLE_METADATA.modelId!,
+      provider: SAMPLE_METADATA.provider,
+      participants: ["quick_edit"],
+      decision: {
+        intent: "modify_file",
+        executionMode: "quick_edit",
+        confidence: 0.99,
+        needsClarification: false,
+        clarificationOptions: [],
+        allowWebSearch: false,
+        allowFileChanges: true,
+        allowCommands: false,
+        requiresContextEngine: false,
+        expectedOutput: "artifacts",
+        riskLevel: "low",
+        reasoningSummary: "Exact file edit.",
+      } as any,
+    });
+    opts.transport.emitArtifact(
+      {
+        id: "site-index",
+        taskId,
+        fileName: "src/karo-demo-site/index.html",
+        latestVersion: 1,
+        latestContentHash: "hash",
+        authoredByAgentId: "quick_edit",
+        updatedAt: "2026-05-17T12:00:01.000Z",
+      },
+      "<main>FAQ</main>",
+    );
+    opts.transport.emitFinalReport({
+      taskId,
+      status: "completed",
+      originalPrompt: prompt,
+      bossSummary: "Quick edit prepared 1 file: src/karo-demo-site/index.html. Review it in Changes before applying.",
+      participants: ["quick_edit"],
+      reviewCyclesPerformed: 0,
+      finalArtifacts: [{ artifactId: "site-index", version: 1, fileName: "src/karo-demo-site/index.html" }],
+      createdAt: "2026-05-17T12:00:01.000Z",
+    });
+    await flush();
+
+    const quickEdit = root.querySelector<HTMLElement>('[data-testid="quick-edit-result"]');
+    expect(quickEdit).not.toBeNull();
+    const listText = quickEdit?.querySelector(".kw-final-list")?.textContent ?? "";
+    expect(listText).toContain("Request");
+    expect(listText).toContain("Exact edit captured into 1 staged file");
+    expect(listText).toContain("src/karo-demo-site/index.html");
+    expect(listText).not.toContain("Original prompt");
+    expect(listText).not.toContain("<!doctype html>");
+    const rawRequest = quickEdit?.querySelector<HTMLDetailsElement>('[data-testid="quick-edit-original-request"]');
+    expect(rawRequest).not.toBeNull();
+    expect(rawRequest?.hasAttribute("open")).toBe(false);
+    expect(rawRequest?.textContent).toContain("<!doctype html>");
+  });
+
   it("renders security read-only result without boss verdict wording or duplicated open report", async () => {
     const opts = buildOptions();
     mountWorkspaceShell(root, opts);

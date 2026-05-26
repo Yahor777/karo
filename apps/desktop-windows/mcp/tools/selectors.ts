@@ -63,6 +63,8 @@ export const TEST_IDS = {
   analysisResult: "analysis-result",
   readonlyResult: "readonly-result",
   securityReviewResult: "security-review-result",
+  quickEditResult: "quick-edit-result",
+  quickEditOriginalRequest: "quick-edit-original-request",
   agentCard: "agent-card",
   agentActivityDetails: "agent-activity-details",
   agentRunSummaryActions: "agent-run-summary-actions",

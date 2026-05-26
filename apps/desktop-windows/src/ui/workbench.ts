@@ -3638,12 +3638,6 @@ export function mountWorkspaceShell(
   ): HTMLElement {
     const wrap = doc.createElement("article");
     wrap.className = "kw-chat-message kw-chat-final";
-    wrap.dataset["testid"] =
-      (report.bossSummary?.match(/^##\s*Plan Result/im) ?? null) !== null
-        ? "plan-result"
-        : options.transport?.getTaskState(report.taskId)?.decision?.intent === "security_review"
-          ? "security-review-result"
-          : "analysis-result";
     wrap.dataset["status"] = report.status;
     const author = doc.createElement("header");
     author.className = "kw-chat-author";
@@ -3653,6 +3647,14 @@ export function mountWorkspaceShell(
     const taskState = options.transport?.getTaskState(report.taskId);
     const isExplainOnly = taskState?.isExplainOnly === true;
     const isQuickEdit = report.participants.includes("quick_edit");
+    wrap.dataset["testid"] =
+      (report.bossSummary?.match(/^##\s*Plan Result/im) ?? null) !== null
+        ? "plan-result"
+        : taskState?.decision?.intent === "security_review"
+          ? "security-review-result"
+          : isQuickEdit
+            ? "quick-edit-result"
+            : "analysis-result";
     author.textContent = taskState?.decision?.intent === "security_review"
       ? "KARO · Security Review Result"
       : isExplainOnly
@@ -3683,7 +3685,11 @@ export function mountWorkspaceShell(
     if (renderedStatus !== null) {
       renderedStatus.textContent = statusLabel;
     }
-    appendKv(doc, list, "Original prompt", report.originalPrompt);
+    if (isQuickEdit) {
+      appendKv(doc, list, "Request", summarizeQuickEditRequest(report));
+    } else {
+      appendKv(doc, list, "Original prompt", report.originalPrompt);
+    }
     if (report.participants.length > 0) {
       appendKv(doc, list, "Participants", report.participants.map(readableAgentName).join(", "));
     }
@@ -3697,6 +3703,10 @@ export function mountWorkspaceShell(
       appendKv(doc, list, isQuickEdit ? "Summary" : "Finalizer summary", summaryText);
     }
     wrap.append(list);
+
+    if (isQuickEdit) {
+      wrap.append(buildOriginalRequestDisclosure(doc, report.originalPrompt));
+    }
 
     if (isExplainOnly && report.bossSummary !== undefined) {
       const details = doc.createElement("details");
@@ -3793,6 +3803,28 @@ export function mountWorkspaceShell(
     wrap.append(actions);
 
     return wrap;
+  }
+
+  function summarizeQuickEditRequest(report: FinalReportSummary): string {
+    if (report.finalArtifacts.length === 0) {
+      return compactUiText(report.originalPrompt, 160);
+    }
+    const shown = report.finalArtifacts.slice(0, 3).map((artifact) => artifact.fileName);
+    const remainder = report.finalArtifacts.length - shown.length;
+    const filesText = `${shown.join(", ")}${remainder > 0 ? `, +${String(remainder)} more` : ""}`;
+    return `Exact edit captured into ${String(report.finalArtifacts.length)} staged file${report.finalArtifacts.length === 1 ? "" : "s"}: ${filesText}.`;
+  }
+
+  function buildOriginalRequestDisclosure(doc: Document, prompt: string): HTMLElement {
+    const details = doc.createElement("details");
+    details.className = "kw-final-request-details";
+    details.dataset["testid"] = "quick-edit-original-request";
+    const summary = doc.createElement("summary");
+    summary.textContent = "Show original request";
+    const body = doc.createElement("pre");
+    body.textContent = prompt;
+    details.append(summary, body);
+    return details;
   }
 
   // ------ Composer ------

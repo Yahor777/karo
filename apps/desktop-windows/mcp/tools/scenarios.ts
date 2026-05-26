@@ -735,6 +735,12 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
     await ctx.page.locator(".kw-modal-confirm").click();
     await ctx.page.waitForSelector(byTestId(TEST_IDS.agentCard), { timeout: 10_000 });
     const threadText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
+    const quickEditResult = ctx.page.locator(byTestId(TEST_IDS.quickEditResult)).first();
+    const quickEditListText = await quickEditResult.locator(".kw-final-list").textContent().catch(() => "");
+    const rawRequestOpen = await quickEditResult
+      .locator(byTestId(TEST_IDS.quickEditOriginalRequest))
+      .evaluate((el) => el.hasAttribute("open"))
+      .catch(() => true);
     bag.assertions.push(
       {
         name: "website-quick-edit-stages-index-html",
@@ -750,6 +756,16 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
         name: "website-activity-no-visible-thoughts",
         passed: !/\bthought\b/i.test(threadText ?? "") && (await ctx.page.locator(`${byTestId(TEST_IDS.agentActivityDetails)}[open]`).count()) === 0,
         details: "Activity details should stay collapsed and should not expose thought labels.",
+      },
+      await assertVisible(ctx, { testId: TEST_IDS.quickEditResult, name: "website-quick-edit-result-card-visible" }),
+      {
+        name: "website-quick-edit-result-hides-raw-request",
+        passed:
+          /Exact edit captured into 1 staged file/i.test(quickEditListText ?? "") &&
+          /src\/karo-demo-site\/index\.html/i.test(quickEditListText ?? "") &&
+          !/<!doctype html>/i.test(quickEditListText ?? "") &&
+          rawRequestOpen === false,
+        details: `list=${quickEditListText ?? ""}; rawRequestOpen=${String(rawRequestOpen)}`,
       },
       await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "website-apply-visible-after-staging" }),
     );

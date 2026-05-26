@@ -7070,14 +7070,14 @@ export function mountWorkspaceShell(
     }
     const embeddedNote = doc.createElement("p");
     embeddedNote.className = "kw-preview-meta";
-    embeddedNote.textContent = "Embedded preview is not implemented in this MVP; Karo opens applied static files externally or runs an explicit dev command.";
+    embeddedNote.textContent = "Embedded preview is unavailable in this build; Karo opens applied static files externally or runs an explicit dev command.";
     const notice = doc.createElement("p");
     notice.className = "kw-system-notice kw-system-notice-warning";
     notice.textContent =
       taskState?.isExplainOnly === true
         ? "This was a read-only run. Preview is available only after an implementation task suggests runnable changes."
         : terminalAvailable
-          ? "Preview runs through the safe MVP terminal allowlist. Destructive commands are blocked."
+          ? "Preview runs through the safe command allowlist. Destructive commands are blocked."
           : "Preview command execution is unavailable because the terminal backend is not connected in this runtime.";
     const actions = doc.createElement("div");
     actions.className = "kw-preview-actions";
@@ -7270,7 +7270,7 @@ export function mountWorkspaceShell(
       return { label: "Command", value: "No command detected", state: "idle" };
     }
     if (commandPreflight.canStart) {
-      return { label: "Command", value: "MVP allowlist command ready", state: "ready" };
+      return { label: "Command", value: "Approved command ready", state: "ready" };
     }
     if (commandPreflight.projectRoot.length === 0) {
       return { label: "Command", value: "Project root required", state: "blocked" };
@@ -7279,7 +7279,7 @@ export function mountWorkspaceShell(
       return { label: "Command", value: "Destructive command blocked", state: "blocked" };
     }
     if (!commandPreflight.mvpAllowed) {
-      return { label: "Command", value: "Not in MVP allowlist", state: "blocked" };
+      return { label: "Command", value: "Outside safe command allowlist", state: "blocked" };
     }
     return { label: "Command", value: "Command blocked by policy", state: "blocked" };
   }
@@ -7606,7 +7606,7 @@ export function mountWorkspaceShell(
     const body = doc.createElement("p");
     body.className = "kw-empty-body";
     body.textContent = terminalAvailable
-      ? `Safe terminal MVP runner connected. Status: ${getTerminalDisplayStatus()}. This is not a full PTY terminal.`
+      ? `Safe command runner connected. Status: ${getTerminalDisplayStatus()}. This panel runs approved commands only; it is not a full interactive PTY.`
       : "Terminal backend is not connected in this runtime. Command execution is disabled.";
     const command = doc.createElement("input");
     command.className = "kw-terminal-command";
@@ -7718,7 +7718,7 @@ export function mountWorkspaceShell(
       preflight.command.length === 0
         ? "Waiting"
         : preflight.mvpAllowed
-          ? "MVP approved"
+          ? "Approved"
           : decision?.riskLevel === "destructive"
             ? "Hard blocked"
             : "Not allowed";
@@ -7734,7 +7734,7 @@ export function mountWorkspaceShell(
       [
         "Runner",
         terminalAvailable ? getTerminalDisplayStatus() : "offline",
-        terminalAvailable ? "Safe allowlist backend" : "No command execution",
+        terminalAvailable ? "Safe command runner" : "No command execution",
         terminalAvailable ? "ready" : "blocked",
       ],
       [
@@ -7805,7 +7805,7 @@ export function mountWorkspaceShell(
     } else if (decision?.blocked === true) {
       blockReason = "Command is blocked by Karo command policy.";
     } else if (!mvpAllowed) {
-      blockReason = "Command requires approval or is not allowed in the MVP terminal allowlist.";
+      blockReason = "Command requires approval or is outside the safe command allowlist.";
     }
     return {
       command,

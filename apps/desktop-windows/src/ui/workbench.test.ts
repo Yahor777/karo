@@ -2790,7 +2790,7 @@ describe("workbench ??? right panel", () => {
     expect(text).toContain("Copy command");
     expect(text).toContain("Terminal status");
     expect(text).toContain("No fake iframe preview");
-    expect(text).toContain("Embedded preview is not implemented");
+    expect(text).toContain("Embedded preview is unavailable");
     expect(text).toContain("Preview preflight");
     expect(text).toContain("No index.html staged");
     expect(text).toContain("No preview target yet");
@@ -2819,7 +2819,7 @@ describe("workbench ??? right panel", () => {
     const text = root.querySelector(".kw-right-content")?.textContent ?? "";
     expect(text).toContain("Preview status: dev-command-gated");
     expect(text).toContain("Project root required");
-    expect(text).not.toContain("Not in MVP allowlist");
+    expect(text).not.toContain("Outside safe command allowlist");
     expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-run-button"]')?.disabled).toBe(true);
   });
 
@@ -3125,7 +3125,7 @@ describe("workbench ??? right panel", () => {
     expect(start).toHaveBeenCalledWith("D:\\проекты\\karo-exstention", "pnpm desktop:dev:renderer", "preview", "powershell");
     expect(root.querySelector<HTMLElement>(".kw-bottom-tools")?.dataset["open"]).toBe("true");
     expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("running");
-    expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("Safe allowlist backend");
+    expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("Safe command runner");
     expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("Smart Approval");
     expect(root.querySelector('[data-testid="terminal-profile"]')?.textContent).toContain("PowerShell");
     const gitBashOption = root.querySelector<HTMLOptionElement>('[data-testid="terminal-profile"] option[value="git_bash"]');
@@ -3146,7 +3146,7 @@ describe("workbench ??? right panel", () => {
     expect(root.querySelector(".kw-bottom-tools-status")?.textContent).toContain("success");
   });
 
-  it("Preview disables custom dev commands outside the MVP allowlist", async () => {
+  it("Preview disables custom dev commands outside the safe command allowlist", async () => {
     const built = buildShell();
     built.reads.set("recentProject", {
       path: "D:\\проекты\\karo-exstention",
@@ -3178,7 +3178,7 @@ describe("workbench ??? right panel", () => {
     input.dispatchEvent(new Event("input", { bubbles: true }));
 
     expect(root.querySelector('[data-testid="preview-status"]')?.textContent).toContain("Preview status: dev-command-gated");
-    expect(root.querySelector('[data-testid="preview-preflight"]')?.textContent).toContain("Not in MVP allowlist");
+    expect(root.querySelector('[data-testid="preview-preflight"]')?.textContent).toContain("Outside safe command allowlist");
     const run = root.querySelector<HTMLButtonElement>('[data-testid="preview-run-button"]')!;
     expect(run.disabled).toBe(true);
     run.click();
@@ -3229,7 +3229,7 @@ describe("workbench ??? right panel", () => {
     expect(root.querySelector('[data-testid="terminal-output"]')?.textContent).toContain("No terminal output yet");
   });
 
-  it("Terminal disables commands outside the MVP allowlist before backend execution", async () => {
+  it("Terminal disables commands outside the safe command allowlist before backend execution", async () => {
     const built = buildShell();
     built.reads.set("recentProject", {
       path: "D:\\проекты\\karo-exstention",

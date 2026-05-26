@@ -821,7 +821,7 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
       }),
       {
         name: "website-preview-no-fake-embedded-frame",
-        passed: embeddedFrameCount === 0 && /Embedded preview is not implemented/i.test(previewText ?? ""),
+        passed: embeddedFrameCount === 0 && /Embedded preview is unavailable/i.test(previewText ?? ""),
         details: `embeddedFrameCount=${String(embeddedFrameCount)} text=${previewText ?? ""}`,
       },
       {
@@ -1093,7 +1093,7 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
       });
       const tabText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
       if (tab === "preview") {
-        const previewBackendConnected = /safe MVP terminal allowlist/i.test(tabText ?? "");
+        const previewBackendConnected = /safe command allowlist/i.test(tabText ?? "");
         bag.assertions.push({
           name: "preview-run-button-state-honest",
           passed:
@@ -1202,7 +1202,7 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
         name: "preview-invalid-command-shows-allowlist-gate",
         passed:
           /Preview status:\s*dev-command-gated/i.test(invalidPreviewText ?? "") &&
-          /Not in MVP allowlist/i.test(invalidPreviewText ?? "") &&
+          /Outside safe command allowlist/i.test(invalidPreviewText ?? "") &&
           /Exact command preflight/i.test(invalidPreviewText ?? ""),
         details: invalidPreviewText ?? "",
       },
@@ -1237,7 +1237,7 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
     await karoClick(ctx, { testId: TEST_IDS.rightTabUsage });
     await ctx.page.locator(byTestId(TEST_IDS.terminalPanel)).click();
     const terminalText = await ctx.page.locator(byTestId(TEST_IDS.terminalPanel)).textContent().catch(() => "");
-    const terminalConnected = /Safe terminal (backend connected|MVP runner connected)/i.test(terminalText ?? "");
+    const terminalConnected = /Safe command runner connected/i.test(terminalText ?? "");
     bag.assertions.push({
       name: "terminal-bottom-panel-honest-state",
       passed: terminalConnected

@@ -1740,6 +1740,10 @@ describe("workbench ??? chat workbench", () => {
     const contract = root.querySelector<HTMLElement>(".kw-run-contract")?.textContent ?? "";
     expect(contract).toContain("Apply Changes required before disk write");
     expect(contract).toContain("passed / reviewer skipped");
+    expect(contract).toContain("Validation evidence");
+    expect(contract).toContain("Website acceptance signals passed.");
+    expect(contract).toContain("hero");
+    expect(contract).toContain("responsive");
     expect(root.querySelectorAll(".kw-agent-step-details[open]")).toHaveLength(0);
     expect(root.querySelector('[data-testid="chat-thread"]')?.textContent).not.toMatch(/\bthought\b/i);
   });
@@ -2376,6 +2380,8 @@ describe("workbench ??? right panel", () => {
     const text = root.querySelector(".kw-right-content")?.textContent ?? "";
     expect(text).toContain("Static preview");
     expect(text).toContain("Preview status: staged-only/apply-required");
+    expect(text).toContain("Preview gate evidence");
+    expect(text).toContain("no deterministic website quality validation was recorded");
     expect(text).toContain("Apply changes before preview");
     expect(text).toContain("src/karo-demo-site/index.html");
     expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-copy-static-path"]')?.disabled).toBe(false);
@@ -2426,6 +2432,13 @@ describe("workbench ??? right panel", () => {
       modelId: SAMPLE_METADATA.modelId!,
       provider: SAMPLE_METADATA.provider,
       participants: ["researcher", "coder"],
+      deterministicValidation: {
+        status: "passed",
+        skipModelReview: true,
+        issues: [],
+        checkedSignals: ["document metadata", "stylesheet/script wiring", "visible CTA"],
+        reason: "Website acceptance signals passed.",
+      },
       decision: {
         intent: "modify_file",
         executionMode: "agent",
@@ -2462,7 +2475,11 @@ describe("workbench ??? right panel", () => {
 
     const open = root.querySelector<HTMLButtonElement>('[data-testid="preview-open-static"]')!;
     expect(open.disabled).toBe(false);
-    expect(root.querySelector(".kw-right-content")?.textContent).toContain("Preview status: static-file-ready");
+    const previewText = root.querySelector(".kw-right-content")?.textContent ?? "";
+    expect(previewText).toContain("Preview status: static-file-ready");
+    expect(previewText).toContain("Preview gate evidence");
+    expect(previewText).toContain("Website acceptance signals passed.");
+    expect(previewText).toContain("document metadata");
     open.click();
     await flush();
 

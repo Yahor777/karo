@@ -2639,9 +2639,11 @@ export function mountWorkspaceShell(
     const validation = taskState.deterministicValidation;
     const validationLabel =
       validation === undefined
-        ? taskState.status === "completed" || taskState.status === "error" || taskState.status === "stopped_limit"
-          ? "Validation recorded in final report"
-          : "Validation pending"
+        ? isQuickEdit
+          ? "Literal edit / safety checks only"
+          : taskState.status === "completed" || taskState.status === "error" || taskState.status === "stopped_limit"
+            ? "No deterministic validation recorded"
+            : "Validation pending"
         : `${validation.status}${validation.skipModelReview ? " / reviewer skipped" : ""}`;
     const applyLabel =
       taskState.status === "error"
@@ -2666,7 +2668,114 @@ export function mountWorkspaceShell(
       item.append(labelEl, valueEl);
       strip.append(item);
     }
+    const staticArtifactStaged = Array.from(filesTouched).some((name) => /(^|\/)index\.html$/i.test(name));
+    const validationEvidence = buildValidationEvidenceCard(doc, taskState, {
+      surface: "run",
+      isQuickEdit,
+      hasStaticArtifact: staticArtifactStaged,
+    });
+    if (validationEvidence !== null) {
+      strip.append(validationEvidence);
+    }
     return strip;
+  }
+
+  function buildValidationEvidenceCard(
+    doc: Document,
+    taskState: TaskStateSnapshot | null,
+    options: {
+      readonly surface: "run" | "preview";
+      readonly isQuickEdit?: boolean | undefined;
+      readonly hasStaticArtifact?: boolean | undefined;
+    },
+  ): HTMLElement | null {
+    const validation = taskState?.deterministicValidation;
+    const recovery = taskState?.recoveryState;
+    const shouldShow =
+      validation !== undefined ||
+      recovery !== undefined ||
+      options.isQuickEdit === true ||
+      options.hasStaticArtifact === true;
+    if (!shouldShow) return null;
+
+    const card = doc.createElement("section");
+    card.className = "kw-validation-evidence";
+    card.dataset["surface"] = options.surface;
+    if (validation !== undefined) {
+      card.dataset["state"] = validation.status;
+    } else if (recovery !== undefined) {
+      card.dataset["state"] = "recovery";
+    } else {
+      card.dataset["state"] = "unverified";
+    }
+    card.dataset["testid"] =
+      options.surface === "preview" ? "preview-validation-evidence" : "run-validation-evidence";
+
+    const head = doc.createElement("div");
+    head.className = "kw-validation-evidence-head";
+    const title = doc.createElement("strong");
+    title.textContent = options.surface === "preview" ? "Preview gate evidence" : "Validation evidence";
+    const badge = doc.createElement("span");
+    badge.className = "kw-validation-evidence-badge";
+    badge.textContent =
+      validation !== undefined
+        ? validation.skipModelReview
+          ? "validated"
+          : validation.status
+        : recovery !== undefined
+          ? "recovery"
+          : "not quality-validated";
+    head.append(title, badge);
+
+    const body = doc.createElement("p");
+    body.className = "kw-validation-evidence-body";
+    if (validation !== undefined) {
+      body.textContent = validation.skipModelReview
+        ? `${validation.reason} Reviewer skipped only after deterministic checks passed.`
+        : validation.reason;
+    } else if (recovery !== undefined) {
+      body.textContent =
+        "Run is not completed. Partial staged artifacts remain reviewable; fallback is not counted as success.";
+    } else if (options.isQuickEdit === true) {
+      body.textContent =
+        "Literal Quick Edit staged exactly requested bytes. Path/content safety checks still apply; generated-site quality gates run only on Agent website generation.";
+    } else {
+      body.textContent =
+        "A static file is staged, but no deterministic website quality validation was recorded for this run. Apply Changes is still required before opening it.";
+    }
+    card.append(head, body);
+
+    const chips = doc.createElement("div");
+    chips.className = "kw-validation-chip-row";
+    const signals = validation?.checkedSignals.slice(0, 8) ?? [];
+    for (const signal of signals) {
+      const chip = doc.createElement("span");
+      chip.className = "kw-validation-chip";
+      chip.textContent = signal;
+      chips.append(chip);
+    }
+    if ((validation?.checkedSignals.length ?? 0) > signals.length) {
+      const more = doc.createElement("span");
+      more.className = "kw-validation-chip";
+      more.textContent = `+${String(validation!.checkedSignals.length - signals.length)} more`;
+      chips.append(more);
+    }
+    if (chips.childElementCount > 0) {
+      card.append(chips);
+    }
+
+    if (validation !== undefined && validation.issues.length > 0) {
+      const issueList = doc.createElement("ul");
+      issueList.className = "kw-validation-issues";
+      for (const issue of validation.issues.slice(0, 4)) {
+        const item = doc.createElement("li");
+        item.textContent = issue;
+        issueList.append(item);
+      }
+      card.append(issueList);
+    }
+
+    return card;
   }
 
   function buildAgentGroupCard(
@@ -6107,6 +6216,10 @@ export function mountWorkspaceShell(
       item.append(itemLabel, itemValue);
       previewContract.append(item);
     }
+    const previewValidationEvidence = buildValidationEvidenceCard(doc, taskState, {
+      surface: "preview",
+      hasStaticArtifact: staticPreviewArtifact !== undefined,
+    });
     const staticPreview = doc.createElement("div");
     staticPreview.className = "kw-system-notice kw-preview-static-note";
     if (staticPreviewArtifact !== undefined) {
@@ -6213,7 +6326,11 @@ export function mountWorkspaceShell(
     } else {
       actions.append(start, copyCommand, openTerminal);
     }
-    wrap.append(title, subtitle, statusCard, previewContract, commandLabel, meta, urlState, staticPreview, embeddedNote, notice, actions);
+    wrap.append(title, subtitle, statusCard, previewContract);
+    if (previewValidationEvidence !== null) {
+      wrap.append(previewValidationEvidence);
+    }
+    wrap.append(commandLabel, meta, urlState, staticPreview, embeddedNote, notice, actions);
     return wrap;
   }
 

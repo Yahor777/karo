@@ -758,6 +758,14 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
         passed: copyPathVisible,
         details: `copyPathVisible=${String(copyPathVisible)}`,
       },
+      await assertVisible(ctx, {
+        testId: TEST_IDS.previewReviewStagedChanges,
+        name: "website-preview-review-staged-changes-action-visible",
+      }),
+      await assertVisible(ctx, {
+        testId: TEST_IDS.previewChooseProject,
+        name: "website-preview-project-action-visible-when-apply-blocked",
+      }),
       {
         name: "website-preview-no-fake-embedded-frame",
         passed: embeddedFrameCount === 0 && /Embedded preview is not implemented/i.test(previewText ?? ""),

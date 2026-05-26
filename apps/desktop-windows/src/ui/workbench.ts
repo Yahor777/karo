@@ -6827,6 +6827,35 @@ export function mountWorkspaceShell(
       surface: "preview",
       hasStaticArtifact: staticPreviewArtifact !== undefined,
     });
+    const previewGateActions = doc.createElement("div");
+    previewGateActions.className = "kw-preview-gate-actions";
+    previewGateActions.dataset["testid"] = "preview-gate-actions";
+    if (staticPreviewArtifact !== undefined && !staticPreviewApplied) {
+      const gateText = doc.createElement("span");
+      gateText.textContent = "Staged preview is blocked until you review and apply the artifact.";
+      const reviewChanges = doc.createElement("button");
+      reviewChanges.type = "button";
+      reviewChanges.className = "kw-button kw-button-primary";
+      reviewChanges.dataset["testid"] = "preview-review-staged-changes";
+      reviewChanges.textContent = "Review staged changes";
+      reviewChanges.title = "Open Changes to inspect staged files and the Apply gate.";
+      reviewChanges.addEventListener("click", () => {
+        state.routeId = "changes";
+        renderRoute();
+        setRightTab("changes");
+      });
+      previewGateActions.append(gateText, reviewChanges);
+      if (projectRoot.length === 0) {
+        const chooseProject = doc.createElement("button");
+        chooseProject.type = "button";
+        chooseProject.className = "kw-button kw-button-secondary";
+        chooseProject.dataset["testid"] = "preview-choose-project";
+        chooseProject.textContent = "Choose project";
+        chooseProject.title = "Select a project root before Apply Changes can write files.";
+        chooseProject.addEventListener("click", () => navigate("project"));
+        previewGateActions.append(chooseProject);
+      }
+    }
     let previewPreflight = buildPreviewPreflightChecklist(doc, {
       taskState,
       hasStaticArtifact: staticPreviewArtifact !== undefined,
@@ -6867,7 +6896,8 @@ export function mountWorkspaceShell(
         ? "Copy the project-relative index.html path."
         : "Copy the staged project-relative path. Apply Changes before opening it from disk.";
       copyPath.addEventListener("click", () => void copyToClipboard(staticPreviewArtifact.fileName));
-      staticPreview.append(staticText, openStatic, copyPath);
+      staticPreview.append(staticText);
+      staticPreview.append(openStatic, copyPath);
       if (state.previewOpenStatus === "opened") {
         const opened = doc.createElement("span");
         opened.className = "kw-preview-open-state";
@@ -6976,6 +7006,9 @@ export function mountWorkspaceShell(
       actions.append(start, copyCommand, openTerminal);
     }
     wrap.append(title, subtitle, statusCard, previewContract);
+    if (previewGateActions.childElementCount > 0) {
+      wrap.append(previewGateActions);
+    }
     if (previewValidationEvidence !== null) {
       wrap.append(previewValidationEvidence);
     }

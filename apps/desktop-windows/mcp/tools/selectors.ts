@@ -61,6 +61,8 @@ export const TEST_IDS = {
   changesApplyGate: "changes-apply-gate",
   changesApplyButton: "changes-apply-button",
   previewRunButton: "preview-run-button",
+  previewReviewStagedChanges: "preview-review-staged-changes",
+  previewChooseProject: "preview-choose-project",
   terminalPanel: "terminal-panel",
 } as const;
 

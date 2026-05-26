@@ -2649,8 +2649,15 @@ describe("workbench ??? right panel", () => {
     expect(text).toContain("Apply Changes required first");
     expect(text).toContain("Apply changes before preview");
     expect(text).toContain("src/karo-demo-site/index.html");
+    expect(text).toContain("Review staged changes");
+    expect(text).toContain("Choose project");
     expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-copy-static-path"]')?.disabled).toBe(false);
     expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-open-static"]')?.disabled).toBe(true);
+    root.querySelector<HTMLButtonElement>('[data-testid="preview-review-staged-changes"]')!.click();
+    expect(root.querySelector<HTMLElement>('[data-testid="right-tab-changes"]')?.getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(root.querySelector(".kw-right-content")?.textContent).toContain("Review before disk write");
   });
 
   it("Preview opens an applied static index.html through the desktop shell", async () => {
@@ -2709,6 +2716,7 @@ describe("workbench ??? right panel", () => {
           "hero section",
           "FAQ section",
           "substantive section copy",
+          "first-viewport hero visual",
           "responsive layout",
           "stable spacing system",
           "offline-safe local assets",
@@ -2772,6 +2780,7 @@ describe("workbench ??? right panel", () => {
     expect(previewText).toContain("Apply completed for this file");
     expect(previewText).toContain("document metadata");
     expect(previewText).toContain("Sections + body copy");
+    expect(previewText).toContain("First viewport scene");
     expect(previewText).toContain("Local assets only");
     expect(previewText).toContain("Depth + hover/focus");
     open.click();

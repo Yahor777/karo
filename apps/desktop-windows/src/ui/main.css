@@ -3174,6 +3174,25 @@ html, body {
     line-height: 1.35;
   }
 
+  .kw-preview-gate-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 9px;
+    border: 1px solid rgba(245, 158, 11, 0.36);
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.085);
+    color: #fed7aa;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .kw-preview-gate-actions span {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+
   .kw-terminal-profile {
     display: flex;
     flex-direction: column;

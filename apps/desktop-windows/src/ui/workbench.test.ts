@@ -2480,6 +2480,9 @@ describe("workbench ??? right panel", () => {
     const text = bottomTools.textContent ?? "";
     expect(text).toContain("Terminal");
     expect(text).toMatch(/command execution is disabled/i);
+    expect(text).toContain("No command execution");
+    expect(text).toContain("No project selected");
+    expect(text).toContain("Project required");
     expect(text).not.toContain("Run command");
   });
 
@@ -2536,6 +2539,8 @@ describe("workbench ??? right panel", () => {
     expect(start).toHaveBeenCalledWith("D:\\проекты\\karo-exstention", "pnpm desktop:dev:renderer", "preview", "powershell");
     expect(root.querySelector<HTMLElement>(".kw-bottom-tools")?.dataset["open"]).toBe("true");
     expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("running");
+    expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("Safe allowlist backend");
+    expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("Smart Approval");
     expect(root.querySelector('[data-testid="terminal-profile"]')?.textContent).toContain("PowerShell");
     const gitBashOption = root.querySelector<HTMLOptionElement>('[data-testid="terminal-profile"] option[value="git_bash"]');
     expect(gitBashOption?.disabled).toBe(true);
@@ -2586,6 +2591,9 @@ describe("workbench ??? right panel", () => {
     root.querySelector<HTMLButtonElement>(".kw-bottom-tools-head")!.click();
     const command = root.querySelector<HTMLInputElement>(".kw-terminal-command")!;
     command.value = "git clean -fdx";
+    command.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(root.querySelector(".kw-terminal-safety-cockpit")?.textContent).toContain("destructive");
+    expect(root.querySelector(".kw-terminal-safety-cockpit")?.textContent).toContain("Approval required");
     root.querySelector<HTMLButtonElement>(".kw-terminal-actions .kw-button-primary")!.click();
     await flush();
 
@@ -2907,6 +2915,29 @@ describe("workbench ??? Settings", () => {
 // ---------------------------------------------------------------------------
 
 describe("workbench ??? Project", () => {
+  it("renders a workspace command center and pre-fills safe mode prompts", () => {
+    mountWorkspaceShell(root, buildOptions());
+    root.querySelector<HTMLButtonElement>('.kw-sidebar-button[data-route-id="project"]')!.click();
+
+    const commandCenter = root.querySelector<HTMLElement>(".kw-project-command-center")!;
+    expect(commandCenter.textContent).toContain("Workspace command center");
+    expect(commandCenter.textContent).toContain("Apply Changes remains the write gate");
+    expect(commandCenter.textContent).toContain("Project root");
+    expect(commandCenter.textContent).toContain("Not selected");
+
+    const planButton = Array.from(commandCenter.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent === "Plan next slice",
+    )!;
+    planButton.click();
+
+    expect(localStorage.getItem("karo.composerMode")).toBe("plan");
+    expect(root.querySelector('.kw-sidebar-button[data-route-id="chat"]')?.getAttribute("aria-current")).toBe("page");
+    expect(root.querySelector<HTMLTextAreaElement>('[data-testid="composer-textarea"]')?.value).toContain(
+      "next highest-impact Karo AI IDE improvement",
+    );
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-plan"]')?.getAttribute("aria-current")).toBe("true");
+  });
+
   it("Saves a project path and reflects it in the topbar", async () => {
     const opts = buildOptions();
     mountWorkspaceShell(root, opts);

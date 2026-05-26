@@ -288,6 +288,7 @@ interface InternalState {
   terminalLines: Array<{ stream: "stdout" | "stderr"; text: string; at: string }>;
   terminalError: string | null;
   terminalExitCode: number | null;
+  terminalCommandText: string;
   terminalProfiles: TerminalProfile[];
   terminalProfileId: string;
   previewUrl: string | null;
@@ -371,6 +372,7 @@ export function mountWorkspaceShell(
     terminalLines: [],
     terminalError: null,
     terminalExitCode: null,
+    terminalCommandText: "",
     terminalProfiles: [],
     terminalProfileId: localStorage.getItem("karo.terminalProfile") ?? "",
     previewUrl: null,
@@ -4543,15 +4545,16 @@ export function mountWorkspaceShell(
   function renderProjectPane(): void {
     center.innerHTML = "";
     center.dataset["routeId"] = "project";
+    const commandCenter = buildProjectCommandCenter();
     const card = doc.createElement("section");
-    card.className = "kw-pane-card";
+    card.className = "kw-pane-card kw-project-setup-card";
     const title = doc.createElement("h2");
     title.className = "kw-pane-title";
-    title.textContent = "Project folder";
+    title.textContent = "Project root";
     const note = doc.createElement("p");
     note.className = "kw-pane-note";
     note.textContent =
-      "Paste an absolute folder path. KARO validates that it exists and is a folder before saving it as project context.";
+      "Set the folder Karo can read, stage artifacts against, and use as the safe terminal working directory.";
     const form = doc.createElement("form");
     form.className = "kw-project-form";
     form.setAttribute("novalidate", "novalidate");
@@ -4625,7 +4628,133 @@ export function mountWorkspaceShell(
 
     form.append(input, actions, status);
     card.append(title, note, form);
-    center.append(card);
+    center.append(commandCenter, card);
+  }
+
+  function buildProjectCommandCenter(): HTMLElement {
+    const section = doc.createElement("section");
+    section.className = "kw-project-command-center";
+
+    const head = doc.createElement("div");
+    head.className = "kw-project-command-head";
+    const eyebrow = doc.createElement("p");
+    eyebrow.className = "kw-section-eyebrow";
+    eyebrow.textContent = "Workspace command center";
+    const title = doc.createElement("h2");
+    title.textContent = "Point Karo at the right code, then choose the safest next move";
+    const body = doc.createElement("p");
+    body.textContent =
+      "Cursor-level flow starts with explicit context: Chat explains, Plan scopes, Agent stages artifacts, and Apply Changes remains the write gate.";
+    head.append(eyebrow, title, body);
+
+    const readiness = doc.createElement("div");
+    readiness.className = "kw-project-readiness-grid";
+    const projectPath = state.project?.path ?? "";
+    const bridgeLive = options.desktopShell.isNativeBridgeWired?.() ?? false;
+    const previewSource =
+      state.detectedPreviewCommandSource === "package_json"
+        ? "package.json"
+        : state.detectedPreviewCommandSource === "default"
+          ? "default"
+          : "not detected";
+    const readinessItems: ReadonlyArray<readonly [string, string, string]> = [
+      [
+        "Project root",
+        projectPath.length > 0 ? toDisplayPath(projectPath) : "Not selected",
+        projectPath.length > 0 ? "ready" : "needs setup",
+      ],
+      [
+        "Context",
+        state.lastContextBuildCalled
+          ? `${String(state.lastContextSelectedFiles.length)} selected / ${String(state.lastContextFileCount)} scanned`
+          : "Collected on demand",
+        state.lastContextError === null ? "bounded" : "needs review",
+      ],
+      [
+        "Preview",
+        state.detectedPreviewCommand.length > 0 ? state.detectedPreviewCommand : "Static files after Apply",
+        previewSource,
+      ],
+      [
+        "Execution",
+        hasTerminalBackend() ? `Safe runner ${getTerminalDisplayStatus()}` : "Terminal runner offline",
+        bridgeLive ? "native bridge" : "limited runtime",
+      ],
+    ];
+    for (const [label, value, meta] of readinessItems) {
+      const item = doc.createElement("div");
+      item.className = "kw-project-readiness-item";
+      const labelEl = doc.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      const metaEl = doc.createElement("small");
+      metaEl.textContent = meta;
+      item.append(labelEl, valueEl, metaEl);
+      readiness.append(item);
+    }
+
+    const modes = doc.createElement("div");
+    modes.className = "kw-project-mode-lanes";
+    const modeItems: ReadonlyArray<{
+      readonly label: string;
+      readonly mode: ComposerMode;
+      readonly body: string;
+      readonly button: string;
+      readonly prompt: string;
+    }> = [
+      {
+        label: "Understand",
+        mode: "chat",
+        body: "Read and explain selected context without creating artifacts.",
+        button: "Ask about project",
+        prompt: "Explain this project like an AI IDE onboarding note: architecture, main entry points, risks, and where to start. Do not change files.",
+      },
+      {
+        label: "Plan",
+        mode: "plan",
+        body: "Turn a broad product request into a scoped implementation plan before file changes.",
+        button: "Plan next slice",
+        prompt: "Make a read-only implementation plan for the next highest-impact Karo AI IDE improvement. Keep Chat/Plan read-only and Agent changes staged behind Apply.",
+      },
+      {
+        label: "Build",
+        mode: "agent",
+        body: "Stage focused artifacts for review; disk writes still require Apply Changes.",
+        button: "Stage an improvement",
+        prompt: "Implement the next focused Karo AI IDE improvement using staged artifacts only. Preserve Apply Changes, safety blocks, and honest Preview/Terminal states.",
+      },
+    ];
+    for (const item of modeItems) {
+      const lane = doc.createElement("article");
+      lane.className = "kw-project-mode-lane";
+      const labelEl = doc.createElement("strong");
+      labelEl.textContent = item.label;
+      const bodyEl = doc.createElement("p");
+      bodyEl.textContent = item.body;
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "kw-button kw-button-secondary";
+      button.textContent = item.button;
+      button.addEventListener("click", () => prefillComposerPrompt(item.mode, item.prompt));
+      lane.append(labelEl, bodyEl, button);
+      modes.append(lane);
+    }
+
+    section.append(head, readiness, modes);
+    return section;
+  }
+
+  function prefillComposerPrompt(mode: ComposerMode, prompt: string): void {
+    state.composerMode = mode;
+    localStorage.setItem("karo.composerMode", mode);
+    navigate("chat");
+    const textarea = doc.querySelector<HTMLTextAreaElement>('[data-testid="composer-textarea"]');
+    if (textarea !== null) {
+      textarea.value = prompt;
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      textarea.focus();
+    }
   }
 
   // ------ Changes ------
@@ -6300,6 +6429,23 @@ export function mountWorkspaceShell(
     body.textContent = terminalAvailable
       ? `Safe terminal MVP runner connected. Status: ${getTerminalDisplayStatus()}. This is not a full PTY terminal.`
       : "Terminal backend is not connected in this runtime. Command execution is disabled.";
+    const command = doc.createElement("input");
+    command.className = "kw-terminal-command";
+    command.value =
+      state.terminalCommandText.length > 0
+        ? state.terminalCommandText
+        : (localStorage.getItem("karo.previewCommandSource") === "user_custom"
+          ? localStorage.getItem("karo.previewCommand") ?? state.detectedPreviewCommand
+          : state.detectedPreviewCommand);
+    command.placeholder = terminalAvailable ? "pnpm test" : "Command execution unavailable in this runtime";
+    command.disabled = !terminalAvailable;
+    let safetyCockpit = buildTerminalSafetyCockpit(command.value, terminalAvailable);
+    command.addEventListener("input", () => {
+      state.terminalCommandText = command.value;
+      const nextCockpit = buildTerminalSafetyCockpit(command.value, terminalAvailable);
+      safetyCockpit.replaceWith(nextCockpit);
+      safetyCockpit = nextCockpit;
+    });
     const profileLabel = doc.createElement("label");
     profileLabel.className = "kw-terminal-profile";
     const profileText = doc.createElement("span");
@@ -6326,14 +6472,6 @@ export function mountWorkspaceShell(
       renderBottomTools();
     });
     profileLabel.append(profileText, profileSelect);
-    const command = doc.createElement("input");
-    command.className = "kw-terminal-command";
-    command.value =
-      localStorage.getItem("karo.previewCommandSource") === "user_custom"
-        ? localStorage.getItem("karo.previewCommand") ?? state.detectedPreviewCommand
-        : state.detectedPreviewCommand;
-    command.placeholder = terminalAvailable ? "pnpm test" : "Command execution unavailable in this runtime";
-    command.disabled = !terminalAvailable;
     const actions = doc.createElement("div");
     actions.className = "kw-terminal-actions";
     const runBtn = doc.createElement("button");
@@ -6369,8 +6507,89 @@ export function mountWorkspaceShell(
     output.className = "kw-terminal-output";
     output.dataset["testid"] = "terminal-output";
     output.textContent = formatTerminalOutputForDisplay(terminalAvailable);
-    wrap.append(title, body, profileLabel, command, actions, output);
+    wrap.append(title, body, safetyCockpit, profileLabel, command, actions, output);
     return wrap;
+  }
+
+  function buildTerminalSafetyCockpit(commandText: string, terminalAvailable: boolean): HTMLElement {
+    const cockpit = doc.createElement("section");
+    cockpit.className = "kw-terminal-safety-cockpit";
+    const projectRoot = state.project?.path ?? "";
+    const trimmed = commandText.trim();
+    const permissionMode = readCommandPermissionMode();
+    const decision =
+      trimmed.length > 0
+        ? runCommandPolicy({
+            command: trimmed,
+            cwd: projectRoot,
+            projectRoot,
+            permissionMode,
+          })
+        : null;
+    let policyLabel = "Waiting for command";
+    if (projectRoot.length === 0) {
+      policyLabel = "Project required";
+    } else if (decision?.blocked === true) {
+      policyLabel = "Blocked";
+    } else if (decision?.requiresApproval === true) {
+      policyLabel = "Approval required";
+    } else if (decision !== null) {
+      policyLabel = "Allowed automatically";
+    }
+    const items: ReadonlyArray<readonly [string, string, string, string]> = [
+      [
+        "Runner",
+        terminalAvailable ? getTerminalDisplayStatus() : "offline",
+        terminalAvailable ? "Safe allowlist backend" : "No command execution",
+        terminalAvailable ? "ready" : "blocked",
+      ],
+      [
+        "Scope",
+        projectRoot.length > 0 ? "Project root" : "No project selected",
+        projectRoot.length > 0 ? toDisplayPath(projectRoot) : "Commands stay disabled until a root is set",
+        projectRoot.length > 0 ? "ready" : "blocked",
+      ],
+      [
+        "Policy",
+        formatCommandPermissionMode(permissionMode),
+        "Destructive commands are never auto-run",
+        "ready",
+      ],
+      [
+        "Command",
+        decision === null ? "No command" : decision.riskLevel,
+        policyLabel,
+        decision?.blocked === true || decision?.riskLevel === "destructive" ? "blocked" : decision?.requiresApproval === true ? "warn" : "ready",
+      ],
+    ];
+    for (const [label, value, detail, stateName] of items) {
+      const item = doc.createElement("div");
+      item.className = "kw-terminal-safety-item";
+      item.dataset["state"] = stateName;
+      const labelEl = doc.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      const detailEl = doc.createElement("small");
+      detailEl.textContent = detail;
+      item.append(labelEl, valueEl, detailEl);
+      cockpit.append(item);
+    }
+    return cockpit;
+  }
+
+  function readCommandPermissionMode(): "safe_commands" | "smart_approval" | "full_access_smart" {
+    const stored = localStorage.getItem("karo.permissionMode");
+    if (stored === "safe_commands" || stored === "smart_approval" || stored === "full_access_smart") {
+      return stored;
+    }
+    return "smart_approval";
+  }
+
+  function formatCommandPermissionMode(mode: "safe_commands" | "smart_approval" | "full_access_smart"): string {
+    if (mode === "safe_commands") return "Safe Commands";
+    if (mode === "full_access_smart") return "Full Access Smart";
+    return "Smart Approval";
   }
 
   function getTerminalDisplayStatus(): string {
@@ -6476,6 +6695,7 @@ export function mountWorkspaceShell(
 
   async function startTerminalCommand(command: string, mode: "preview" | "manual"): Promise<void> {
     const projectRoot = state.project?.path ?? "";
+    state.terminalCommandText = command;
     if (!hasTerminalBackend()) {
       state.terminalError = "Terminal backend is not connected in this runtime.";
       state.terminalStatus = "error";

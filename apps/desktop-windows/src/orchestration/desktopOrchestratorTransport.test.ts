@@ -1487,7 +1487,7 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
               {
                 fileName: "src/karo-demo-site/index.html",
                 content:
-                  '<!doctype html><html><head><title>Minecraft JJK Mod</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><main><section class="hero">JJK landing <a class="cta-button" href="#abilities">Explore abilities</a></section><section id="abilities" class="abilities">Abilities</section><section class="energy">Characters and energy</section><section class="features">Features</section><section class="faq">FAQ</section></main></body></html>',
+                  '<!doctype html><html><head><title>Minecraft JJK Mod</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><main><section class="hero"><h1>Minecraft JJK Mod</h1><p>Preview cursed technique combat with focused ability cards, character energy roles, and clear player guidance before installing the build.</p><a class="cta-button" href="#abilities">Explore abilities</a></section><section id="abilities" class="abilities"><h2>Abilities</h2><p>Black Flash timing, Infinity pressure, and cursed tools are explained as readable player choices.</p></section><section class="energy"><h2>Characters and energy</h2><p>Energy flow, character roles, and progression hooks connect the landing page to the actual mod fantasy.</p></section><section class="features"><h2>Features</h2><p>Responsive cards, preview-safe content, and dark anime presentation make the page feel like a real product surface.</p></section><section class="faq"><h2>FAQ</h2><p>Apply Changes first, then open index.html from Preview to inspect the static site locally.</p></section></main></body></html>',
               },
             ],
             summary: "Prepared HTML.",
@@ -1503,7 +1503,7 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
               {
                 fileName: "src/karo-demo-site/styles.css",
                 content:
-                  ":root { --card: rgba(17, 17, 26, .86); } body { background: radial-gradient(circle at top, #211334, #08070d); } main { display: grid; gap: 24px; padding: clamp(24px, 5vw, 72px); } .hero { min-height: 80vh; } .card, section { border: 1px solid #2a2438; background: var(--card); box-shadow: 0 20px 70px rgba(0,0,0,.35); } @media (min-width: 800px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } }",
+                  ":root { --card: rgba(17, 17, 26, .86); } body { background: radial-gradient(circle at top, #211334, #08070d); } main { display: grid; gap: 24px; padding: clamp(24px, 5vw, 72px); } .hero { min-height: 80vh; } .card, section { border: 1px solid #2a2438; background: var(--card); box-shadow: 0 20px 70px rgba(0,0,0,.35); } .cta-button { transition: transform .16s ease, box-shadow .16s ease; } .cta-button:hover { transform: translateY(-1px); } .cta-button:focus-visible { outline: 2px solid #8b5cf6; } @media (min-width: 800px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } }",
               },
             ],
             summary: "Prepared CSS.",
@@ -1560,7 +1560,9 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     expect(indexPrompt).toContain("visible CTA");
     expect(indexPrompt).toContain("premium dark/liquid UI");
     expect(indexPrompt).toContain("no placeholder copy");
+    expect(indexPrompt).toContain("substantive body copy");
     expect(indexPrompt).toContain("visual depth");
+    expect(indexPrompt).toContain("hover/focus polish");
     expect(t.getTaskState(taskId)?.agentCoreEstimate?.expectedModelCalls).toBe(5);
     expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
     expect(t.getTaskState(taskId)?.deterministicValidation?.skipModelReview).toBe(true);

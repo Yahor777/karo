@@ -4437,6 +4437,7 @@ function buildStaticWebsiteFilePlan(): readonly StaticWebsiteFilePlanItem[] {
         "FAQ",
         "visible CTA",
         "no placeholder copy",
+        "substantive body copy",
       ],
     },
     {
@@ -4450,6 +4451,7 @@ function buildStaticWebsiteFilePlan(): readonly StaticWebsiteFilePlanItem[] {
         "premium dark/liquid polish",
         "visual depth",
         "stable spacing tokens",
+        "hover/focus polish",
       ],
     },
     {
@@ -4507,8 +4509,9 @@ function buildWebsiteFileCoderPrompt(
     "- Do not include markdown fences or commentary outside JSON.",
     "- Make the landing page feel complete, not a placeholder.",
     "- index.html must include a title, meta viewport, linked styles.css, deferred script.js, semantic sections, and at least one visible CTA.",
-    "- Use specific copy for the requested subject. Avoid lorem ipsum, empty cards, generic section labels without body text, and one-line placeholder pages.",
+    "- Use substantial, specific copy for the requested subject. Each major section needs body text; avoid lorem ipsum, empty cards, generic labels without body text, and one-line placeholder pages.",
     "- styles.css must deliver responsive premium dark/liquid UI with stable spacing tokens, readable contrast, mobile layout, and visible depth such as gradients/shadows.",
+    "- Add interaction polish with hover/focus states or transitions that do not move layout unexpectedly.",
     "- Keep the palette balanced; do not make the whole page a single flat hue or stock-template layout.",
     "- Buttons, cards, and section blocks need stable dimensions so hover/focus states do not shift layout.",
     "- script.js must be safe progressive enhancement only; no network calls, secrets, or command execution.",

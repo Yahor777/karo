@@ -352,7 +352,9 @@ export function buildAgentImplementationPlan(input: {
       filesToRead: input.contextProfile === "website_creation" ? [] : [],
       acceptanceCriteria: [
         "index.html contains title/meta viewport, linked styles.css/script.js, hero, abilities, characters/energy, features, FAQ, and a visible CTA.",
+        "index.html contains substantive subject-specific copy, not just section labels or placeholder cards.",
         "styles.css contains responsive premium dark anime/card styling, visual depth, stable spacing, and a mobile layout.",
+        "styles.css includes interactive polish for links/cards without layout shift.",
         "script.js is present, non-empty, and limited to safe local progressive enhancement.",
         "README.md explains Apply Changes and preview/open flow.",
         "All generated files remain staged until Apply Changes.",
@@ -363,8 +365,11 @@ export function buildAgentImplementationPlan(input: {
         "required website files exist",
         "required visible sections exist",
         "metadata and linked assets exist",
+        "substantive section copy exists",
+        "offline-safe local assets only",
         "responsive styling signal exists",
         "premium visual polish signal exists",
+        "interactive polish signal exists",
         "preview instructions exist",
         "no generated secrets",
       ],
@@ -491,6 +496,19 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
       );
       addressedIssues.push("visible CTA");
     }
+    if (hasIssue(args.issues, "substantive section copy") && !hasSubstantiveWebsiteCopy(index.content)) {
+      additions.push(
+        [
+          '<section class="experience-grid" aria-labelledby="experience-title">',
+          '<h2 id="experience-title">Cursed technique showcase</h2>',
+          '<p>Explore a focused Minecraft JJK mod hub with clear ability cards, character energy roles, progression hooks, and preview-ready guidance for players before they install or test the build.</p>',
+          '<div class="feature-card"><h3>Domain-ready combat</h3><p>Highlights Infinity pressure, Black Flash timing, cursed tools, and defensive choices in concise playable terms.</p></div>',
+          '<div class="feature-card"><h3>Character energy loop</h3><p>Shows how characters, energy management, and abilities connect so the landing page feels like a real product surface.</p></div>',
+          "</section>",
+        ].join(""),
+      );
+      addressedIssues.push("substantive section copy");
+    }
     if (additions.length > 0) {
       nextIndex = insertHtmlSections(nextIndex, additions);
     }
@@ -526,8 +544,15 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
     repairs.push({
       fileName: "src/karo-demo-site/styles.css",
       content:
-        ":root { color-scheme: dark; --jjk-bg: #07070b; --jjk-card: rgba(16, 14, 25, .84); --jjk-line: #34284a; --jjk-accent: #8b5cf6; background: var(--jjk-bg); color: #f6f1ff; }\nbody { margin: 0; background: radial-gradient(circle at top, rgba(139, 92, 246, .24), transparent 42%), var(--jjk-bg); }\nmain { padding: clamp(24px, 5vw, 72px); display: grid; gap: 24px; }\n.card, section { border: 1px solid var(--jjk-line); border-radius: 16px; padding: clamp(18px, 3vw, 28px); background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }\n.cta-button { display: inline-flex; padding: 12px 16px; border-radius: 999px; background: var(--jjk-accent); color: white; text-decoration: none; transition: transform .16s ease, box-shadow .16s ease; }\n@media (min-width: 860px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .cta { grid-column: 1 / -1; } }\n",
-      addressedIssues: ["CSS artifact", "responsive layout", "dark anime/card styling", "premium visual depth", "stable spacing system"],
+        ":root { color-scheme: dark; --jjk-bg: #07070b; --jjk-card: rgba(16, 14, 25, .84); --jjk-line: #34284a; --jjk-accent: #8b5cf6; background: var(--jjk-bg); color: #f6f1ff; }\nbody { margin: 0; background: radial-gradient(circle at top, rgba(139, 92, 246, .24), transparent 42%), var(--jjk-bg); }\nmain { padding: clamp(24px, 5vw, 72px); display: grid; gap: 24px; }\n.card, .feature-card, section { border: 1px solid var(--jjk-line); border-radius: 16px; padding: clamp(18px, 3vw, 28px); background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }\n.cta-button, a, button { transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }\n.cta-button { display: inline-flex; padding: 12px 16px; border-radius: 999px; background: var(--jjk-accent); color: white; text-decoration: none; }\n.cta-button:hover, a:hover, button:hover { transform: translateY(-1px); }\n.cta-button:focus-visible, a:focus-visible, button:focus-visible { outline: 2px solid var(--jjk-accent); outline-offset: 3px; }\n@media (min-width: 860px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .cta, .experience-grid { grid-column: 1 / -1; } }\n",
+      addressedIssues: [
+        "CSS artifact",
+        "responsive layout",
+        "dark anime/card styling",
+        "premium visual depth",
+        "stable spacing system",
+        "interactive polish",
+      ],
       summary: "Created missing website stylesheet.",
     });
   } else if (
@@ -535,14 +560,21 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
     (hasIssue(args.issues, "responsive layout") ||
       hasIssue(args.issues, "dark anime/card styling") ||
       hasIssue(args.issues, "premium visual depth") ||
-      hasIssue(args.issues, "stable spacing system"))
+      hasIssue(args.issues, "stable spacing system") ||
+      hasIssue(args.issues, "interactive polish"))
   ) {
     const extra =
-      "\n/* Karo targeted validation repair */\n:root { --jjk-card: rgba(14, 12, 24, .86); --jjk-line: #30243f; --jjk-accent: #8b5cf6; }\nbody { background: radial-gradient(circle at top, rgba(139, 92, 246, .2), transparent 42%), #07070b; }\nmain { padding: clamp(24px, 5vw, 72px); gap: 24px; }\n.card, section { border: 1px solid var(--jjk-line); border-radius: 16px; background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }\n.cta-button { display: inline-flex; padding: 12px 16px; border-radius: 999px; background: var(--jjk-accent); color: white; text-decoration: none; transition: transform .16s ease, box-shadow .16s ease; }\n@media (min-width: 860px) { main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; } .hero, .cta { grid-column: 1 / -1; } }\n";
+      "\n/* Karo targeted validation repair */\n:root { --jjk-card: rgba(14, 12, 24, .86); --jjk-line: #30243f; --jjk-accent: #8b5cf6; }\nbody { background: radial-gradient(circle at top, rgba(139, 92, 246, .2), transparent 42%), #07070b; }\nmain { padding: clamp(24px, 5vw, 72px); gap: 24px; }\n.card, .feature-card, section { border: 1px solid var(--jjk-line); border-radius: 16px; background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }\n.cta-button, a, button { transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }\n.cta-button { display: inline-flex; padding: 12px 16px; border-radius: 999px; background: var(--jjk-accent); color: white; text-decoration: none; }\n.cta-button:hover, a:hover, button:hover { transform: translateY(-1px); }\n.cta-button:focus-visible, a:focus-visible, button:focus-visible { outline: 2px solid var(--jjk-accent); outline-offset: 3px; }\n@media (min-width: 860px) { main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; } .hero, .cta, .experience-grid { grid-column: 1 / -1; } }\n";
     repairs.push({
       fileName: css.fileName,
       content: `${css.content.trim()}\n${extra}`,
-      addressedIssues: ["responsive layout", "dark anime/card styling", "premium visual depth", "stable spacing system"],
+      addressedIssues: [
+        "responsive layout",
+        "dark anime/card styling",
+        "premium visual depth",
+        "stable spacing system",
+        "interactive polish",
+      ],
       summary: `Added responsive premium card styling in ${css.fileName}.`,
     });
   }
@@ -736,6 +768,8 @@ function validateStaticWebsiteArtifacts(
   for (const [label, regex] of sectionSignals) {
     recordSignal(checkedSignals, issues, regex.test(content), label);
   }
+  recordSignal(checkedSignals, issues, hasSubstantiveWebsiteCopy(indexContent), "substantive section copy");
+  recordSignal(checkedSignals, issues, !hasExternalNetworkDependency(artifacts), "offline-safe local assets");
   recordSignal(
     checkedSignals,
     issues,
@@ -761,6 +795,12 @@ function validateStaticWebsiteArtifacts(
     issues,
     /:\s*root|--[a-z0-9-]+\s*:|gap\s*:|padding\s*:|max-width|minmax\(|clamp\(/iu.test(cssContent),
     "stable spacing system",
+  );
+  recordSignal(
+    checkedSignals,
+    issues,
+    /:hover|:focus-visible|transition\s*:|transform\s*:/iu.test(cssContent),
+    "interactive polish",
   );
 
   if (issues.length > 0) {
@@ -803,6 +843,28 @@ function insertHtmlSections(content: string, additions: readonly string[]): stri
 function hasVisibleCta(content: string): boolean {
   return /class=["'][^"']*\bcta\b|<button\b|<a\b[^>]*href=|call to action|explore|start|download|join|apply changes|open preview/iu.test(
     content,
+  );
+}
+
+function hasSubstantiveWebsiteCopy(content: string): boolean {
+  const text = extractVisibleText(content);
+  const words = text.match(/[\p{L}\p{N}][\p{L}\p{N}'-]{2,}/gu) ?? [];
+  return words.length >= 45 && /[.!?]/u.test(text);
+}
+
+function extractVisibleText(content: string): string {
+  return content
+    .replace(/<script\b[\s\S]*?<\/script>/giu, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/giu, " ")
+    .replace(/<[^>]+>/gu, " ")
+    .replace(/&(?:nbsp|amp|quot|apos|lt|gt);/giu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function hasExternalNetworkDependency(artifacts: readonly ArtifactValidationInput[]): boolean {
+  return artifacts.some((artifact) =>
+    /\b(?:https?:)?\/\/|fetch\s*\(|XMLHttpRequest|navigator\.sendBeacon|importScripts\s*\(/iu.test(artifact.content),
   );
 }
 

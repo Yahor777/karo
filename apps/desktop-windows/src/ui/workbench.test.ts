@@ -734,6 +734,18 @@ describe("workbench ??? chat workbench", () => {
     expect(payload).toContain("Plan context profile: ui_work");
     expect(payload).toContain("workbench.ts");
     expect(root.querySelector("[data-testid='chat-readonly-context']")?.textContent).toContain("2 files");
+    const planActions = root.querySelector<HTMLElement>('[data-testid="plan-result-actions"]');
+    expect(planActions).not.toBeNull();
+    expect(planActions?.textContent).toContain("Plan Mode did not stage files");
+    expect(planActions?.textContent).toContain("Prepare Agent run");
+    expect(planActions?.textContent).toContain("Copy plan");
+    expect(planActions?.textContent).toContain("Run Evidence");
+    root.querySelector<HTMLButtonElement>('[data-testid="plan-prepare-agent"]')!.click();
+    const agentPrompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")?.value ?? "";
+    expect(root.querySelector<HTMLElement>('.kw-pill[data-value="agent"]')?.getAttribute("aria-current")).toBe("true");
+    expect(agentPrompt).toContain("Use this reviewed plan as input for Agent Mode");
+    expect(agentPrompt).toContain("Stage artifacts only");
+    expect(agentPrompt).toContain("Plan Result");
     expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
   });
 

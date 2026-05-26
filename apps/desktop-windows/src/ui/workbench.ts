@@ -1774,6 +1774,9 @@ export function mountWorkspaceShell(
           );
         }
         body.append(renderMarkdownBlock(doc, message.text));
+        if (message.mode === "plan" && message.error !== true && isPlanResultText(message.text)) {
+          body.append(buildPlanResultActionsCard(doc, message.text));
+        }
       }
       if (message.recovery?.kind === "plan_failure") {
         body.append(buildPlanFailureRecoveryCard(doc, message.recovery));
@@ -1806,6 +1809,83 @@ export function mountWorkspaceShell(
     }
     wrap.append(author, body);
     return wrap;
+  }
+
+  function isPlanResultText(text: string): boolean {
+    return /^##\s*Plan Result/im.test(text);
+  }
+
+  function buildPlanResultActionsCard(doc: Document, planText: string): HTMLElement {
+    const card = doc.createElement("section");
+    card.className = "kw-plan-result-actions-card";
+    card.dataset["testid"] = "plan-result-actions";
+
+    const head = doc.createElement("div");
+    head.className = "kw-plan-result-actions-head";
+    const title = doc.createElement("strong");
+    title.textContent = "Plan ready";
+    const badge = doc.createElement("span");
+    badge.textContent = "read-only";
+    head.append(title, badge);
+
+    const body = doc.createElement("p");
+    body.textContent =
+      "Plan Mode did not stage files or enable Apply Changes. Execute it only by starting a separate Agent run.";
+
+    const facts = doc.createElement("div");
+    facts.className = "kw-plan-result-actions-facts";
+    const factItems: ReadonlyArray<readonly [string, string]> = [
+      ["Artifacts", "none staged"],
+      ["Apply", "unavailable"],
+      ["Next", "explicit Agent run"],
+    ];
+    for (const [label, value] of factItems) {
+      const item = doc.createElement("div");
+      item.className = "kw-plan-result-actions-fact";
+      const labelEl = doc.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      item.append(labelEl, valueEl);
+      facts.append(item);
+    }
+
+    const actions = doc.createElement("div");
+    actions.className = "kw-plan-result-actions";
+    const runAgent = doc.createElement("button");
+    runAgent.type = "button";
+    runAgent.className = "kw-button kw-button-primary";
+    runAgent.dataset["testid"] = "plan-prepare-agent";
+    runAgent.textContent = "Prepare Agent run";
+    runAgent.title = "Prefill Agent Mode from this reviewed plan. Nothing runs until you submit.";
+    runAgent.addEventListener("click", () => {
+      prefillComposerPrompt(
+        "agent",
+        [
+          "Use this reviewed plan as input for Agent Mode. Stage artifacts only; do not apply changes automatically.",
+          "",
+          planText,
+        ].join("\n"),
+      );
+    });
+
+    const copy = doc.createElement("button");
+    copy.type = "button";
+    copy.className = "kw-button kw-button-secondary";
+    copy.dataset["testid"] = "plan-copy-result";
+    copy.textContent = "Copy plan";
+    copy.addEventListener("click", () => void copyToClipboard(planText));
+
+    const usage = doc.createElement("button");
+    usage.type = "button";
+    usage.className = "kw-button kw-button-secondary";
+    usage.dataset["testid"] = "plan-open-usage";
+    usage.textContent = "Run Evidence";
+    usage.addEventListener("click", () => setRightTab("usage"));
+
+    actions.append(runAgent, copy, usage);
+    card.append(head, body, facts, actions);
+    return card;
   }
 
   function buildFailureFocusStrip(

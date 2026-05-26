@@ -440,6 +440,34 @@ export async function runScenarioPlanMode(ctx: KaroAutomationContext): Promise<S
       passed: planFailedHonestly || hasEnglishSections || hasRussianSections,
       details: planText ?? "",
     });
+    if (!planFailedHonestly) {
+      bag.assertions.push(
+        await assertVisible(ctx, {
+          testId: TEST_IDS.planResultActions,
+          name: "plan-result-actions-visible",
+        }),
+        await assertVisible(ctx, {
+          testId: TEST_IDS.planPrepareAgent,
+          name: "plan-prepare-agent-action-visible",
+        }),
+      );
+      await karoClick(ctx, { testId: TEST_IDS.planPrepareAgent });
+      await waitShort(ctx);
+      const preparedPrompt = await ctx.page.locator(byTestId(TEST_IDS.composerTextarea)).inputValue().catch(() => "");
+      const agentSelected = await ctx.page
+        .locator(byTestId(TEST_IDS.composerModeAgent))
+        .getAttribute("aria-current")
+        .catch(() => "");
+      bag.assertions.push({
+        name: "plan-prepare-agent-prefills-without-running",
+        passed:
+          agentSelected === "true" &&
+          /Use this reviewed plan as input for Agent Mode/i.test(preparedPrompt) &&
+          /Stage artifacts only/i.test(preparedPrompt) &&
+          /Plan Result/i.test(preparedPrompt),
+        details: `agentSelected=${String(agentSelected)} prompt=${preparedPrompt}`,
+      });
+    }
     bag.screenshots.push((await karoScreenshot(ctx, { name: "plan-mode" })).path);
   });
 }

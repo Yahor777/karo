@@ -32,6 +32,7 @@ import type {
 } from "@ai-agent-orchestrator/shared-core";
 
 import type {
+  ApplyResult,
   BuildTaskContextOptions,
   DesktopShell,
   TaskContextPackage,
@@ -7840,39 +7841,82 @@ export function mountWorkspaceShell(
     if (taskState !== null && !taskState.isExplainOnly && (taskState.status === "completed" || taskState.status === "stopped_limit" || taskState.status === "error")) {
       const applyContainer = doc.createElement("div");
       applyContainer.className = "kw-apply-container";
-      applyContainer.style.margin = "16px";
-      applyContainer.style.padding = "16px";
-      applyContainer.style.borderRadius = "8px";
-      applyContainer.style.background = "rgba(255, 255, 255, 0.03)";
-      applyContainer.style.border = "1px solid rgba(255, 255, 255, 0.08)";
-      applyContainer.style.backdropFilter = "blur(12px)";
-      applyContainer.style.textAlign = "center";
+      applyContainer.dataset["testid"] = "changes-apply-gate";
+      const projectReady = state.demoPipelineMode || (state.project?.path.trim().length ?? 0) > 0;
+      applyContainer.dataset["state"] = projectReady ? "ready" : "project-required";
+
+      const gateHead = doc.createElement("div");
+      gateHead.className = "kw-apply-head";
+      const gateTitleWrap = doc.createElement("div");
+      const eyebrow = doc.createElement("span");
+      eyebrow.className = "kw-apply-eyebrow";
+      eyebrow.textContent = "Write gate";
+      const gateTitle = doc.createElement("h3");
+      gateTitle.textContent = "Review before disk write";
+      gateTitleWrap.append(eyebrow, gateTitle);
+      const badge = doc.createElement("span");
+      badge.className = "kw-apply-badge";
+      badge.textContent = projectReady ? "Apply required" : "Project required";
+      gateHead.append(gateTitleWrap, badge);
+
+      const body = doc.createElement("p");
+      body.className = "kw-apply-body";
+      body.textContent = projectReady
+        ? "These artifacts are staged only. Apply Changes is the explicit write boundary."
+        : "A project root is required before Karo can write staged artifacts to disk.";
+
+      const facts = doc.createElement("div");
+      facts.className = "kw-apply-facts";
+      const factValues = new Map<string, HTMLElement>();
+      for (const [label, value] of [
+        ["Artifacts", `${String(artifacts.length)} staged`],
+        ["Safety", "manual approval"],
+        ["Destination", projectReady ? (state.demoPipelineMode ? "simulation only" : "selected project") : "choose project"],
+        ["State", projectReady ? "ready to apply" : "blocked"],
+      ] as const) {
+        const item = doc.createElement("div");
+        item.className = "kw-apply-fact";
+        const labelEl = doc.createElement("span");
+        labelEl.textContent = label;
+        const valueEl = doc.createElement("strong");
+        valueEl.textContent = value;
+        item.append(labelEl, valueEl);
+        facts.append(item);
+        factValues.set(label, valueEl);
+      }
 
       const btn = doc.createElement("button");
       btn.type = "button";
-      btn.className = "kw-button kw-button-primary";
+      btn.className = "kw-button kw-button-primary kw-apply-button";
       btn.dataset["testid"] = "changes-apply-button";
-      btn.style.width = "100%";
-      btn.style.padding = "10px";
-      btn.style.fontSize = "14px";
-      btn.style.fontWeight = "600";
+      btn.disabled = !projectReady;
       btn.textContent = state.demoPipelineMode ? "Simulated Apply" : "Apply Changes";
+      btn.title = projectReady
+        ? "Run the explicit Apply Changes write gate."
+        : "Choose a project before applying staged artifacts.";
 
       const statusMsg = doc.createElement("p");
-      statusMsg.style.margin = "12px 0 0 0";
-      statusMsg.style.fontSize = "13px";
-      statusMsg.style.color = "rgba(255, 255, 255, 0.6)";
+      statusMsg.className = "kw-apply-status";
+      statusMsg.textContent = projectReady
+        ? "No files are written until you press Apply Changes."
+        : "Apply is blocked until a project is selected.";
 
       const internalTask = (options.transport as any).tasks?.get(taskId);
-      const applyResult = internalTask?.applyResult;
-
-      if (applyResult) {
-        renderApplyResult(applyResult);
-      }
+      const applyResult = internalTask?.applyResult as ApplyResult | undefined;
 
       btn.addEventListener("click", async () => {
+        if (!projectReady) {
+          applyContainer.dataset["state"] = "project-required";
+          statusMsg.textContent = "Choose a project before applying staged artifacts.";
+          return;
+        }
         btn.disabled = true;
         btn.textContent = state.demoPipelineMode ? "Simulating..." : "Applying...";
+        applyContainer.dataset["state"] = "applying";
+        delete statusMsg.dataset["state"];
+        badge.textContent = "Applying";
+        body.textContent = "Security checks are running before any disk write.";
+        factValues.get("State")!.textContent = "applying";
         statusMsg.textContent = state.demoPipelineMode
           ? "Running security checks and simulating changes..."
           : "Running security checks and writing changes to disk...";
@@ -7892,120 +7936,190 @@ export function mountWorkspaceShell(
           state.lastApplyError = errMsg;
           state.lastApplyResult = { success: false, errors: [errMsg] };
           statusMsg.textContent = `Error: ${errMsg}`;
-          statusMsg.style.color = "#ff6b6b";
+          statusMsg.dataset["state"] = "error";
+          applyContainer.dataset["state"] = "error";
+          badge.textContent = "Failed";
+          body.textContent = "Apply failed. No success is implied until the result is clean.";
+          factValues.get("State")!.textContent = "failed";
           btn.disabled = false;
           btn.textContent = state.demoPipelineMode ? "Simulated Apply" : "Apply Changes";
         }
       });
 
-      function renderApplyResult(res: any) {
-        btn.style.display = "none";
-        statusMsg.style.display = "none";
+      function renderApplyResult(res: ApplyResult) {
+        btn.hidden = true;
+        statusMsg.hidden = true;
+        applyContainer.querySelector(".kw-apply-result")?.remove();
 
+        const result = doc.createElement("div");
+        result.className = "kw-apply-result";
         const title = doc.createElement("h4");
-        title.style.margin = "0 0 12px 0";
 
-        const hasAppliedChanges = (res.createdFiles && res.createdFiles.length > 0) || (res.overwrittenFiles && res.overwrittenFiles.length > 0);
-        const hasErrors = res.errors && res.errors.length > 0;
-        const isOffline = state.demoPipelineMode || (res.errors && res.errors.some((e: string) => e.toLowerCase().includes("offline") || e.includes("Demo Mode")));
+        const changedFiles = res.changedFiles ?? [];
+        const createdFiles = res.createdFiles ?? [];
+        const overwrittenFiles = res.overwrittenFiles ?? [];
+        const skippedFiles = res.skippedFiles ?? [];
+        const errors = res.errors ?? [];
+        const hasAppliedChanges = changedFiles.length > 0 || createdFiles.length > 0 || overwrittenFiles.length > 0;
+        const hasErrors = errors.length > 0;
+        const isOffline = state.demoPipelineMode || errors.some((e: string) => e.toLowerCase().includes("offline") || e.includes("Demo Mode"));
 
-        const blockedErrors = res.errors ? res.errors.filter((e: string) =>
+        const blockedErrors = errors.filter((e: string) =>
           e.toLowerCase().includes("prohibited") ||
           e.toLowerCase().includes("outside") ||
           e.toLowerCase().includes("permissiondenied") ||
           e.toLowerCase().includes("blocked")
-        ) : [];
-        const otherErrors = res.errors ? res.errors.filter((e: string) =>
+        );
+        const otherErrors = errors.filter((e: string) =>
           !blockedErrors.includes(e) &&
           !(e.toLowerCase().includes("offline") || e.includes("Demo Mode"))
-        ) : [];
+        );
 
-        let statusText = "";
-        let statusColor = "";
+        let resultState: "success" | "warning" | "error" | "blocked" | "info" = "info";
+        let statusText = "No Changes Applied";
 
         if (isOffline) {
-          statusText = "⚠ Simulation Mode (Preview Only)";
-          statusColor = "var(--karo-warning, #e6b400)";
+          statusText = "Simulation Mode (Preview Only)";
+          resultState = "warning";
         } else if (hasErrors) {
           if (hasAppliedChanges) {
-            statusText = "⚠ Partial Success (Some files updated, some failed/blocked)";
-            statusColor = "var(--karo-warning, #e6b400)";
+            statusText = "Partial Success";
+            resultState = "warning";
           } else if (blockedErrors.length > 0) {
-            statusText = "⚠ Blocked Changes (Paths prohibited)";
-            statusColor = "var(--karo-warning, #e6b400)";
+            statusText = "Blocked Changes";
+            resultState = "blocked";
           } else {
-            statusText = "✗ Apply Failed";
-            statusColor = "#f44747";
+            statusText = "Apply Failed";
+            resultState = "error";
           }
         } else if (!hasAppliedChanges) {
-          statusText = "✓ No Changes Applied (All files up-to-date)";
-          statusColor = "#4a90e2";
+          statusText = "No Changes Applied";
+          resultState = "info";
         } else {
-          statusText = "✓ Changes Applied Successfully";
-          statusColor = "#4ec9b0";
+          statusText = "Changes Applied Successfully";
+          resultState = "success";
         }
 
-        title.style.color = statusColor;
+        applyContainer.dataset["state"] = resultState;
+        result.dataset["state"] = resultState;
+        badge.textContent = formatApplyBadge(resultState);
+        body.textContent = formatApplyBody(resultState);
+        factValues.get("State")!.textContent = formatApplyStateFact(resultState);
         title.textContent = statusText;
-        applyContainer.append(title);
+        result.append(title);
 
         const details = doc.createElement("div");
-        details.style.textAlign = "left";
-        details.style.fontSize = "12px";
-        details.style.color = "rgba(255, 255, 255, 0.8)";
-        details.style.lineHeight = "1.6";
+        details.className = "kw-apply-result-details";
 
         if (isOffline) {
-          const item = doc.createElement("div");
-          item.style.color = "var(--karo-warning, #e6b400)";
-          item.style.fontWeight = "600";
-          item.style.marginBottom = "8px";
-          item.textContent = "Simulation only: no files were written to disk.";
-          details.append(item);
+          appendApplyResultGroup(details, "Simulation", ["No files were written to disk."], "warning");
         }
 
-        if (res.createdFiles && res.createdFiles.length > 0) {
-          const item = doc.createElement("div");
-          item.innerHTML = `<strong>Created:</strong><br/>` + res.createdFiles.map((f: string) => `• ${f}`).join("<br/>");
-          details.append(item);
+        appendApplyResultGroup(details, "Created", createdFiles);
+
+        if (overwrittenFiles.length > 0) {
+          appendApplyResultGroup(details, "Modified", overwrittenFiles);
+          appendApplyResultGroup(details, "Backups created", overwrittenFiles.map((f: string) => `${f} -> ${f}.bak`));
         }
 
-        if (res.overwrittenFiles && res.overwrittenFiles.length > 0) {
-          const item = doc.createElement("div");
-          item.style.marginTop = "8px";
-          item.innerHTML = `<strong>Modified:</strong><br/>` + res.overwrittenFiles.map((f: string) => `• ${f}`).join("<br/>") +
-                           `<br/><strong style="display:inline-block;margin-top:4px;">Backups created:</strong><br/>` +
-                           res.overwrittenFiles.map((f: string) => `• ${f} → ${f}.bak`).join("<br/>");
-          details.append(item);
+        const alreadyListed = new Set<string>([...createdFiles, ...overwrittenFiles]);
+        const otherChangedFiles = changedFiles.filter((f: string) => !alreadyListed.has(f));
+        if (otherChangedFiles.length > 0) {
+          appendApplyResultGroup(details, "Changed", otherChangedFiles);
         }
 
-        if (res.skippedFiles && res.skippedFiles.length > 0) {
-          const item = doc.createElement("div");
-          item.style.marginTop = "8px";
-          item.innerHTML = `<strong>Skipped (Identical):</strong><br/>` + res.skippedFiles.map((f: string) => `• ${f}`).join("<br/>");
-          details.append(item);
+        appendApplyResultGroup(details, "Skipped (identical)", skippedFiles);
+
+        appendApplyResultGroup(details, "Blocked / prohibited", blockedErrors, "warning");
+        appendApplyResultGroup(details, "Errors", otherErrors, "error");
+
+        if (details.children.length === 0) {
+          const note = doc.createElement("p");
+          note.className = "kw-apply-result-note";
+          note.textContent = "No changed files were reported by the Apply command.";
+          details.append(note);
         }
 
-        if (blockedErrors.length > 0) {
-          const item = doc.createElement("div");
-          item.style.marginTop = "8px";
-          item.style.color = "var(--karo-warning, #e6b400)";
-          item.innerHTML = `<strong>Blocked / Prohibited:</strong><br/>` + blockedErrors.map((e: string) => `• ${e}`).join("<br/>");
-          details.append(item);
-        }
-
-        if (otherErrors.length > 0) {
-          const item = doc.createElement("div");
-          item.style.marginTop = "8px";
-          item.style.color = "#ff6b6b";
-          item.innerHTML = `<strong>Errors:</strong><br/>` + otherErrors.map((e: string) => `• ${e}`).join("<br/>");
-          details.append(item);
-        }
-
-        applyContainer.append(details);
+        result.append(details);
+        applyContainer.append(result);
       }
 
-      applyContainer.append(btn, statusMsg);
+      function appendApplyResultGroup(
+        container: HTMLElement,
+        label: string,
+        values: readonly string[],
+        tone?: "warning" | "error",
+      ): void {
+        if (values.length === 0) return;
+        const group = doc.createElement("div");
+        group.className = "kw-apply-result-group";
+        if (tone !== undefined) {
+          group.dataset["tone"] = tone;
+        }
+        const heading = doc.createElement("strong");
+        heading.textContent = label;
+        const listEl = doc.createElement("ul");
+        for (const value of values) {
+          const item = doc.createElement("li");
+          item.textContent = value;
+          listEl.append(item);
+        }
+        group.append(heading, listEl);
+        container.append(group);
+      }
+
+      function formatApplyBadge(stateName: "success" | "warning" | "error" | "blocked" | "info"): string {
+        switch (stateName) {
+          case "success":
+            return "Applied";
+          case "warning":
+            return "Needs review";
+          case "blocked":
+            return "Blocked";
+          case "error":
+            return "Failed";
+          case "info":
+            return "Up to date";
+        }
+        return "Apply required";
+      }
+
+      function formatApplyBody(stateName: "success" | "warning" | "error" | "blocked" | "info"): string {
+        switch (stateName) {
+          case "success":
+            return "Disk write completed through the explicit Apply gate.";
+          case "warning":
+            return "Review the result below before continuing; the Apply gate did not finish cleanly.";
+          case "blocked":
+            return "Karo blocked prohibited paths and did not silently write them.";
+          case "error":
+            return "Apply failed. No success is implied until the result is clean.";
+          case "info":
+            return "The Apply command finished without new disk changes.";
+        }
+        return "These artifacts are staged only. Apply Changes is the explicit write boundary.";
+      }
+
+      function formatApplyStateFact(stateName: "success" | "warning" | "error" | "blocked" | "info"): string {
+        switch (stateName) {
+          case "success":
+            return "applied";
+          case "warning":
+            return "review result";
+          case "blocked":
+            return "blocked";
+          case "error":
+            return "failed";
+          case "info":
+            return "up to date";
+        }
+        return "ready to apply";
+      }
+
+      applyContainer.append(gateHead, body, facts, btn, statusMsg);
+      if (applyResult) {
+        renderApplyResult(applyResult);
+      }
       wrap.append(applyContainer);
     }
 

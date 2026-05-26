@@ -708,6 +708,17 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
       },
       await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "website-apply-visible-after-staging" }),
     );
+    const applyGate = ctx.page.locator(byTestId(TEST_IDS.changesApplyGate)).first();
+    const applyGateText = await applyGate.textContent().catch(() => "");
+    const applyGateState = await applyGate.getAttribute("data-state").catch(() => null);
+    const applyDisabled = await ctx.page.locator(byTestId(TEST_IDS.changesApplyButton)).first().isDisabled().catch(() => false);
+    bag.assertions.push({
+      name: "website-apply-gate-readiness-honest",
+      passed:
+        /Review before disk write/i.test(applyGateText ?? "") &&
+        (applyGateState === "project-required" ? applyDisabled : applyDisabled === false),
+      details: `state=${String(applyGateState)} disabled=${String(applyDisabled)} text=${applyGateText ?? ""}`,
+    });
     await karoClick(ctx, { testId: TEST_IDS.rightTabPreview });
     await waitShort(ctx);
     const previewText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
@@ -788,10 +799,20 @@ export async function runScenarioWebsiteCreationNotSecurityReview(ctx: KaroAutom
     await karoClick(ctx, { testId: TEST_IDS.rightTabChanges });
     await waitShort(ctx);
     const changesText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
+    const applyGate = ctx.page.locator(byTestId(TEST_IDS.changesApplyGate)).first();
+    const applyGateText = await applyGate.textContent().catch(() => "");
+    const applyGateState = await applyGate.getAttribute("data-state").catch(() => null);
+    const applyDisabled = await ctx.page.locator(byTestId(TEST_IDS.changesApplyButton)).first().isDisabled().catch(() => false);
     bag.assertions.push({
       name: "website-routing-staged-index-artifact-visible",
       passed: /src\/karo-demo-site\/index\.html/i.test(changesText ?? ""),
       details: changesText ?? "",
+    }, {
+      name: "website-routing-apply-gate-readiness-honest",
+      passed:
+        /Review before disk write/i.test(applyGateText ?? "") &&
+        (applyGateState === "project-required" ? applyDisabled : applyDisabled === false),
+      details: `state=${String(applyGateState)} disabled=${String(applyDisabled)} text=${applyGateText ?? ""}`,
     });
     bag.screenshots.push((await karoScreenshot(ctx, { name: "website-creation-not-security-review" })).path);
   });

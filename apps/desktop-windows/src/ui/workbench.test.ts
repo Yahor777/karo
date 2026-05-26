@@ -2419,7 +2419,9 @@ describe("workbench ??? right panel", () => {
   });
 
   it("Changes tab marks completed artifacts ready and opens diff artifacts", async () => {
-    const opts = buildOptions();
+    const built = buildShell();
+    Object.assign(built.shell, { isNativeBridgeWired: () => true });
+    const opts = buildOptions({ desktopShell: built.shell });
     opts.transport.createImpl = async () => ({ taskId: "tdiff" });
     mountWorkspaceShell(root, opts);
     const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
@@ -2465,6 +2467,13 @@ describe("workbench ??? right panel", () => {
     );
     await flush();
     expect(root.querySelector(".kw-changes-status")?.textContent).toBe("ready");
+    const applyGate = root.querySelector<HTMLElement>('[data-testid="changes-apply-gate"]')!;
+    const applyButton = root.querySelector<HTMLButtonElement>('[data-testid="changes-apply-button"]')!;
+    expect(applyGate.dataset["state"]).toBe("project-required");
+    expect(applyGate.textContent).toContain("Review before disk write");
+    expect(applyGate.textContent).toContain("Project required");
+    expect(applyGate.textContent).toContain("Apply is blocked until a project is selected.");
+    expect(applyButton.disabled).toBe(true);
     const diffBtn = root.querySelector<HTMLButtonElement>(".kw-changes-diff")!;
     expect(diffBtn.disabled).toBe(false);
     diffBtn.click();
@@ -2602,6 +2611,7 @@ describe("workbench ??? right panel", () => {
 
   it("Preview opens an applied static index.html through the desktop shell", async () => {
     const built = buildShell();
+    Object.assign(built.shell, { isNativeBridgeWired: () => true });
     built.reads.set("recentProject", {
       path: "D:\\РїСЂРѕРµРєС‚С‹\\karo-site",
       savedAt: "2026-05-17T12:00:00.000Z",
@@ -2693,8 +2703,18 @@ describe("workbench ??? right panel", () => {
     await flush();
 
     root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="changes"]')!.click();
-    root.querySelector<HTMLButtonElement>('[data-testid="changes-apply-button"]')!.click();
+    const applyGate = root.querySelector<HTMLElement>('[data-testid="changes-apply-gate"]')!;
+    const applyButton = root.querySelector<HTMLButtonElement>('[data-testid="changes-apply-button"]')!;
+    expect(applyGate.dataset["state"]).toBe("ready");
+    expect(applyGate.textContent).toContain("Review before disk write");
+    expect(applyGate.textContent).toContain("selected project");
+    expect(applyButton.disabled).toBe(false);
+    applyButton.click();
     await flush();
+    expect(applyGate.dataset["state"]).toBe("success");
+    expect(applyGate.textContent).toContain("Changes Applied Successfully");
+    expect(applyGate.textContent).toContain("Created");
+    expect(applyGate.textContent).toContain("src/karo-demo-site/index.html");
     root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!.click();
 
     const open = root.querySelector<HTMLButtonElement>('[data-testid="preview-open-static"]')!;

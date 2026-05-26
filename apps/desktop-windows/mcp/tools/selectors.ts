@@ -54,6 +54,7 @@ export const TEST_IDS = {
   agentCard: "agent-card",
   agentActivityDetails: "agent-activity-details",
   agentRecoverySummary: "agent-recovery-summary",
+  changesApplyGate: "changes-apply-gate",
   changesApplyButton: "changes-apply-button",
   previewRunButton: "preview-run-button",
   terminalPanel: "terminal-panel",

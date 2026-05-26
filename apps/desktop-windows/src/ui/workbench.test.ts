@@ -456,12 +456,31 @@ describe("workbench ??? chat workbench", () => {
     mountWorkspaceShell(root, buildOptions());
     expect(root.querySelector(".kw-chat-welcome")).not.toBeNull();
     expect(root.querySelector(".kw-chat-welcome")?.textContent).toContain("Apply gate");
+    expect(root.querySelector(".kw-chat-welcome")?.textContent).toContain("Disk writes require the Apply gate.");
     expect(root.querySelector(".kw-chat-welcome")?.textContent).toContain("Choose project");
     expect(root.querySelector(".kw-composer-input")).not.toBeNull();
     const send = root.querySelector<HTMLButtonElement>(".kw-composer-start")!;
     expect(send.textContent).toBe("\u2191");
     expect(send.title).toBe("Send");
     expect(send.disabled).toBe(true);
+  });
+
+  it("welcome suggestions preselect the safest matching composer mode", () => {
+    mountWorkspaceShell(root, buildOptions());
+    const input = root.querySelector<HTMLTextAreaElement>('[data-testid="composer-textarea"]')!;
+
+    root.querySelector<HTMLButtonElement>('[data-testid="welcome-suggestion-plan-make-a-plan"]')!.click();
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-plan"]')?.getAttribute("aria-current")).toBe("true");
+    expect(input.value).toContain("read-only plan");
+    expect(root.querySelector<HTMLButtonElement>(".kw-composer-start")?.disabled).toBe(false);
+
+    root.querySelector<HTMLButtonElement>('[data-testid="welcome-suggestion-agent-create-a-file"]')!.click();
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-agent"]')?.getAttribute("aria-current")).toBe("true");
+    expect(input.value).toBe("Create file src/karo-test.txt with text hello");
+
+    root.querySelector<HTMLButtonElement>('[data-testid="welcome-suggestion-chat-security-review"]')!.click();
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-chat"]')?.getAttribute("aria-current")).toBe("true");
+    expect(input.value).toContain("Do not change files");
   });
 
   it("Send with empty prompt is disabled and does not start a run", async () => {

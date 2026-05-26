@@ -1604,51 +1604,98 @@ export function mountWorkspaceShell(
       card.append(cardHead, bodyEl);
       contract.append(card);
     }
+
+    const flow = doc.createElement("div");
+    flow.className = "kw-welcome-flow";
+    for (const [step, label, body] of [
+      ["01", "Context", "Project and selected files stay explicit."],
+      ["02", "Mode", "Chat, Plan, and Agent do different jobs."],
+      ["03", "Review", "Artifacts stay staged for inspection."],
+      ["04", "Apply", "Disk writes require the Apply gate."],
+    ] as const) {
+      const item = doc.createElement("div");
+      item.className = "kw-welcome-flow-step";
+      const stepEl = doc.createElement("span");
+      stepEl.textContent = step;
+      const textWrap = doc.createElement("div");
+      const labelEl = doc.createElement("strong");
+      labelEl.textContent = label;
+      const bodyEl = doc.createElement("p");
+      bodyEl.textContent = body;
+      textWrap.append(labelEl, bodyEl);
+      item.append(stepEl, textWrap);
+      flow.append(item);
+    }
+
     const suggestions = doc.createElement("div");
     suggestions.className = "kw-welcome-suggestions";
     const projectBtn = doc.createElement("button");
     projectBtn.type = "button";
     projectBtn.className = "kw-welcome-suggestion kw-welcome-suggestion-primary";
-    projectBtn.textContent = "Choose project";
+    projectBtn.dataset["testid"] = "welcome-suggestion-project";
+    const projectLabel = doc.createElement("strong");
+    projectLabel.textContent = "Choose project";
+    const projectBody = doc.createElement("span");
+    projectBody.textContent = "Workspace root";
+    projectBtn.append(projectLabel, projectBody);
     projectBtn.addEventListener("click", () => navigate("project"));
     suggestions.append(projectBtn);
-    for (const [label, prompt] of [
-      ["Explain project", "Объясни что это за проект и как он устроен"],
-      ["Make a plan", "Составь план редизайна Karo под Codex-like UI"],
-      ["Create a file", "Создай файл src/karo-test.txt с текстом hello"],
-      ["Security review", "Проверь, безопасно ли проект хранит API keys и выполняет команды"],
-    ] as const) {
+    const welcomeSuggestions: Array<{
+      readonly label: string;
+      readonly body: string;
+      readonly mode: Exclude<ComposerMode, "auto">;
+      readonly prompt: string;
+    }> = [
+      {
+        label: "Explain project",
+        body: "Chat, read-only",
+        mode: "chat",
+        prompt: "Explain what this project does and which files matter.",
+      },
+      {
+        label: "Make a plan",
+        body: "Plan, no files",
+        mode: "plan",
+        prompt: "Make a read-only plan to improve the Karo AI IDE UX without changing files yet.",
+      },
+      {
+        label: "Create a file",
+        body: "Agent, staged",
+        mode: "agent",
+        prompt: "Create file src/karo-test.txt with text hello",
+      },
+      {
+        label: "Security review",
+        body: "Chat, no writes",
+        mode: "chat",
+        prompt: "Review how this project stores API keys and gates command execution. Do not change files.",
+      },
+    ];
+    for (const suggestion of welcomeSuggestions) {
       const btn = doc.createElement("button");
       btn.type = "button";
       btn.className = "kw-welcome-suggestion";
-      btn.textContent = label;
+      btn.dataset["mode"] = suggestion.mode;
+      btn.dataset["testid"] = `welcome-suggestion-${suggestion.mode}-${suggestion.label.toLowerCase().replace(/\s+/g, "-")}`;
+      const labelEl = doc.createElement("strong");
+      labelEl.textContent = suggestion.label;
+      const bodyEl = doc.createElement("span");
+      bodyEl.textContent = suggestion.body;
+      btn.append(labelEl, bodyEl);
       btn.addEventListener("click", () => {
+        const modeButton = doc.querySelector<HTMLButtonElement>(`[data-testid="composer-mode-${suggestion.mode}"]`);
+        modeButton?.click();
         const textarea = doc.querySelector<HTMLTextAreaElement>('[data-testid="composer-textarea"]');
         if (textarea !== null) {
-          textarea.value = welcomePromptForSuggestion(label, prompt);
+          textarea.value = suggestion.prompt;
           textarea.dispatchEvent(new Event("input"));
           textarea.focus();
         }
       });
       suggestions.append(btn);
     }
-    wrap.append(eyebrow, title, sub, contract, suggestions);
+    wrap.append(eyebrow, title, sub, contract, flow, suggestions);
     return wrap;
-  }
-
-  function welcomePromptForSuggestion(label: string, fallback: string): string {
-    switch (label) {
-      case "Explain project":
-        return "Explain what this project does and which files matter.";
-      case "Make a plan":
-        return "Make a read-only plan to improve the Karo AI IDE UX without changing files yet.";
-      case "Create a file":
-        return "Create file src/karo-test.txt with text hello";
-      case "Security review":
-        return "Review how this project stores API keys and gates command execution. Do not change files.";
-      default:
-        return fallback;
-    }
   }
 
   function buildChatMessage(doc: Document, message: ChatMessageView): HTMLElement {

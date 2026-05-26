@@ -1025,6 +1025,7 @@ html, body {
 
 .kw-chat-welcome {
   position: relative;
+  overflow: hidden;
   background:
     linear-gradient(145deg, rgba(24, 28, 42, 0.94), rgba(12, 14, 22, 0.96)),
     radial-gradient(circle at 12% 0%, rgba(56, 213, 232, 0.1), transparent 32%);
@@ -1032,6 +1033,21 @@ html, body {
   border-radius: 8px;
   padding: 22px;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+}
+
+.kw-chat-welcome::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 82% 8%, rgba(139, 92, 246, 0.18), transparent 28%),
+    linear-gradient(90deg, rgba(56, 213, 232, 0.1), transparent 42%);
+  opacity: 0.8;
+}
+
+.kw-chat-welcome > * {
+  position: relative;
 }
 
 .kw-chat-welcome-eyebrow {
@@ -1101,22 +1117,81 @@ html, body {
   line-height: 1.4;
 }
 
-.kw-welcome-suggestions {
+.kw-welcome-flow {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.kw-welcome-flow-step {
+  min-width: 0;
   display: flex;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.kw-welcome-flow-step > span {
+  flex: 0 0 auto;
+  color: var(--karo-cyan);
+  font-family: var(--karo-mono);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.kw-welcome-flow-step strong {
+  display: block;
+  color: var(--karo-text);
+  font-size: 11.8px;
+}
+
+.kw-welcome-flow-step p {
+  margin: 2px 0 0;
+  color: var(--karo-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.kw-welcome-suggestions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin-top: 14px;
 }
 
 .kw-welcome-suggestion {
-  padding: 7px 10px;
+  min-width: 0;
+  padding: 9px 10px;
   border: 1px solid var(--karo-border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.025);
   color: var(--karo-text);
   font: inherit;
-  font-size: 12px;
+  text-align: left;
   cursor: pointer;
+}
+
+.kw-welcome-suggestion strong,
+.kw-welcome-suggestion span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kw-welcome-suggestion strong {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.kw-welcome-suggestion span {
+  margin-top: 4px;
+  color: var(--karo-text-muted);
+  font-size: 10.8px;
 }
 
 .kw-welcome-suggestion-primary {
@@ -5137,6 +5212,8 @@ html, body {
   }
 
   .kw-welcome-contract-grid,
+  .kw-welcome-flow,
+  .kw-welcome-suggestions,
   .kw-run-contract,
   .kw-preview-contract-grid,
   .kw-agent-run-summary-grid,

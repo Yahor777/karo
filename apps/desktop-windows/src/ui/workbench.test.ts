@@ -3602,6 +3602,16 @@ describe("workbench ??? Agents", () => {
     expect(enabledChecks.length).toBe(5);
     const modelInputs = root.querySelectorAll<HTMLInputElement>('input[data-field="modelId"]');
     expect(modelInputs.length).toBe(5);
+    expect(root.querySelector(".kw-agents-command-title")?.textContent).toBe(
+      "Tune the pipeline without changing the write gate",
+    );
+    expect(root.querySelector(".kw-agents-command-copy")?.textContent).toContain("stage artifacts");
+    expect(root.querySelector(".kw-agents-team-pill")?.textContent).toBe("5/5 enabled");
+    expect(root.querySelector(".kw-agents-summary-grid")?.textContent).toContain("Apply gate");
+    expect(root.querySelector(".kw-agents-guardrail-list")?.textContent).toContain("Overrides never include API keys");
+    expect(root.querySelector('.kw-agents-item[data-agent-id="coder"] .kw-agents-contract')?.textContent).toContain(
+      "disk writes still wait for Apply Changes",
+    );
   });
 
   it("Save persists per-agent settings without exposing the API key", async () => {

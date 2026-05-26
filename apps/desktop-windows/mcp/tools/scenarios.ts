@@ -1358,6 +1358,20 @@ export async function runScenarioWorkspacePages(ctx: KaroAutomationContext): Pro
           }),
         );
       }
+      if (pageName === "agents") {
+        bag.assertions.push(
+          await assertTextContains(ctx, {
+            selector: ".kw-agents-command-center",
+            text: "Tune the pipeline without changing the write gate",
+            name: "agents-command-center-readable",
+          }),
+          await assertTextContains(ctx, {
+            selector: ".kw-agents-command-center",
+            text: "Artifacts remain staged before Apply",
+            name: "agents-apply-guardrail-visible",
+          }),
+        );
+      }
       bag.screenshots.push((await karoScreenshot(ctx, { name: `page-${pageName}` })).path);
       if (pageName === "models") bag.screenshots.push((await karoScreenshot(ctx, { name: "product-models" })).path);
       if (pageName === "settings") bag.screenshots.push((await karoScreenshot(ctx, { name: "product-settings" })).path);

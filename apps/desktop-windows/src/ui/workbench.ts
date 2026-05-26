@@ -147,12 +147,44 @@ const BUILTIN_AGENTS: ReadonlyArray<{
   readonly id: BuiltinAgentRole;
   readonly displayName: string;
   readonly description: string;
+  readonly phase: string;
+  readonly contract: string;
 }> = [
-  { id: "researcher", displayName: "Researcher", description: "Finds relevant project context." },
-  { id: "coder", displayName: "Coder", description: "Creates staged file changes." },
-  { id: "reviewer", displayName: "Reviewer", description: "Reviews quality and correctness." },
-  { id: "fixer", displayName: "Fixer", description: "Repairs specific issues." },
-  { id: "boss", displayName: "Finalizer", description: "Summarizes result and next steps." },
+  {
+    id: "researcher",
+    displayName: "Researcher",
+    description: "Finds relevant project context.",
+    phase: "Context",
+    contract: "Reads project context and hands scoped evidence to Coder.",
+  },
+  {
+    id: "coder",
+    displayName: "Coder",
+    description: "Creates staged file changes.",
+    phase: "Stage",
+    contract: "Creates artifacts only; disk writes still wait for Apply Changes.",
+  },
+  {
+    id: "reviewer",
+    displayName: "Reviewer",
+    description: "Reviews quality and correctness.",
+    phase: "Review",
+    contract: "Checks staged output before any user-approved disk write.",
+  },
+  {
+    id: "fixer",
+    displayName: "Fixer",
+    description: "Repairs specific issues.",
+    phase: "Repair",
+    contract: "Targets reviewer findings without bypassing the staged artifact gate.",
+  },
+  {
+    id: "boss",
+    displayName: "Finalizer",
+    description: "Summarizes result and next steps.",
+    phase: "Close",
+    contract: "Produces the honest final report and next action summary.",
+  },
 ];
 
 const DEFAULT_REVIEW_CYCLES = 2;
@@ -6375,22 +6407,112 @@ export function mountWorkspaceShell(
       "Per-agent overrides are saved locally. By default every agent uses the active provider model.";
     card.append(title, note);
 
+    const enabledCount = BUILTIN_AGENTS.filter((a) => state.agentSettings[a.id]?.enabled !== false).length;
+    const overrideCount = BUILTIN_AGENTS.filter((a) => {
+      const modelId = state.agentSettings[a.id]?.modelId;
+      return modelId !== undefined && modelId.trim().length > 0;
+    }).length;
+    const activeModelName = formatFriendlyModelName(state.metadata.modelId);
+
+    const commandCenter = doc.createElement("section");
+    commandCenter.className = "kw-agents-command-center";
+    const commandHead = doc.createElement("div");
+    commandHead.className = "kw-agents-command-head";
+    const commandTitleWrap = doc.createElement("div");
+    commandTitleWrap.className = "kw-agents-command-title-wrap";
+    const commandEyebrow = doc.createElement("div");
+    commandEyebrow.className = "kw-agents-command-eyebrow";
+    commandEyebrow.textContent = "Agent team";
+    const commandTitle = doc.createElement("h3");
+    commandTitle.className = "kw-agents-command-title";
+    commandTitle.textContent = "Tune the pipeline without changing the write gate";
+    const commandCopy = doc.createElement("p");
+    commandCopy.className = "kw-agents-command-copy";
+    commandCopy.textContent =
+      "Enable roles, pin a specialist model, or inherit the active model. Coder and Fixer still stage artifacts for review before Apply Changes writes to disk.";
+    commandTitleWrap.append(commandEyebrow, commandTitle, commandCopy);
+    const commandPill = doc.createElement("span");
+    commandPill.className = "kw-agents-team-pill";
+    commandPill.textContent = `${String(enabledCount)}/5 enabled`;
+    commandHead.append(commandTitleWrap, commandPill);
+    commandCenter.append(commandHead);
+
+    const summaryGrid = doc.createElement("div");
+    summaryGrid.className = "kw-agents-summary-grid";
+    for (const item of [
+      ["Active model", activeModelName],
+      ["Overrides", overrideCount === 0 ? "None" : `${String(overrideCount)} local`],
+      ["Settings scope", "Local only"],
+      ["Disk writes", "Apply gate"],
+    ] as const) {
+      const box = doc.createElement("div");
+      box.className = "kw-agents-summary-item";
+      const label = doc.createElement("span");
+      label.textContent = item[0];
+      const value = doc.createElement("strong");
+      value.textContent = item[1];
+      box.append(label, value);
+      summaryGrid.append(box);
+    }
+    commandCenter.append(summaryGrid);
+
+    const guardrails = doc.createElement("div");
+    guardrails.className = "kw-agents-guardrail-list";
+    for (const copy of [
+      "Overrides never include API keys",
+      "Disabled roles are skipped",
+      "Artifacts remain staged before Apply",
+    ]) {
+      const guardrail = doc.createElement("span");
+      guardrail.className = "kw-agents-guardrail";
+      guardrail.textContent = copy;
+      guardrails.append(guardrail);
+    }
+    commandCenter.append(guardrails);
+    card.append(commandCenter);
+
     const list = doc.createElement("ul");
     list.className = "kw-agents-list";
     for (const a of BUILTIN_AGENTS) {
       const setting: AgentSetting | undefined = state.agentSettings[a.id];
+      const enabled = setting?.enabled !== false;
+      const modelOverride = setting?.modelId?.trim() ?? "";
       const li = doc.createElement("li");
       li.className = "kw-agents-item";
       li.dataset["agentId"] = a.id;
+      li.dataset["state"] = enabled ? "enabled" : "disabled";
       const head = doc.createElement("header");
       head.className = "kw-agents-item-head";
+      const identity = doc.createElement("div");
+      identity.className = "kw-agents-identity";
+      const initials = doc.createElement("span");
+      initials.className = "kw-agents-initials";
+      initials.textContent = agentInitials(a.id);
+      const titleWrap = doc.createElement("div");
+      titleWrap.className = "kw-agents-title-wrap";
       const name = doc.createElement("span");
       name.className = "kw-agents-name";
       name.textContent = a.displayName;
       const desc = doc.createElement("span");
       desc.className = "kw-agents-desc";
       desc.textContent = a.description;
-      head.append(name, desc);
+      titleWrap.append(name, desc);
+      identity.append(initials, titleWrap);
+      const roleMeta = doc.createElement("div");
+      roleMeta.className = "kw-agents-role-meta";
+      const phase = doc.createElement("span");
+      phase.className = "kw-agents-phase";
+      phase.textContent = a.phase;
+      const statePill = doc.createElement("span");
+      statePill.className = "kw-agents-state-pill";
+      statePill.dataset["state"] = enabled ? "enabled" : "disabled";
+      statePill.textContent = enabled ? "Enabled" : "Disabled";
+      roleMeta.append(phase, statePill);
+      head.append(identity, roleMeta);
+
+      const contract = doc.createElement("p");
+      contract.className = "kw-agents-contract";
+      contract.textContent = a.contract;
 
       const controls = doc.createElement("div");
       controls.className = "kw-agents-controls";
@@ -6400,29 +6522,30 @@ export function mountWorkspaceShell(
       enabledCb.type = "checkbox";
       enabledCb.dataset["field"] = "enabled";
       enabledCb.dataset["agentId"] = a.id;
-      enabledCb.checked = setting?.enabled !== false;
+      enabledCb.checked = enabled;
       const enabledText = doc.createElement("span");
       enabledText.textContent = "Enabled";
       enabledLabel.append(enabledCb, enabledText);
 
+      const modelField = doc.createElement("label");
+      modelField.className = "kw-agents-model-field";
+      const modelLabel = doc.createElement("span");
+      modelLabel.className = "kw-agents-model-label";
+      modelLabel.textContent = "Model override";
       const modelInput = doc.createElement("input");
       modelInput.type = "text";
       modelInput.className = "kw-input kw-agents-model";
       modelInput.dataset["field"] = "modelId";
       modelInput.dataset["agentId"] = a.id;
       modelInput.placeholder = "Inherit current model";
-      modelInput.value = setting?.modelId ?? "";
+      modelInput.value = modelOverride;
+      modelField.append(modelLabel, modelInput);
 
       const using = doc.createElement("span");
       using.className = "kw-agents-using";
       using.textContent =
-        setting?.modelId !== undefined && setting.modelId.length > 0
-          ? `Override: ${formatFriendlyModelName(setting.modelId)}`
-          : `Using active model: ${formatFriendlyModelName(state.metadata.modelId)}`;
-      using.title =
-        setting?.modelId !== undefined && setting.modelId.length > 0
-          ? setting.modelId
-          : state.metadata.modelId ?? "";
+        modelOverride.length > 0 ? `Override: ${formatFriendlyModelName(modelOverride)}` : `Inherits ${activeModelName}`;
+      using.title = modelOverride.length > 0 ? modelOverride : state.metadata.modelId ?? "";
 
       const saveBtn = doc.createElement("button");
       saveBtn.type = "button";
@@ -6457,8 +6580,8 @@ export function mountWorkspaceShell(
           });
       });
 
-      controls.append(enabledLabel, modelInput, using, saveBtn, itemStatus);
-      li.append(head, controls);
+      controls.append(enabledLabel, modelField, using, saveBtn, itemStatus);
+      li.append(head, contract, controls);
       list.append(li);
     }
     card.append(list);

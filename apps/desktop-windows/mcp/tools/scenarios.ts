@@ -1268,8 +1268,10 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
     bag.assertions.push({
       name: "terminal-bottom-panel-honest-state",
       passed: terminalConnected
-        ? /Run command|Stop|Clear|Copy logs/i.test(terminalText ?? "")
-        : /Terminal|backend not connected|Command execution is disabled/i.test(terminalText ?? "") && !/Run command/i.test(terminalText ?? ""),
+        ? /Run command|Stop|Clear|Copy logs/i.test(terminalText ?? "") && /Allowed commands|Exact allowlist only/i.test(terminalText ?? "")
+        : /Terminal|backend not connected|Command execution is disabled/i.test(terminalText ?? "") &&
+          /Allowed commands|Exact allowlist only/i.test(terminalText ?? "") &&
+          !/Run command/i.test(terminalText ?? ""),
       details: terminalText ?? "",
     });
     bag.screenshots.push((await karoScreenshot(ctx, { name: "right-panel-tabs" })).path);

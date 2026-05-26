@@ -163,6 +163,54 @@ const PLAN_MODE_TIMEOUT_MS = 45_000;
 const WEB_PAGE_BODY_PREVIEW_CHARS = 120_000;
 const WEB_PAGE_TEXT_PREVIEW_CHARS = 6_000;
 
+const SAFE_TERMINAL_COMMANDS: ReadonlyArray<string> = [
+  "pnpm dev",
+  "pnpm desktop:dev",
+  "pnpm desktop:dev:renderer",
+  "pnpm preview",
+  "pnpm --filter @ai-agent-orchestrator/desktop-windows desktop:dev",
+  "npm run dev",
+  "npm start",
+  "npm run preview",
+  "yarn dev",
+  "pnpm test",
+  "pnpm --filter @ai-agent-orchestrator/desktop-windows exec tsc --noEmit",
+  "cargo check",
+  "cargo test",
+  "pwd",
+  "dir",
+  "ls",
+  "git status",
+  "pnpm --version",
+];
+
+const TERMINAL_COMMAND_SUGGESTIONS: ReadonlyArray<{
+  readonly label: string;
+  readonly command: string;
+  readonly detail: string;
+}> = [
+  {
+    label: "Preview renderer",
+    command: "pnpm desktop:dev:renderer",
+    detail: "Start the local UI preview through the safe runner.",
+  },
+  {
+    label: "Run tests",
+    command: "pnpm test",
+    detail: "Execute the repository test suite.",
+  },
+  {
+    label: "Check status",
+    command: "git status",
+    detail: "Inspect the worktree without changing files.",
+  },
+  {
+    label: "List files",
+    command: "dir",
+    detail: "Read the current project directory.",
+  },
+];
+
 type ComposerMode = "auto" | "chat" | "plan" | "agent";
 type IntentKind = "casual_message" | "question" | "assist_request" | "coding_task" | "unclear_task";
 type ResolvedWorkMode = "chat" | "plan" | "assist" | "agent";
@@ -7691,6 +7739,18 @@ export function mountWorkspaceShell(
       safetyCockpit = nextCockpit;
       updateRunButton();
     });
+    const commandGuide = buildTerminalCommandGuide(doc, {
+      terminalAvailable,
+      commandInput: command,
+      onSelect: () => {
+        state.terminalCommandText = command.value;
+        terminalPreflight = evaluateTerminalCommandPreflight(command.value, terminalAvailable);
+        const nextCockpit = buildTerminalSafetyCockpit(terminalPreflight, terminalAvailable);
+        safetyCockpit.replaceWith(nextCockpit);
+        safetyCockpit = nextCockpit;
+        updateRunButton();
+      },
+    });
     const profileLabel = doc.createElement("label");
     profileLabel.className = "kw-terminal-profile";
     const profileText = doc.createElement("span");
@@ -7756,8 +7816,56 @@ export function mountWorkspaceShell(
     output.className = "kw-terminal-output";
     output.dataset["testid"] = "terminal-output";
     output.textContent = formatTerminalOutputForDisplay(terminalAvailable);
-    wrap.append(title, body, safetyCockpit, profileLabel, command, actions, output);
+    wrap.append(title, body, commandGuide, safetyCockpit, profileLabel, command, actions, output);
     return wrap;
+  }
+
+  function buildTerminalCommandGuide(
+    doc: Document,
+    args: {
+      readonly terminalAvailable: boolean;
+      readonly commandInput: HTMLInputElement;
+      readonly onSelect: () => void;
+    },
+  ): HTMLElement {
+    const guide = doc.createElement("section");
+    guide.className = "kw-terminal-command-guide";
+    guide.dataset["testid"] = "terminal-command-guide";
+
+    const head = doc.createElement("div");
+    head.className = "kw-terminal-command-guide-head";
+    const title = doc.createElement("strong");
+    title.textContent = "Allowed commands";
+    const note = doc.createElement("span");
+    note.textContent = "Exact allowlist only; destructive commands remain blocked before backend execution.";
+    head.append(title, note);
+
+    const list = doc.createElement("div");
+    list.className = "kw-terminal-command-suggestions";
+    for (const suggestion of TERMINAL_COMMAND_SUGGESTIONS) {
+      const item = doc.createElement("button");
+      item.type = "button";
+      item.className = "kw-terminal-command-suggestion";
+      item.disabled = !args.terminalAvailable;
+      item.title = args.terminalAvailable
+        ? `Use ${suggestion.command}`
+        : "Command execution is unavailable in this runtime.";
+      item.addEventListener("click", () => {
+        args.commandInput.value = suggestion.command;
+        args.onSelect();
+      });
+      const label = doc.createElement("span");
+      label.textContent = suggestion.label;
+      const command = doc.createElement("code");
+      command.textContent = suggestion.command;
+      const detail = doc.createElement("small");
+      detail.textContent = suggestion.detail;
+      item.append(label, command, detail);
+      list.append(item);
+    }
+
+    guide.append(head, list);
+    return guide;
   }
 
   function buildTerminalSafetyCockpit(preflight: TerminalCommandPreflight, terminalAvailable: boolean): HTMLElement {
@@ -7887,26 +7995,7 @@ export function mountWorkspaceShell(
 
   function isAllowedMvpTerminalCommand(commandText: string): boolean {
     const normalized = normalizeTerminalCommand(commandText).toLowerCase();
-    return [
-      "pnpm dev",
-      "pnpm desktop:dev",
-      "pnpm desktop:dev:renderer",
-      "pnpm preview",
-      "pnpm --filter @ai-agent-orchestrator/desktop-windows desktop:dev",
-      "npm run dev",
-      "npm start",
-      "npm run preview",
-      "yarn dev",
-      "pnpm test",
-      "pnpm --filter @ai-agent-orchestrator/desktop-windows exec tsc --noemit",
-      "cargo check",
-      "cargo test",
-      "pwd",
-      "dir",
-      "ls",
-      "git status",
-      "pnpm --version",
-    ].includes(normalized);
+    return SAFE_TERMINAL_COMMANDS.some((command) => command.toLowerCase() === normalized);
   }
 
   function isDestructiveMvpTerminalCommand(commandText: string): boolean {

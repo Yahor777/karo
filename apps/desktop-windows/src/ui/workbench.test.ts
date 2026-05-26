@@ -3164,6 +3164,8 @@ describe("workbench ??? right panel", () => {
     expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("running");
     expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("Safe command runner");
     expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("Smart Approval");
+    expect(root.querySelector('[data-testid="terminal-command-guide"]')?.textContent).toContain("Allowed commands");
+    expect(root.querySelector('[data-testid="terminal-command-guide"]')?.textContent).toContain("Preview renderer");
     expect(root.querySelector('[data-testid="terminal-profile"]')?.textContent).toContain("PowerShell");
     const gitBashOption = root.querySelector<HTMLOptionElement>('[data-testid="terminal-profile"] option[value="git_bash"]');
     expect(gitBashOption?.disabled).toBe(true);
@@ -3222,6 +3224,61 @@ describe("workbench ??? right panel", () => {
     await flush();
 
     expect(start).not.toHaveBeenCalled();
+  });
+
+  it("Terminal command shortcuts fill only allowlisted commands", async () => {
+    const built = buildShell();
+    built.reads.set("recentProject", {
+      path: "D:\\РїСЂРѕРµРєС‚С‹\\karo-exstention",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    });
+    const start = vi.fn(async () => ({ sessionId: "term-1", status: "running" as const, allowed: true, profileId: "powershell" }));
+    Object.assign(built.shell, {
+      shell_start_command: start,
+      shell_stop_command: vi.fn(),
+      shell_get_command_output: vi.fn(async () => ({
+        sessionId: "term-1",
+        status: "running" as const,
+        exitCode: null,
+        lines: [],
+      })),
+      shell_clear_command_output: vi.fn(),
+      shell_get_terminal_profiles: vi.fn(async () => [
+        { id: "powershell", label: "PowerShell", shell: "powershell.exe", available: true },
+      ]),
+    });
+    mountWorkspaceShell(root, {
+      session: SAMPLE_SESSION,
+      metadata: SAMPLE_METADATA,
+      desktopShell: built.shell,
+      transport: new FakeTransport(),
+      chatModelClient: new FakeChatModelClient(),
+      onSignOut: vi.fn(),
+    });
+    await flush();
+
+    root.querySelector<HTMLButtonElement>(".kw-bottom-tools-head")!.click();
+    const command = root.querySelector<HTMLInputElement>(".kw-terminal-command")!;
+    command.value = "pnpm build";
+    command.dispatchEvent(new Event("input", { bubbles: true }));
+    const run = root.querySelector<HTMLButtonElement>(".kw-terminal-actions .kw-button-primary")!;
+    expect(run.disabled).toBe(true);
+
+    const guide = root.querySelector<HTMLElement>('[data-testid="terminal-command-guide"]')!;
+    expect(guide.textContent).toContain("Exact allowlist only");
+    expect(guide.textContent).toContain("pnpm test");
+    const runTests = Array.from(guide.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Run tests"),
+    )!;
+    runTests.click();
+
+    expect(command.value).toBe("pnpm test");
+    expect(root.querySelector(".kw-terminal-safety-cockpit")?.textContent).toContain("Approved");
+    expect(run.disabled).toBe(false);
+    run.click();
+    await flush();
+
+    expect(start).toHaveBeenCalledWith("D:\\РїСЂРѕРµРєС‚С‹\\karo-exstention", "pnpm test", "manual", "powershell");
   });
 
   it("Terminal blocks destructive commands before they reach the backend", async () => {
@@ -3301,6 +3358,7 @@ describe("workbench ??? right panel", () => {
     expect(cockpitText).toContain("Allowlist");
     expect(cockpitText).toContain("Not allowed");
     expect(cockpitText).toContain("Use Preview/test/status commands");
+    expect(root.querySelector('[data-testid="terminal-command-guide"]')?.textContent).toContain("Allowed commands");
     const run = root.querySelector<HTMLButtonElement>(".kw-terminal-actions .kw-button-primary")!;
     expect(run.disabled).toBe(true);
     run.click();

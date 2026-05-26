@@ -1263,7 +1263,7 @@ export function mountWorkspaceShell(
       itemMeta.className = "kw-conversation-meta";
       itemMeta.textContent = buildConversationMeta(conversation);
       main.append(itemTitle, itemMeta);
-      main.title = conversation.title ?? firstUserMessage?.text ?? conversation.id;
+      main.title = conversation.title ?? buildConversationTitle(firstUserMessage?.text ?? conversation.id);
       main.addEventListener("click", () => switchConversation(conversation.id));
       row.addEventListener("click", () => switchConversation(conversation.id));
       const actions = doc.createElement("div");
@@ -1816,15 +1816,6 @@ export function mountWorkspaceShell(
     if (extractExactFileRequestPath(trimmed) !== null) return true;
     if (/<(?:!doctype|html|head|body|main|section|script|style)\b/i.test(trimmed)) return true;
     return trimmed.length > 800;
-  }
-
-  function extractExactFileRequestPath(text: string): string | null {
-    const englishMatch = text.match(
-      /\b(?:create|write|modify|edit|replace)\s+file\s+["']?([^"'\s]+)["']?\s+with\s+text\b/i,
-    );
-    if (englishMatch?.[1] !== undefined) return englishMatch[1];
-    const russianMatch = text.match(/\bфайл\s+["']?([^"'\s]+)["']?\s+(?:с|со)\s+текст/iu);
-    return russianMatch?.[1] ?? null;
   }
 
   function buildCompactUserRequest(doc: Document, text: string): HTMLElement {
@@ -10266,7 +10257,51 @@ function deletePersistedConversation(conversationId: string): PersistedConversat
 function buildConversationTitle(text: string): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length === 0) return "New chat";
+  const exactFile = parseExactFileRequest(normalized);
+  if (exactFile !== null) {
+    const action = exactFile.action === "create" || exactFile.action === "write" ? "Create" : "Edit";
+    return `${action} ${compactConversationPath(exactFile.path)}`;
+  }
+  if (/<(?:!doctype|html|head|body|main|section|script|style)\b/i.test(normalized)) {
+    return "HTML page request";
+  }
   return normalized.length > 42 ? `${normalized.slice(0, 39)}...` : normalized;
+}
+
+function parseExactFileRequest(text: string): { action: string; path: string } | null {
+  const englishMatch = text.match(
+    /\b(create|write|modify|edit|replace)\s+file\s+["']?([^"'\s]+)["']?\s+with\s+text\b/i,
+  );
+  if (englishMatch?.[1] !== undefined && englishMatch[2] !== undefined) {
+    return {
+      action: englishMatch[1].toLowerCase(),
+      path: englishMatch[2],
+    };
+  }
+  const russianMatch = text.match(/\bфайл\s+["']?([^"'\s]+)["']?\s+(?:с|со)\s+текст/iu);
+  if (russianMatch?.[1] !== undefined) {
+    return {
+      action: "edit",
+      path: russianMatch[1],
+    };
+  }
+  return null;
+}
+
+function extractExactFileRequestPath(text: string): string | null {
+  return parseExactFileRequest(text)?.path ?? null;
+}
+
+function compactConversationPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  if (normalized.length <= 35) return normalized;
+  const parts = normalized.split("/");
+  const fileName = parts[parts.length - 1];
+  if (fileName !== undefined && fileName.length < 24) {
+    const prefixBudget = Math.max(4, 31 - fileName.length);
+    return `${normalized.slice(0, prefixBudget)}.../${fileName}`;
+  }
+  return `${normalized.slice(0, 32)}...`;
 }
 
 function buildConversationMeta(conversation: PersistedConversationView): string {

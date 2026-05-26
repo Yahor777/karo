@@ -1383,12 +1383,18 @@ describe("workbench ??? chat workbench", () => {
     const compact = root.querySelector<HTMLElement>('[data-testid="compact-user-request"]');
     const summary = compact?.querySelector(".kw-user-request-summary")?.textContent ?? "";
     const fullRequest = compact?.querySelector<HTMLDetailsElement>('[data-testid="compact-user-full-request"]');
+    const conversationTitle = root.querySelector<HTMLElement>(".kw-conversation-title")?.textContent ?? "";
+    const conversationTooltip = root.querySelector<HTMLElement>(".kw-conversation-main")?.title ?? "";
 
     expect(compact).not.toBeNull();
     expect(summary).toContain("Exact file request for src/karo-demo-site/index.html");
     expect(summary).not.toContain("<!doctype html>");
     expect(fullRequest?.hasAttribute("open")).toBe(false);
     expect(fullRequest?.textContent).toContain("<!doctype html>");
+    expect(conversationTitle).toBe("Create src/karo-demo-site/index.html");
+    expect(conversationTooltip).toBe("Create src/karo-demo-site/index.html");
+    expect(conversationTitle).not.toContain("<!doctype html>");
+    expect(conversationTooltip).not.toContain("<!doctype html>");
     expect(root.querySelector(".kw-chat-final")).toBeNull();
     expect(opts.transport.createCalls).toHaveLength(0);
     expect(opts.chatModelClient.calls).toHaveLength(0);

@@ -741,6 +741,9 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
       .locator(byTestId(TEST_IDS.compactUserFullRequest))
       .evaluate((el) => el.hasAttribute("open"))
       .catch(() => true);
+    const activeConversation = ctx.page.locator(`${byTestId(TEST_IDS.sidebarConversationItem)}[aria-current="true"]`).first();
+    const activeConversationTitle = await activeConversation.locator(".kw-conversation-title").textContent().catch(() => "");
+    const activeConversationTooltip = await activeConversation.locator(".kw-conversation-main").getAttribute("title").catch(() => "");
     const quickEditResult = ctx.page.locator(byTestId(TEST_IDS.quickEditResult)).first();
     const quickEditListText = await quickEditResult.locator(".kw-final-list").textContent().catch(() => "");
     const rawRequestOpen = await quickEditResult
@@ -772,6 +775,13 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
           !/<!doctype html>/i.test(compactUserSummary ?? "") &&
           fullRequestOpen === false,
         details: `summary=${compactUserSummary ?? ""}; fullRequestOpen=${String(fullRequestOpen)}`,
+      },
+      {
+        name: "website-sidebar-title-hides-source",
+        passed:
+          activeConversationTitle === "Create src/karo-demo-site/index.html" &&
+          activeConversationTooltip === "Create src/karo-demo-site/index.html",
+        details: `title=${activeConversationTitle ?? ""}; tooltip=${activeConversationTooltip ?? ""}`,
       },
       await assertVisible(ctx, { testId: TEST_IDS.quickEditResult, name: "website-quick-edit-result-card-visible" }),
       {

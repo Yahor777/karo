@@ -43,6 +43,7 @@ export type {
   StartTaskInput,
   StartTaskResult,
   TaskStateListener,
+  TaskRecoveryState,
   TaskStateSnapshot,
   TaskStatus,
   TraceEvent,

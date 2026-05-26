@@ -2004,6 +2004,11 @@ describe("workbench ??? chat workbench", () => {
     expect(recovery.textContent).toContain("src/karo-demo-site/script.js");
     expect(recovery.textContent).toContain("src/karo-demo-site/index.html");
     expect(recovery.textContent).toContain("fallback");
+    expect(recovery.textContent).toContain("Run state");
+    expect(recovery.textContent).toContain("not completed");
+    expect(recovery.textContent).toContain("Fallback");
+    expect(recovery.textContent).toContain("not success");
+    expect(recovery.textContent).toContain("Preserved");
     expect(recovery.textContent).not.toContain("Completed");
   });
 
@@ -2198,6 +2203,10 @@ describe("workbench ??? chat workbench", () => {
     expect(finalCard?.textContent).toContain("Reduce context and retry");
     expect(finalCard?.textContent).toContain("Show selected files");
     expect(finalCard?.textContent).toContain("Copy context summary");
+    expect(finalCard?.textContent).toContain("Read-only failure");
+    expect(finalCard?.textContent).toContain("Write state");
+    expect(finalCard?.textContent).toContain("no artifacts");
+    expect(finalCard?.textContent).toContain("not completed");
 
     const buttons = Array.from(finalCard?.querySelectorAll<HTMLButtonElement>("button") ?? []);
     expect(buttons.find((button) => button.textContent?.includes("Retry same model") === true)).not.toBeUndefined();
@@ -2304,6 +2313,11 @@ describe("workbench ??? chat workbench", () => {
     const recovery = root.querySelector<HTMLElement>('[data-testid="coder-timeout-recovery"]');
     expect(recovery).not.toBeNull();
     expect(recovery?.textContent).toContain("Coder recovery: src/karo-demo-site/script.js");
+    expect(recovery?.textContent).toContain("Provider timeout");
+    expect(recovery?.textContent).toContain("Preserved staged files");
+    expect(recovery?.textContent).toContain("explicit only");
+    expect(recovery?.textContent).toContain("continue partial");
+    expect(recovery?.textContent).toContain("not completed");
     const buttons = Array.from(recovery?.querySelectorAll<HTMLButtonElement>("button") ?? []);
     expect(buttons.find((button) => button.textContent === "Switch model")?.disabled).toBe(true);
 

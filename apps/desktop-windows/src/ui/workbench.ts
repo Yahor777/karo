@@ -47,6 +47,7 @@ import type {
   FinalReportSummary,
   OrchestratorTransport,
   StartTaskInput,
+  TaskRecoveryState,
   TaskStateSnapshot,
   TaskStatus,
   TraceEvent,
@@ -3368,8 +3369,11 @@ export function mountWorkspaceShell(
     const wrap = doc.createElement("section");
     wrap.className = "kw-agent-recovery-summary";
     wrap.dataset["testid"] = "agent-recovery-summary";
-    const title = doc.createElement("h4");
-    title.textContent = locale === "ru" ? "\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e" : "Recovery available";
+    const head = buildRecoveryHead(
+      doc,
+      locale === "ru" ? "\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e" : "Recovery available",
+      "Recovery state",
+    );
     const body = doc.createElement("p");
     const failed = recovery.failedFile ?? recovery.failedStage;
     const preserved = recovery.partialArtifacts.length;
@@ -3377,10 +3381,16 @@ export function mountWorkspaceShell(
       locale === "ru"
         ? `\u0421\u0431\u043e\u0439: ${failed}. \u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e staged \u0444\u0430\u0439\u043b\u043e\u0432: ${String(preserved)}. \u0421\u0442\u0430\u0442\u0443\u0441 \u043d\u0435 completed, fallback \u043d\u0435 \u0441\u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044f \u0443\u0441\u043f\u0435\u0445\u043e\u043c.`
         : `Failed: ${failed}. Preserved staged files: ${String(preserved)}. This is not completed, and fallback is not success.`;
-    wrap.append(title, body);
+    const facts = buildRecoveryFacts(doc, [
+      { label: "Failed", value: failed ?? "unknown", tone: "warn" },
+      { label: "Preserved", value: `${String(preserved)} staged` },
+      { label: "Run state", value: "not completed", tone: "blocked" },
+      { label: "Fallback", value: "not success", tone: "blocked" },
+    ]);
+    wrap.append(head, body, facts);
     if (recovery.partialArtifacts.length > 0) {
       const chips = doc.createElement("div");
-      chips.className = "kw-agent-file-chips";
+      chips.className = "kw-agent-file-chips kw-agent-recovery-files";
       for (const artifact of recovery.partialArtifacts) {
         const chip = doc.createElement("span");
         chip.className = "kw-agent-file-chip";
@@ -3391,6 +3401,57 @@ export function mountWorkspaceShell(
       wrap.append(chips);
     }
     return wrap;
+  }
+
+  function buildRecoveryHead(doc: Document, titleText: string, badgeText: string): HTMLElement {
+    const head = doc.createElement("div");
+    head.className = "kw-recovery-head";
+    const title = doc.createElement("h4");
+    title.textContent = titleText;
+    const badge = doc.createElement("span");
+    badge.className = "kw-recovery-badge";
+    badge.textContent = badgeText;
+    head.append(title, badge);
+    return head;
+  }
+
+  function buildRecoveryFacts(
+    doc: Document,
+    facts: readonly { readonly label: string; readonly value: string; readonly tone?: "warn" | "safe" | "blocked" }[],
+  ): HTMLElement {
+    const wrap = doc.createElement("div");
+    wrap.className = "kw-recovery-facts";
+    for (const fact of facts) {
+      const item = doc.createElement("div");
+      item.className = "kw-recovery-fact";
+      if (fact.tone !== undefined) {
+        item.dataset["tone"] = fact.tone;
+      }
+      const label = doc.createElement("span");
+      label.textContent = fact.label;
+      const value = doc.createElement("strong");
+      value.textContent = fact.value;
+      item.append(label, value);
+      wrap.append(item);
+    }
+    return wrap;
+  }
+
+  function formatRecommendedRecoveryAction(action: TaskRecoveryState["recommendedAction"] | undefined): string {
+    switch (action) {
+      case "retry_failed_stage":
+        return "retry failed stage";
+      case "retry_reduced_context":
+        return "retry reduced context";
+      case "continue_partial":
+        return "continue partial";
+      case "switch_model":
+        return "switch model";
+      case "emergency_fallback":
+        return "explicit fallback";
+      default:
+        return "review options";
+    }
   }
 
   function buildFinalReportMessage(
@@ -7040,13 +7101,25 @@ export function mountWorkspaceShell(
     const card = doc.createElement("section");
     card.className = "kw-recovery-card";
     card.dataset["testid"] = "model-timeout-recovery";
-    const title = doc.createElement("h4");
-    title.textContent = taskState?.decision?.intent === "security_review"
+    const titleText = taskState?.decision?.intent === "security_review"
       ? "Security review did not finish"
       : "Analysis did not finish";
+    const head = buildRecoveryHead(doc, titleText, "Read-only failure");
     const body = doc.createElement("p");
     body.textContent =
       "The project context was collected, but the model did not return a usable answer. This is not marked as completed.";
+    const selectedCount =
+      taskState?.contextSummary?.selectedFilesCount ?? recovery?.selectedFiles.length ?? 0;
+    const facts = buildRecoveryFacts(doc, [
+      { label: "Context", value: `${String(selectedCount)} selected` },
+      {
+        label: "Route",
+        value: taskState?.decision?.intent === "security_review" ? "security review" : "analysis",
+      },
+      { label: "Write state", value: "no artifacts", tone: "safe" },
+      { label: "Run state", value: "not completed", tone: "blocked" },
+      { label: "Next", value: formatRecommendedRecoveryAction(recovery?.recommendedAction) },
+    ]);
     const actions = doc.createElement("div");
     actions.className = "kw-recovery-actions";
 
@@ -7098,7 +7171,7 @@ export function mountWorkspaceShell(
     });
 
     actions.append(retry, switchModel, reduce, showFiles, copy);
-    card.append(title, body, actions);
+    card.append(head, body, facts, actions);
     return card;
   }
 
@@ -7135,8 +7208,8 @@ export function mountWorkspaceShell(
     const card = doc.createElement("section");
     card.className = "kw-recovery-card";
     card.dataset["testid"] = "coder-timeout-recovery";
-    const title = doc.createElement("h4");
-    title.textContent = recovery?.failedFile ? `Coder recovery: ${recovery.failedFile}` : "Coder timed out";
+    const titleText = recovery?.failedFile ? `Coder recovery: ${recovery.failedFile}` : "Coder timed out";
+    const head = buildRecoveryHead(doc, titleText, "Provider timeout");
     const body = doc.createElement("p");
     const elapsed =
       latestCoderFailure !== undefined
@@ -7146,6 +7219,23 @@ export function mountWorkspaceShell(
       (recovery?.recoveryReasonUser ??
         "Karo kept the Researcher/Planner output and any staged draft files, but this run is not completed. Emergency fallback is available only as an explicit recovery choice, not as a success path.") +
       elapsed;
+    const recoveryArtifacts = recovery?.partialArtifacts ?? [];
+    const preservedArtifacts =
+      recoveryArtifacts.length > 0
+        ? recoveryArtifacts
+        : report.finalArtifacts.map((artifact) => ({
+          artifactId: artifact.artifactId,
+          version: artifact.version,
+          fileName: artifact.fileName,
+        }));
+    const facts = buildRecoveryFacts(doc, [
+      { label: "Failed file", value: recovery?.failedFile ?? recovery?.failedStage ?? "coder", tone: "warn" },
+      { label: "Preserved", value: `${String(preservedArtifacts.length)} staged` },
+      { label: "Retry count", value: `${String(recovery?.retryCount ?? 0)} attempted` },
+      { label: "Next", value: formatRecommendedRecoveryAction(recovery?.recommendedAction) },
+      { label: "Fallback", value: "explicit only", tone: "blocked" },
+      { label: "Run state", value: "not completed", tone: "blocked" },
+    ]);
     const actions = doc.createElement("div");
     actions.className = "kw-recovery-actions";
 
@@ -7241,7 +7331,25 @@ export function mountWorkspaceShell(
     });
 
     actions.append(retry, reduce, switchModel, partial, inspect, emergency, logs, copy);
-    card.append(title, body, actions);
+    card.append(head, body, facts);
+    if (preservedArtifacts.length > 0) {
+      const preserved = doc.createElement("div");
+      preserved.className = "kw-recovery-preserved";
+      const preservedTitle = doc.createElement("strong");
+      preservedTitle.textContent = "Preserved staged files";
+      const chips = doc.createElement("div");
+      chips.className = "kw-agent-file-chips";
+      for (const artifact of preservedArtifacts) {
+        const chip = doc.createElement("span");
+        chip.className = "kw-agent-file-chip";
+        chip.title = artifact.fileName;
+        chip.textContent = artifact.fileName;
+        chips.append(chip);
+      }
+      preserved.append(preservedTitle, chips);
+      card.append(preserved);
+    }
+    card.append(actions);
     return card;
   }
 

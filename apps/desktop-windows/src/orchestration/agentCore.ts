@@ -352,6 +352,7 @@ export function buildAgentImplementationPlan(input: {
       filesToRead: input.contextProfile === "website_creation" ? [] : [],
       acceptanceCriteria: [
         "index.html contains title/meta viewport, linked styles.css/script.js, navigation, hero, abilities, characters/energy, features, FAQ, and a visible CTA.",
+        "index.html contains a subject-specific first-viewport hero visual scene, not only text and gradient blocks.",
         "index.html contains substantive subject-specific copy, not just section labels or placeholder cards.",
         "index.html uses a multi-card product composition with FAQ details or equivalent expandable/readable answers.",
         "styles.css contains responsive premium dark anime/card styling, visual depth, stable spacing, and a mobile layout.",
@@ -370,6 +371,7 @@ export function buildAgentImplementationPlan(input: {
         "FAQ details exist",
         "metadata and linked assets exist",
         "substantive section copy exists",
+        "first-viewport hero visual exists",
         "offline-safe local assets only",
         "responsive styling signal exists",
         "premium visual polish signal exists",
@@ -542,6 +544,10 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
     if (additions.length > 0) {
       nextIndex = insertHtmlSections(nextIndex, additions);
     }
+    if (hasIssue(args.issues, "first-viewport hero visual") && !hasHeroVisual(nextIndex)) {
+      nextIndex = insertHeroVisual(nextIndex);
+      addressedIssues.push("first-viewport hero visual");
+    }
     if (hasIssue(args.issues, "document metadata") || hasIssue(args.issues, "stylesheet/script wiring")) {
       nextIndex = ensureStaticWebsiteHtmlShell(nextIndex);
       if (hasIssue(args.issues, "document metadata")) addressedIssues.push("document metadata");
@@ -594,6 +600,7 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
       hasIssue(args.issues, "dark anime/card styling") ||
       hasIssue(args.issues, "premium visual depth") ||
       hasIssue(args.issues, "stable spacing system") ||
+      hasIssue(args.issues, "first-viewport hero visual") ||
       hasIssue(args.issues, "interactive polish");
     const needsCssStructureRepair =
       (hasIssue(args.issues, "site navigation") && !/\.site-nav|\bnav-links\b/iu.test(css.content)) ||
@@ -608,6 +615,7 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
           "dark anime/card styling",
           "premium visual depth",
           "stable spacing system",
+          "first-viewport hero visual",
           "interactive polish",
           "site navigation",
           "multi-card product composition",
@@ -818,6 +826,7 @@ function validateStaticWebsiteArtifacts(
     recordSignal(checkedSignals, issues, regex.test(content), label);
   }
   recordSignal(checkedSignals, issues, hasSubstantiveWebsiteCopy(indexContent), "substantive section copy");
+  recordSignal(checkedSignals, issues, hasHeroVisual(indexContent), "first-viewport hero visual");
   recordSignal(checkedSignals, issues, hasMultiCardComposition(indexContent), "multi-card product composition");
   recordSignal(checkedSignals, issues, hasFaqDetails(indexContent), "FAQ details");
   recordSignal(checkedSignals, issues, !hasExternalNetworkDependency(artifacts), "offline-safe local assets");
@@ -913,6 +922,33 @@ function hasSiteNavigation(content: string): boolean {
   return /<nav\b|\bsite-nav\b|\bnav-links\b/iu.test(content);
 }
 
+function hasHeroVisual(content: string): boolean {
+  return (
+    /class=["'][^"']*\bhero-visual\b|role=["']img["']|<figure\b|<svg\b|<canvas\b/iu.test(content) &&
+    /\b(domain|cursed|technique|energy|visual|poster|arena|minecraft|jjk)\b|aria-label|figcaption/iu.test(content)
+  );
+}
+
+function insertHeroVisual(content: string): string {
+  const visual = [
+    '<figure class="hero-visual" role="img" aria-label="Cursed energy arena with technique cards and domain rings">',
+    '<div class="domain-orb" aria-hidden="true"></div>',
+    '<div class="technique-card technique-card--infinity"><span>Infinity</span><strong>Guard</strong></div>',
+    '<div class="technique-card technique-card--black-flash"><span>Black Flash</span><strong>Timing</strong></div>',
+    '<div class="energy-ring" aria-hidden="true"></div>',
+    '<figcaption>Local visual scene: domain pressure, technique timing, and character energy roles.</figcaption>',
+    "</figure>",
+  ].join("");
+  const heroSection = /(<section\b[^>]*(?:id|class)=["'][^"']*\bhero\b[^"']*["'][^>]*>)([\s\S]*?)(<\/section>)/iu;
+  if (heroSection.test(content)) {
+    return content.replace(heroSection, (_match, open: string, inner: string, close: string) => {
+      if (hasHeroVisual(inner)) return `${open}${inner}${close}`;
+      return `${open}${inner}\n      ${visual}${close}`;
+    });
+  }
+  return insertHtmlSections(content, [`<section class="hero">${visual}</section>`]);
+}
+
 function insertSiteNavigation(content: string): string {
   const nav = [
     '<nav class="site-nav" aria-label="Primary">',
@@ -980,6 +1016,18 @@ function buildWebsiteQualityCssRepairSnippet(): string {
     ".site-nav a { color: #e7ddff; text-decoration: none; }",
     ".nav-links { display: flex; flex-wrap: wrap; gap: 12px; }",
     ".hero { min-height: min(72vh, 720px); align-content: center; background: linear-gradient(135deg, rgba(139, 92, 246, .12), rgba(34, 211, 238, .05)); }",
+    ".hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(260px, .95fr); align-items: center; gap: clamp(22px, 5vw, 56px); }",
+    ".hero > :not(.hero-visual) { grid-column: 1; }",
+    ".hero-visual { position: relative; min-height: 320px; margin: 0; border: 1px solid rgba(34, 211, 238, .22); border-radius: 22px; overflow: hidden; background: radial-gradient(circle at 50% 44%, rgba(34, 211, 238, .24), transparent 28%), linear-gradient(145deg, rgba(139, 92, 246, .18), rgba(251, 113, 133, .08)); box-shadow: inset 0 0 80px rgba(34, 211, 238, .08), 0 24px 70px rgba(0, 0, 0, .28); }",
+    ".hero-visual { grid-column: 2; grid-row: 1 / span 6; }",
+    ".domain-orb, .energy-ring { position: absolute; inset: 18%; border: 1px solid rgba(34, 211, 238, .42); border-radius: 999px; box-shadow: 0 0 60px rgba(34, 211, 238, .18); }",
+    ".energy-ring { inset: 30%; border-color: rgba(251, 113, 133, .42); transform: rotate(-12deg); }",
+    ".technique-card { position: absolute; min-width: 132px; padding: 12px 14px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 14px; background: rgba(7, 7, 11, .68); backdrop-filter: blur(14px); }",
+    ".technique-card span, .hero-visual figcaption { color: #cbd5e1; font-size: .8rem; }",
+    ".technique-card strong { display: block; color: #fff; font-size: 1.05rem; }",
+    ".technique-card--infinity { top: 18%; left: 8%; }",
+    ".technique-card--black-flash { right: 8%; bottom: 18%; }",
+    ".hero-visual figcaption { position: absolute; left: 16px; right: 16px; bottom: 14px; }",
     ".card, .feature-card, section, details { border: 1px solid var(--jjk-line); border-radius: 16px; background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }",
     "section, .feature-card, details { padding: clamp(18px, 3vw, 28px); }",
     ".ability-grid, .experience-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }",
@@ -989,6 +1037,7 @@ function buildWebsiteQualityCssRepairSnippet(): string {
     ".cta-button:hover, a:hover, button:hover, summary:hover { transform: translateY(-1px); }",
     ".cta-button:focus-visible, a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--jjk-cyan); outline-offset: 3px; }",
     "@media (min-width: 860px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .cta, .experience-grid, .ability-grid, .faq { grid-column: 1 / -1; } }",
+    "@media (max-width: 820px) { .hero { grid-template-columns: 1fr; } .hero-visual { grid-column: 1; grid-row: auto; min-height: 260px; } }",
     "@media (max-width: 680px) { .site-nav { align-items: flex-start; flex-direction: column; } h1 { font-size: clamp(2.5rem, 16vw, 4rem); } }",
     "",
   ].join("\n");

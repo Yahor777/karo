@@ -77,6 +77,7 @@ interface WebsiteRenderMetrics {
   readonly wordCount: number;
   readonly ctaVisible: boolean;
   readonly heroVisible: boolean;
+  readonly heroVisualVisible: boolean;
   readonly navVisible: boolean;
   readonly faqDetailsVisible: boolean;
   readonly bodyHeight: number;
@@ -502,6 +503,7 @@ async function renderGeneratedWebsiteProof(args: {
         bool(
           "website-render-desktop-visible-complete-page",
           desktop.heroVisible &&
+            desktop.heroVisualVisible &&
             desktop.ctaVisible &&
             desktop.navVisible &&
             desktop.faqDetailsVisible &&
@@ -517,7 +519,12 @@ async function renderGeneratedWebsiteProof(args: {
         ),
         bool(
           "website-render-mobile-no-horizontal-overflow",
-          mobile.overflow <= 2 && mobile.ctaVisible && mobile.navVisible && mobile.faqDetailsVisible && mobile.sectionCount >= 5,
+          mobile.overflow <= 2 &&
+            mobile.ctaVisible &&
+            mobile.navVisible &&
+            mobile.faqDetailsVisible &&
+            mobile.heroVisualVisible &&
+            mobile.sectionCount >= 5,
           JSON.stringify(mobile),
         ),
         bool("website-render-no-external-network", externalRequests.length === 0, externalRequests.join(", ")),
@@ -538,6 +545,7 @@ async function renderGeneratedWebsiteProof(args: {
           cardLike: desktop.cardLikeCount,
           nav: desktop.navVisible,
           faq: desktop.faqDetailsVisible,
+          heroVisual: desktop.heroVisualVisible,
         })}`,
         `renderMobileMetrics=${JSON.stringify({
           sections: mobile.sectionCount,
@@ -546,6 +554,7 @@ async function renderGeneratedWebsiteProof(args: {
           cardLike: mobile.cardLikeCount,
           nav: mobile.navVisible,
           faq: mobile.faqDetailsVisible,
+          heroVisual: mobile.heroVisualVisible,
         })}`,
       ],
     };
@@ -598,6 +607,7 @@ async function renderGeneratedWebsiteViewport(args: {
       wordCount: words.length,
       ctaVisible: visible(document.querySelector(".cta-button, a[href], button")),
       heroVisible: visible(document.querySelector(".hero, h1")),
+      heroVisualVisible: visible(document.querySelector(".hero-visual, figure[role='img'], [role='img']")),
       navVisible: visible(document.querySelector("nav, .site-nav")),
       faqDetailsVisible: visible(document.querySelector("details summary, .faq")),
       bodyHeight: Math.max(body.scrollHeight, root.scrollHeight),
@@ -929,6 +939,13 @@ class ProbeModelClient {
       <h1>Dark anime battles with readable cursed-technique mastery</h1>
       <p class="lead">Preview a focused Minecraft JJK mod landing page with ability roles, energy flow, install guidance, and reviewable staged files before anything touches disk.</p>
       <a class="cta-button" href="#abilities">Explore cursed techniques</a>
+      <figure class="hero-visual" role="img" aria-label="Cursed energy arena with domain rings and technique cards">
+        <div class="domain-orb" aria-hidden="true"></div>
+        <div class="energy-ring" aria-hidden="true"></div>
+        <div class="technique-card technique-card--infinity"><span>Infinity</span><strong>Guard</strong></div>
+        <div class="technique-card technique-card--black-flash"><span>Black Flash</span><strong>Timing</strong></div>
+        <figcaption>Local visual scene for domain pressure, ability timing, and energy roles.</figcaption>
+      </figure>
     </section>
     <section id="abilities" class="ability-grid" aria-labelledby="abilities-title">
       <h2 id="abilities-title">Technique loadouts</h2>
@@ -952,12 +969,23 @@ body { margin: 0; background: radial-gradient(circle at 12% 8%, rgba(34, 211, 23
 .brand-mark { font-weight: 800; }
 .nav-links { display: flex; flex-wrap: wrap; gap: 12px; }
 .jjk-page { min-height: 100vh; padding: clamp(24px, 5vw, 72px); display: grid; gap: 24px; }
-.hero { min-height: min(72vh, 720px); align-content: center; padding: clamp(28px, 5vw, 64px); border: 1px solid rgba(139, 92, 246, .25); border-radius: 24px; background: linear-gradient(135deg, rgba(139, 92, 246, .14), rgba(34, 211, 238, .06)); box-shadow: 0 28px 90px rgba(0, 0, 0, .36); }
+.hero { min-height: min(72vh, 720px); display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr); align-items: center; gap: clamp(24px, 5vw, 56px); padding: clamp(28px, 5vw, 64px); border: 1px solid rgba(139, 92, 246, .25); border-radius: 24px; background: linear-gradient(135deg, rgba(139, 92, 246, .14), rgba(34, 211, 238, .06)); box-shadow: 0 28px 90px rgba(0, 0, 0, .36); }
+.hero > :not(.hero-visual) { grid-column: 1; }
 .eyebrow { color: var(--cyan); text-transform: uppercase; letter-spacing: 0; font-weight: 800; }
 h1 { max-width: 900px; font-size: clamp(48px, 8vw, 92px); line-height: .92; margin: 0; }
 h2 { margin: 0 0 10px; }
 .lead { color: #d8d1ea; font-size: clamp(18px, 2vw, 24px); max-width: 820px; }
 .cta-button { display: inline-flex; margin-top: 20px; padding: 13px 18px; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--cyan)); color: white; text-decoration: none; box-shadow: 0 18px 60px rgba(139, 92, 246, .34); transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+.hero-visual { position: relative; min-height: 360px; margin: 0; border: 1px solid rgba(34, 211, 238, .24); border-radius: 22px; overflow: hidden; background: radial-gradient(circle at 50% 42%, rgba(34, 211, 238, .24), transparent 28%), linear-gradient(145deg, rgba(139, 92, 246, .18), rgba(251, 113, 133, .08)); box-shadow: inset 0 0 90px rgba(34, 211, 238, .08), 0 24px 70px rgba(0, 0, 0, .28); }
+.hero-visual { grid-column: 2; grid-row: 1 / span 6; }
+.domain-orb, .energy-ring { position: absolute; inset: 17%; border: 1px solid rgba(34, 211, 238, .44); border-radius: 999px; box-shadow: 0 0 70px rgba(34, 211, 238, .2); }
+.energy-ring { inset: 30%; border-color: rgba(251, 113, 133, .44); transform: rotate(-12deg); }
+.technique-card { position: absolute; min-width: 132px; padding: 12px 14px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 14px; background: rgba(7, 7, 11, .68); backdrop-filter: blur(14px); }
+.technique-card span, .hero-visual figcaption { color: #cbd5e1; font-size: .8rem; }
+.technique-card strong { display: block; color: #fff; font-size: 1.05rem; }
+.technique-card--infinity { top: 18%; left: 8%; }
+.technique-card--black-flash { right: 8%; bottom: 18%; }
+.hero-visual figcaption { position: absolute; left: 16px; right: 16px; bottom: 14px; }
 section:not(.hero), .feature-card, details { border: 1px solid var(--line); border-radius: 18px; padding: clamp(20px, 3vw, 30px); background: var(--card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }
 .ability-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .ability-grid > h2 { grid-column: 1 / -1; }
@@ -966,6 +994,7 @@ summary { cursor: pointer; color: #f8f6ff; }
 .cta-button:hover, .site-nav a:hover, summary:hover { transform: translateY(-1px); color: white; }
 .cta-button:focus-visible, .site-nav a:focus-visible, summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 @media (min-width: 860px) { .jjk-page { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .ability-grid, .faq { grid-column: 1 / -1; } }
+@media (max-width: 820px) { .hero { grid-template-columns: 1fr; } .hero-visual { grid-column: 1; grid-row: auto; min-height: 260px; } }
 @media (max-width: 680px) { .site-nav { align-items: flex-start; flex-direction: column; } }
 `,
           "src/karo-demo-site/script.js":

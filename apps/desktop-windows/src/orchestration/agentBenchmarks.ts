@@ -173,6 +173,7 @@ export const AGENT_BENCHMARK_CONTRACTS: readonly AgentBenchmarkContract[] = [
       "staged files",
       "Apply required",
       "chunked or adaptive generation",
+      "first-viewport hero visual, not text-only shell",
       "deterministic validation",
       "preview/open flow after Apply",
       "fallback-only result cannot pass",

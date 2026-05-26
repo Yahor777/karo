@@ -76,6 +76,7 @@ describe("Agent benchmark contracts", () => {
     expect(contract.allowsArtifacts).toBe(true);
     expect(contract.expectedContextProfile).toBe("website_creation");
     expect(contract.allowsFallbackAsSuccess).toBe(false);
+    expect(contract.passConditions.join("\n")).toContain("hero visual");
   });
 
   it("keeps provider timeout recovery as recovery rather than success", () => {

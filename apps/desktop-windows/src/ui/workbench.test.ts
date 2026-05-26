@@ -2489,6 +2489,31 @@ describe("workbench ??? right panel", () => {
     expect(root.querySelector<HTMLButtonElement>(".kw-preview-panel .kw-button-primary")?.disabled).toBe(true);
   });
 
+  it("Preview explains the project-root gate when terminal backend is connected", async () => {
+    const built = buildShell();
+    Object.assign(built.shell, {
+      shell_start_command: vi.fn(),
+      shell_stop_command: vi.fn(),
+      shell_get_command_output: vi.fn(),
+      shell_clear_command_output: vi.fn(),
+    });
+    mountWorkspaceShell(root, {
+      session: SAMPLE_SESSION,
+      metadata: SAMPLE_METADATA,
+      desktopShell: built.shell,
+      transport: new FakeTransport(),
+      chatModelClient: new FakeChatModelClient(),
+      onSignOut: vi.fn(),
+    });
+    await flush();
+
+    root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!.click();
+    const text = root.querySelector(".kw-right-content")?.textContent ?? "";
+    expect(text).toContain("Project root required");
+    expect(text).not.toContain("Not in MVP allowlist");
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-run-button"]')?.disabled).toBe(true);
+  });
+
   it("Preview detects dev scripts from package.json without running them", async () => {
     const built = buildShell();
     built.reads.set("recentProject", {
@@ -2781,15 +2806,53 @@ describe("workbench ??? right panel", () => {
     expect(root.querySelector(".kw-bottom-tools-status")?.textContent).toContain("success");
   });
 
-  it("Terminal shows backend block errors instead of pretending destructive commands ran", async () => {
+  it("Preview disables custom dev commands outside the MVP allowlist", async () => {
     const built = buildShell();
     built.reads.set("recentProject", {
       path: "D:\\проекты\\karo-exstention",
       savedAt: "2026-05-17T12:00:00.000Z",
     });
-    const start = vi.fn(async () => {
-      throw new Error("Command is not allowed in the MVP terminal allowlist.");
+    const start = vi.fn(async () => ({ sessionId: "term-1", status: "running" as const, allowed: true, profileId: "powershell" }));
+    Object.assign(built.shell, {
+      shell_start_command: start,
+      shell_stop_command: vi.fn(),
+      shell_get_command_output: vi.fn(),
+      shell_clear_command_output: vi.fn(),
+      shell_get_terminal_profiles: vi.fn(async () => [
+        { id: "powershell", label: "PowerShell", shell: "powershell.exe", available: true },
+      ]),
     });
+    mountWorkspaceShell(root, {
+      session: SAMPLE_SESSION,
+      metadata: SAMPLE_METADATA,
+      desktopShell: built.shell,
+      transport: new FakeTransport(),
+      chatModelClient: new FakeChatModelClient(),
+      onSignOut: vi.fn(),
+    });
+    await flush();
+
+    root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!.click();
+    const input = root.querySelector<HTMLInputElement>(".kw-preview-command input")!;
+    input.value = "pnpm build";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(root.querySelector('[data-testid="preview-preflight"]')?.textContent).toContain("Not in MVP allowlist");
+    const run = root.querySelector<HTMLButtonElement>('[data-testid="preview-run-button"]')!;
+    expect(run.disabled).toBe(true);
+    run.click();
+    await flush();
+
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("Terminal blocks destructive commands before they reach the backend", async () => {
+    const built = buildShell();
+    built.reads.set("recentProject", {
+      path: "D:\\проекты\\karo-exstention",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    });
+    const start = vi.fn(async () => ({ sessionId: "term-1", status: "running" as const, allowed: true, profileId: "powershell" }));
     Object.assign(built.shell, {
       shell_start_command: start,
       shell_stop_command: vi.fn(),
@@ -2814,13 +2877,58 @@ describe("workbench ??? right panel", () => {
     command.value = "git clean -fdx";
     command.dispatchEvent(new Event("input", { bubbles: true }));
     expect(root.querySelector(".kw-terminal-safety-cockpit")?.textContent).toContain("destructive");
-    expect(root.querySelector(".kw-terminal-safety-cockpit")?.textContent).toContain("Approval required");
-    root.querySelector<HTMLButtonElement>(".kw-terminal-actions .kw-button-primary")!.click();
+    expect(root.querySelector(".kw-terminal-safety-cockpit")?.textContent).toContain("Blocked before backend");
+    expect(root.querySelector(".kw-terminal-safety-cockpit")?.textContent).toContain("Hard blocked");
+    const run = root.querySelector<HTMLButtonElement>(".kw-terminal-actions .kw-button-primary")!;
+    expect(run.disabled).toBe(true);
+    run.click();
     await flush();
 
-    expect(start).toHaveBeenCalledWith("D:\\проекты\\karo-exstention", "git clean -fdx", "manual", "powershell");
-    expect(root.querySelector('[data-testid="terminal-output"]')?.textContent).toContain("MVP terminal allowlist");
-    expect(root.querySelector(".kw-bottom-tools")?.textContent).toContain("blocked");
+    expect(start).not.toHaveBeenCalled();
+    expect(root.querySelector('[data-testid="terminal-output"]')?.textContent).toContain("No terminal output yet");
+  });
+
+  it("Terminal disables commands outside the MVP allowlist before backend execution", async () => {
+    const built = buildShell();
+    built.reads.set("recentProject", {
+      path: "D:\\проекты\\karo-exstention",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    });
+    const start = vi.fn(async () => ({ sessionId: "term-1", status: "running" as const, allowed: true, profileId: "powershell" }));
+    Object.assign(built.shell, {
+      shell_start_command: start,
+      shell_stop_command: vi.fn(),
+      shell_get_command_output: vi.fn(),
+      shell_clear_command_output: vi.fn(),
+      shell_get_terminal_profiles: vi.fn(async () => [
+        { id: "powershell", label: "PowerShell", shell: "powershell.exe", available: true },
+      ]),
+    });
+    mountWorkspaceShell(root, {
+      session: SAMPLE_SESSION,
+      metadata: SAMPLE_METADATA,
+      desktopShell: built.shell,
+      transport: new FakeTransport(),
+      chatModelClient: new FakeChatModelClient(),
+      onSignOut: vi.fn(),
+    });
+    await flush();
+
+    root.querySelector<HTMLButtonElement>(".kw-bottom-tools-head")!.click();
+    const command = root.querySelector<HTMLInputElement>(".kw-terminal-command")!;
+    command.value = "pnpm build";
+    command.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const cockpitText = root.querySelector(".kw-terminal-safety-cockpit")?.textContent ?? "";
+    expect(cockpitText).toContain("Allowlist");
+    expect(cockpitText).toContain("Not allowed");
+    expect(cockpitText).toContain("Use Preview/test/status commands");
+    const run = root.querySelector<HTMLButtonElement>(".kw-terminal-actions .kw-button-primary")!;
+    expect(run.disabled).toBe(true);
+    run.click();
+    await flush();
+
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("Diff tab is hidden until an artifact or selected diff exists", () => {

@@ -41,6 +41,8 @@ import type {
   ArtifactVersion,
   ArtifactMetadata,
   ChatMessage,
+  CommandDecision,
+  CommandPermissionMode,
   FinalReportSummary,
   OrchestratorTransport,
   StartTaskInput,
@@ -304,6 +306,16 @@ interface InternalState {
   previewOpenError: string | null;
   detectedPreviewCommand: string;
   detectedPreviewCommandSource: "default" | "package_json" | "none";
+}
+
+interface TerminalCommandPreflight {
+  readonly command: string;
+  readonly permissionMode: CommandPermissionMode;
+  readonly projectRoot: string;
+  readonly decision: CommandDecision | null;
+  readonly mvpAllowed: boolean;
+  readonly canStart: boolean;
+  readonly blockReason: string | null;
 }
 
 export function mountWorkspaceShell(
@@ -6565,10 +6577,6 @@ export function mountWorkspaceShell(
     const commandInput = doc.createElement("input");
     commandInput.value = suggested;
     commandInput.placeholder = "pnpm desktop:dev:renderer";
-    commandInput.addEventListener("input", () => {
-      localStorage.setItem("karo.previewCommand", commandInput.value);
-      localStorage.setItem("karo.previewCommandSource", "user_custom");
-    });
     commandLabel.append(commandText, commandInput);
     const meta = doc.createElement("p");
     meta.className = "kw-preview-meta";
@@ -6594,6 +6602,7 @@ export function mountWorkspaceShell(
     }
     const terminalAvailable = hasTerminalBackend();
     const projectRoot = state.project?.path ?? "";
+    let previewCommandPreflight = evaluateTerminalCommandPreflight(commandInput.value, terminalAvailable);
     const staticPreviewArtifact =
       state.activeTaskId !== null
         ? options.transport
@@ -6633,7 +6642,7 @@ export function mountWorkspaceShell(
       [
         "Command",
         terminalAvailable
-          ? "Safe terminal allowlist"
+          ? "Exact command preflight"
           : "Terminal unavailable here",
       ],
       [
@@ -6654,12 +6663,13 @@ export function mountWorkspaceShell(
       surface: "preview",
       hasStaticArtifact: staticPreviewArtifact !== undefined,
     });
-    const previewPreflight = buildPreviewPreflightChecklist(doc, {
+    let previewPreflight = buildPreviewPreflightChecklist(doc, {
       taskState,
       hasStaticArtifact: staticPreviewArtifact !== undefined,
       staticPreviewApplied,
       terminalAvailable,
       suggestedCommand: suggested,
+      commandPreflight: previewCommandPreflight,
       detectedUrl,
     });
     const staticPreview = doc.createElement("div");
@@ -6728,10 +6738,8 @@ export function mountWorkspaceShell(
     start.className = "kw-button kw-button-primary";
     start.dataset["testid"] = "preview-run-button";
     start.textContent = state.terminalStatus === "running" ? "Preview running" : "Run preview";
-    start.disabled = !terminalAvailable || projectRoot.length === 0 || state.terminalStatus === "running";
-    start.title = terminalAvailable
-      ? "Run this command through the safe terminal backend."
-      : "Unavailable until the integrated terminal runner is available.";
+    start.disabled = !previewCommandPreflight.canStart || state.terminalStatus === "running";
+    start.title = previewCommandPreflight.blockReason ?? "Run this command through the safe terminal backend.";
     start.addEventListener("click", () => {
       void startTerminalCommand(commandInput.value, "preview");
     });
@@ -6745,7 +6753,8 @@ export function mountWorkspaceShell(
     restart.type = "button";
     restart.className = "kw-button kw-button-secondary";
     restart.textContent = "Restart";
-    restart.disabled = !terminalAvailable || projectRoot.length === 0;
+    restart.disabled = !previewCommandPreflight.canStart;
+    restart.title = previewCommandPreflight.blockReason ?? "Restart through the safe terminal backend.";
     restart.addEventListener("click", async () => {
       if (state.terminalStatus === "running") {
         await stopTerminalCommand();
@@ -6756,13 +6765,38 @@ export function mountWorkspaceShell(
     copyCommand.type = "button";
     copyCommand.className = "kw-button kw-button-secondary";
     copyCommand.textContent = "Copy command";
-    copyCommand.disabled = suggested.trim().length === 0;
+    copyCommand.disabled = commandInput.value.trim().length === 0;
     copyCommand.addEventListener("click", () => void copyToClipboard(commandInput.value));
     const openTerminal = doc.createElement("button");
     openTerminal.type = "button";
     openTerminal.className = "kw-button kw-button-secondary";
     openTerminal.textContent = "Terminal status";
     openTerminal.addEventListener("click", () => setRightTab("terminal"));
+    function updatePreviewCommandControls(): void {
+      start.disabled = !previewCommandPreflight.canStart || state.terminalStatus === "running";
+      start.title = previewCommandPreflight.blockReason ?? "Run this command through the safe terminal backend.";
+      restart.disabled = !previewCommandPreflight.canStart;
+      restart.title = previewCommandPreflight.blockReason ?? "Restart through the safe terminal backend.";
+      copyCommand.disabled = commandInput.value.trim().length === 0;
+    }
+    commandInput.addEventListener("input", () => {
+      localStorage.setItem("karo.previewCommand", commandInput.value);
+      localStorage.setItem("karo.previewCommandSource", "user_custom");
+      previewCommandPreflight = evaluateTerminalCommandPreflight(commandInput.value, terminalAvailable);
+      const nextPreflight = buildPreviewPreflightChecklist(doc, {
+        taskState,
+        hasStaticArtifact: staticPreviewArtifact !== undefined,
+        staticPreviewApplied,
+        terminalAvailable,
+        suggestedCommand: commandInput.value,
+        commandPreflight: previewCommandPreflight,
+        detectedUrl,
+      });
+      previewPreflight.replaceWith(nextPreflight);
+      previewPreflight = nextPreflight;
+      updatePreviewCommandControls();
+    });
+    updatePreviewCommandControls();
     if (terminalAvailable) {
       actions.append(start, stop, restart, copyCommand, openTerminal);
     } else {
@@ -6785,6 +6819,7 @@ export function mountWorkspaceShell(
       readonly staticPreviewApplied: boolean;
       readonly terminalAvailable: boolean;
       readonly suggestedCommand: string;
+      readonly commandPreflight: TerminalCommandPreflight;
       readonly detectedUrl: string | null;
     },
   ): HTMLElement {
@@ -6826,11 +6861,7 @@ export function mountWorkspaceShell(
         : args.detectedUrl !== null
           ? { label: "Open gate", value: "Dev server URL detected", state: "ready" }
           : { label: "Open gate", value: "No preview target yet", state: "idle" },
-      args.terminalAvailable
-        ? args.suggestedCommand.trim().length > 0
-          ? { label: "Command", value: "Safe terminal command available", state: "ready" }
-          : { label: "Command", value: "No command detected", state: "idle" }
-        : { label: "Command", value: "Terminal backend unavailable", state: "warn" },
+      describePreviewCommandPreflight(args.commandPreflight, args.terminalAvailable, args.suggestedCommand),
     ];
     for (const check of checklist) {
       const item = doc.createElement("div");
@@ -6846,6 +6877,32 @@ export function mountWorkspaceShell(
 
     list.append(title, subtitle, items);
     return list;
+  }
+
+  function describePreviewCommandPreflight(
+    commandPreflight: TerminalCommandPreflight,
+    terminalAvailable: boolean,
+    suggestedCommand: string,
+  ): { readonly label: string; readonly value: string; readonly state: "ready" | "blocked" | "warn" | "idle" } {
+    if (!terminalAvailable) {
+      return { label: "Command", value: "Terminal backend unavailable", state: "warn" };
+    }
+    if (suggestedCommand.trim().length === 0) {
+      return { label: "Command", value: "No command detected", state: "idle" };
+    }
+    if (commandPreflight.canStart) {
+      return { label: "Command", value: "MVP allowlist command ready", state: "ready" };
+    }
+    if (commandPreflight.projectRoot.length === 0) {
+      return { label: "Command", value: "Project root required", state: "blocked" };
+    }
+    if (commandPreflight.decision?.riskLevel === "destructive") {
+      return { label: "Command", value: "Destructive command blocked", state: "blocked" };
+    }
+    if (!commandPreflight.mvpAllowed) {
+      return { label: "Command", value: "Not in MVP allowlist", state: "blocked" };
+    }
+    return { label: "Command", value: "Command blocked by policy", state: "blocked" };
   }
 
   function getApplyResultForTask(taskId: string): any {
@@ -7135,12 +7192,15 @@ export function mountWorkspaceShell(
           : state.detectedPreviewCommand);
     command.placeholder = terminalAvailable ? "pnpm test" : "Command execution unavailable in this runtime";
     command.disabled = !terminalAvailable;
-    let safetyCockpit = buildTerminalSafetyCockpit(command.value, terminalAvailable);
+    let terminalPreflight = evaluateTerminalCommandPreflight(command.value, terminalAvailable);
+    let safetyCockpit = buildTerminalSafetyCockpit(terminalPreflight, terminalAvailable);
     command.addEventListener("input", () => {
       state.terminalCommandText = command.value;
-      const nextCockpit = buildTerminalSafetyCockpit(command.value, terminalAvailable);
+      terminalPreflight = evaluateTerminalCommandPreflight(command.value, terminalAvailable);
+      const nextCockpit = buildTerminalSafetyCockpit(terminalPreflight, terminalAvailable);
       safetyCockpit.replaceWith(nextCockpit);
       safetyCockpit = nextCockpit;
+      updateRunButton();
     });
     const profileLabel = doc.createElement("label");
     profileLabel.className = "kw-terminal-profile";
@@ -7174,8 +7234,12 @@ export function mountWorkspaceShell(
     runBtn.type = "button";
     runBtn.className = "kw-button kw-button-primary";
     runBtn.textContent = "Run command";
-    runBtn.disabled = !terminalAvailable || state.project === null || state.terminalStatus === "running";
     runBtn.addEventListener("click", () => void startTerminalCommand(command.value, "manual"));
+    function updateRunButton(): void {
+      runBtn.disabled = !terminalPreflight.canStart || state.terminalStatus === "running";
+      runBtn.title = terminalPreflight.blockReason ?? "Run this command through the safe terminal backend.";
+    }
+    updateRunButton();
     const stopBtn = doc.createElement("button");
     stopBtn.type = "button";
     stopBtn.className = "kw-button kw-button-secondary";
@@ -7207,31 +7271,39 @@ export function mountWorkspaceShell(
     return wrap;
   }
 
-  function buildTerminalSafetyCockpit(commandText: string, terminalAvailable: boolean): HTMLElement {
+  function buildTerminalSafetyCockpit(preflight: TerminalCommandPreflight, terminalAvailable: boolean): HTMLElement {
     const cockpit = doc.createElement("section");
     cockpit.className = "kw-terminal-safety-cockpit";
-    const projectRoot = state.project?.path ?? "";
-    const trimmed = commandText.trim();
-    const permissionMode = readCommandPermissionMode();
-    const decision =
-      trimmed.length > 0
-        ? runCommandPolicy({
-            command: trimmed,
-            cwd: projectRoot,
-            projectRoot,
-            permissionMode,
-          })
-        : null;
+    const projectRoot = preflight.projectRoot;
+    const decision = preflight.decision;
     let policyLabel = "Waiting for command";
     if (projectRoot.length === 0) {
       policyLabel = "Project required";
     } else if (decision?.blocked === true) {
       policyLabel = "Blocked";
+    } else if (decision?.riskLevel === "destructive") {
+      policyLabel = "Blocked before backend";
     } else if (decision?.requiresApproval === true) {
       policyLabel = "Approval required";
     } else if (decision !== null) {
       policyLabel = "Allowed automatically";
     }
+    const allowlistLabel =
+      preflight.command.length === 0
+        ? "Waiting"
+        : preflight.mvpAllowed
+          ? "MVP approved"
+          : decision?.riskLevel === "destructive"
+            ? "Hard blocked"
+            : "Not allowed";
+    const allowlistDetail =
+      preflight.command.length === 0
+        ? "Enter an exact command"
+        : preflight.mvpAllowed
+          ? "Backend accepts this exact command"
+          : decision?.riskLevel === "destructive"
+            ? "Destructive commands never run here"
+            : "Use Preview/test/status commands";
     const items: ReadonlyArray<readonly [string, string, string, string]> = [
       [
         "Runner",
@@ -7247,9 +7319,15 @@ export function mountWorkspaceShell(
       ],
       [
         "Policy",
-        formatCommandPermissionMode(permissionMode),
+        formatCommandPermissionMode(preflight.permissionMode),
         "Destructive commands are never auto-run",
         "ready",
+      ],
+      [
+        "Allowlist",
+        allowlistLabel,
+        allowlistDetail,
+        preflight.command.length === 0 ? "warn" : preflight.mvpAllowed ? "ready" : "blocked",
       ],
       [
         "Command",
@@ -7274,7 +7352,88 @@ export function mountWorkspaceShell(
     return cockpit;
   }
 
-  function readCommandPermissionMode(): "safe_commands" | "smart_approval" | "full_access_smart" {
+  function evaluateTerminalCommandPreflight(commandText: string, terminalAvailable: boolean): TerminalCommandPreflight {
+    const command = normalizeTerminalCommand(commandText);
+    const projectRoot = state.project?.path ?? "";
+    const permissionMode = readCommandPermissionMode();
+    const decision =
+      command.length > 0
+        ? runCommandPolicy({
+            command,
+            cwd: projectRoot,
+            projectRoot,
+            permissionMode,
+          })
+        : null;
+    const mvpAllowed = command.length > 0 && isAllowedMvpTerminalCommand(command);
+    const destructive = decision?.riskLevel === "destructive" || isDestructiveMvpTerminalCommand(command);
+    let blockReason: string | null = null;
+    if (!terminalAvailable) {
+      blockReason = "Terminal backend is not connected in this runtime.";
+    } else if (projectRoot.length === 0) {
+      blockReason = "Select a project root before running terminal commands.";
+    } else if (command.length === 0) {
+      blockReason = "Enter a command before running the terminal.";
+    } else if (destructive) {
+      blockReason = "Destructive commands are blocked before they reach the terminal backend.";
+    } else if (decision?.blocked === true) {
+      blockReason = "Command is blocked by Karo command policy.";
+    } else if (!mvpAllowed) {
+      blockReason = "Command requires approval or is not allowed in the MVP terminal allowlist.";
+    }
+    return {
+      command,
+      permissionMode,
+      projectRoot,
+      decision,
+      mvpAllowed,
+      canStart: blockReason === null,
+      blockReason,
+    };
+  }
+
+  function normalizeTerminalCommand(commandText: string): string {
+    return commandText.split(/\s+/u).filter(Boolean).join(" ");
+  }
+
+  function isAllowedMvpTerminalCommand(commandText: string): boolean {
+    const normalized = normalizeTerminalCommand(commandText).toLowerCase();
+    return [
+      "pnpm dev",
+      "pnpm desktop:dev",
+      "pnpm desktop:dev:renderer",
+      "pnpm preview",
+      "pnpm --filter @ai-agent-orchestrator/desktop-windows desktop:dev",
+      "npm run dev",
+      "npm start",
+      "npm run preview",
+      "yarn dev",
+      "pnpm test",
+      "pnpm --filter @ai-agent-orchestrator/desktop-windows exec tsc --noemit",
+      "cargo check",
+      "cargo test",
+      "pwd",
+      "dir",
+      "ls",
+      "git status",
+      "pnpm --version",
+    ].includes(normalized);
+  }
+
+  function isDestructiveMvpTerminalCommand(commandText: string): boolean {
+    const normalized = normalizeTerminalCommand(commandText).toLowerCase();
+    return (
+      normalized.includes("git clean -fdx") ||
+      normalized.includes("rm -rf") ||
+      normalized.includes("del /s") ||
+      normalized.includes("remove-item -recurse -force") ||
+      normalized.includes("format ") ||
+      normalized === "format" ||
+      normalized.includes("diskpart")
+    );
+  }
+
+  function readCommandPermissionMode(): CommandPermissionMode {
     const stored = localStorage.getItem("karo.permissionMode");
     if (stored === "safe_commands" || stored === "smart_approval" || stored === "full_access_smart") {
       return stored;
@@ -7282,7 +7441,7 @@ export function mountWorkspaceShell(
     return "smart_approval";
   }
 
-  function formatCommandPermissionMode(mode: "safe_commands" | "smart_approval" | "full_access_smart"): string {
+  function formatCommandPermissionMode(mode: CommandPermissionMode): string {
     if (mode === "safe_commands") return "Safe Commands";
     if (mode === "full_access_smart") return "Full Access Smart";
     return "Smart Approval";
@@ -7390,34 +7549,36 @@ export function mountWorkspaceShell(
   }
 
   async function startTerminalCommand(command: string, mode: "preview" | "manual"): Promise<void> {
-    const projectRoot = state.project?.path ?? "";
     state.terminalCommandText = command;
-    if (!hasTerminalBackend()) {
-      state.terminalError = "Terminal backend is not connected in this runtime.";
-      state.terminalStatus = "error";
+    const terminalAvailable = hasTerminalBackend();
+    const preflight = evaluateTerminalCommandPreflight(command, terminalAvailable);
+    if (!preflight.canStart) {
+      state.terminalError = preflight.blockReason ?? "Terminal preflight blocked this command.";
+      state.terminalStatus =
+        terminalAvailable && preflight.projectRoot.length > 0 && preflight.command.length > 0 ? "blocked" : "error";
+      state.terminalLines = [];
       state.terminalExitCode = null;
-      renderBottomTools();
-      renderRightContent();
-      return;
-    }
-    if (projectRoot.length === 0) {
-      state.terminalError = "Select a project root before running terminal commands.";
-      state.terminalStatus = "error";
-      state.terminalExitCode = null;
+      bottomTools.dataset["open"] = "true";
+      pushLog("warn", `Terminal preflight blocked: ${state.terminalError}`);
       renderBottomTools();
       renderRightContent();
       return;
     }
     try {
       state.terminalError = null;
-      const result = await options.desktopShell.shell_start_command!(projectRoot, command, mode, state.terminalProfileId || undefined);
+      const result = await options.desktopShell.shell_start_command!(
+        preflight.projectRoot,
+        preflight.command,
+        mode,
+        state.terminalProfileId || undefined,
+      );
       state.terminalSessionId = result.sessionId;
       state.terminalStatus = result.status;
       state.terminalLines = [];
       state.terminalExitCode = null;
       state.previewUrl = null;
       bottomTools.dataset["open"] = "true";
-      pushLog("info", `Terminal started: ${command}`);
+      pushLog("info", `Terminal started: ${preflight.command}`);
       startTerminalPolling();
       await refreshTerminalOutput();
       renderBottomTools();

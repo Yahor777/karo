@@ -2082,6 +2082,7 @@ describe("workbench ??? chat workbench", () => {
           "stable spacing system",
           "offline-safe local assets",
           "premium visual depth",
+          "readable hero typography",
           "interactive polish",
           "balanced accent palette",
         ],
@@ -2948,6 +2949,7 @@ describe("workbench ??? right panel", () => {
     expect(root.querySelector<HTMLElement>('.kw-pill[data-value="agent"]')?.getAttribute("aria-current")).toBe("true");
     expect(agentPrompt).toContain("Rebuild the staged static site as a validated Agent Mode website");
     expect(agentPrompt).toContain("Stage artifacts only");
+    expect(agentPrompt).toContain("readable hero typography");
     expect(agentPrompt).toContain("deterministic website quality evidence");
     expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-send"]')?.disabled).toBe(false);
     root.querySelector<HTMLButtonElement>('[data-testid="preview-review-staged-changes"]')!.click();
@@ -3014,6 +3016,7 @@ describe("workbench ??? right panel", () => {
           "FAQ section",
           "substantive section copy",
           "first-viewport hero visual",
+          "readable hero typography",
           "responsive layout",
           "stable spacing system",
           "offline-safe local assets",
@@ -3079,6 +3082,7 @@ describe("workbench ??? right panel", () => {
     expect(previewText).toContain("document metadata");
     expect(previewText).toContain("Sections + body copy");
     expect(previewText).toContain("First viewport scene");
+    expect(previewText).toContain("Readable first viewport");
     expect(previewText).toContain("Local assets only");
     expect(previewText).toContain("Depth + hover/focus");
     expect(previewText).toContain("Balanced accents");

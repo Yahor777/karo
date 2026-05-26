@@ -870,6 +870,7 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
         upgradeAgentSelected === "true" &&
         /Rebuild the staged static site as a validated Agent Mode website/i.test(upgradePrompt) &&
         /Stage artifacts only/i.test(upgradePrompt) &&
+        /readable hero typography/i.test(upgradePrompt) &&
         /deterministic website quality evidence/i.test(upgradePrompt),
       details: `agentSelected=${String(upgradeAgentSelected)} prompt=${upgradePrompt}`,
     });

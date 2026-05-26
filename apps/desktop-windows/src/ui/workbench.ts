@@ -3407,6 +3407,7 @@ export function mountWorkspaceShell(
       "Quality bar:",
       "- semantic landing page with hero, product proof, workflow, feature, FAQ, and final action sections",
       "- first-viewport visual scene or product mockup that is inspectable, not a decorative gradient blob",
+      "- readable hero typography with balanced wrapping, bounded clamp() sizing, and no oversized one-word mobile lines",
       "- premium dark UI with balanced accent palette, depth, hover/focus states, and readable spacing",
       "- responsive layout for mobile and desktop, with no overlapping text",
       "- local/offline-safe assets only and no external tracking",
@@ -3437,6 +3438,11 @@ export function mountWorkspaceShell(
         label: "Hero visual",
         value: "First viewport scene",
         signals: ["first-viewport hero visual"],
+      },
+      {
+        label: "Hero type",
+        value: "Readable first viewport",
+        signals: ["readable hero typography"],
       },
       {
         label: "Responsive",
@@ -3481,7 +3487,7 @@ export function mountWorkspaceShell(
   function isWebsiteQualityValidation(validation: NonNullable<TaskStateSnapshot["deterministicValidation"]>): boolean {
     return (
       validation.checkedSignals.some((signal) =>
-        /index\.html artifact|document metadata|stylesheet\/script wiring|substantive section copy|first-viewport hero visual|offline-safe local assets|premium visual depth|interactive polish/i.test(
+        /index\.html artifact|document metadata|stylesheet\/script wiring|substantive section copy|first-viewport hero visual|readable hero typography|offline-safe local assets|premium visual depth|interactive polish/i.test(
           signal,
         ),
       ) || /website|static site|static website/i.test(validation.reason)

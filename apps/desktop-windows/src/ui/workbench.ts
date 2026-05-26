@@ -2472,7 +2472,8 @@ export function mountWorkspaceShell(
       taskState,
     );
 
-    wrap.append(author, buildRunContractStrip(doc, taskState, groups, artifactMap, isQuickEdit));
+    wrap.append(author, buildAgentRunSummaryCard(doc, taskState, groups, artifactMap, isQuickEdit));
+    wrap.append(buildRunContractStrip(doc, taskState, groups, artifactMap, isQuickEdit));
 
     function getAgentStatusInPipeline(
       agentId: BuiltinAgentRole,
@@ -2844,6 +2845,121 @@ export function mountWorkspaceShell(
       wrap.append(list);
     }
     return wrap;
+  }
+
+  function buildAgentRunSummaryCard(
+    doc: Document,
+    taskState: TaskStateSnapshot,
+    groups: readonly AgentGroup[],
+    artifactMap: ReadonlyMap<string, string>,
+    isQuickEdit: boolean,
+  ): HTMLElement {
+    const artifactCount = artifactMap.size;
+    const validation = taskState.deterministicValidation;
+    const status = describeStatus(taskState.status);
+    const card = doc.createElement("section");
+    card.className = "kw-agent-run-summary";
+    card.dataset["testid"] = "agent-run-summary";
+    card.dataset["state"] =
+      taskState.status === "error"
+        ? "error"
+        : taskState.status === "waiting_consent"
+          ? "blocked"
+          : taskState.status === "completed"
+            ? "ready"
+            : "active";
+
+    const head = doc.createElement("div");
+    head.className = "kw-agent-run-summary-head";
+    const title = doc.createElement("strong");
+    title.textContent =
+      taskState.status === "error"
+        ? "Run stopped before success"
+        : taskState.status === "waiting_consent"
+          ? taskState.clarificationState !== undefined
+            ? "Waiting for clarification"
+            : "Waiting for command approval"
+          : taskState.status === "completed"
+            ? artifactCount > 0
+              ? "Ready for review"
+              : "Completed without file changes"
+            : status.label;
+    const badge = doc.createElement("span");
+    badge.textContent =
+      taskState.status === "error"
+        ? "safe stop"
+        : taskState.status === "waiting_consent"
+          ? "user input"
+          : artifactCount > 0
+            ? "apply gate"
+            : isQuickEdit
+              ? "quick edit"
+              : "agent activity";
+    head.append(title, badge);
+
+    const body = doc.createElement("p");
+    body.className = "kw-agent-run-summary-body";
+    body.textContent =
+      taskState.status === "error"
+        ? taskState.recoveryState !== undefined
+          ? "The run failed before completion. Partial staged artifacts stay reviewable, and fallback is not counted as success."
+          : "The run failed before completion. No hidden success state was created."
+        : taskState.status === "waiting_consent"
+          ? taskState.clarificationState !== undefined
+            ? "Karo paused before changing files. Answer the clarification to continue safely."
+            : "Karo paused before running a local command. Explicit approval is required."
+          : artifactCount > 0
+            ? "Artifacts are staged only. Review Changes, Diff, or Preview, then Apply Changes to write to disk."
+            : isQuickEdit
+              ? "The deterministic route finished without a staged artifact."
+              : "No file-changing artifact is staged for this run.";
+
+    const facts = doc.createElement("div");
+    facts.className = "kw-agent-run-summary-grid";
+    const completedSteps = groups.filter((group) => group.status === "finished" || group.status === "skipped").length;
+    const totalSteps = groups.length;
+    const validationLabel =
+      validation === undefined
+        ? isQuickEdit
+          ? "safety checks only"
+          : taskState.status === "completed" || taskState.status === "error" || taskState.status === "stopped_limit"
+            ? "not recorded"
+            : "pending"
+        : validation.status === "passed"
+          ? validation.skipModelReview
+            ? "passed / reviewer skipped"
+            : "passed"
+          : validation.status;
+    const nextAction =
+      taskState.status === "error"
+        ? taskState.recoveryState !== undefined
+          ? "Use recovery actions"
+          : "Inspect logs or retry"
+        : taskState.status === "waiting_consent"
+          ? "Respond to prompt"
+          : artifactCount > 0
+            ? "Apply Changes"
+            : "Ask follow-up";
+    const factsList: ReadonlyArray<readonly [string, string]> = [
+      ["Status", status.label],
+      ["Activity", totalSteps > 0 ? `${String(completedSteps)}/${String(totalSteps)} steps` : "starting"],
+      ["Artifacts", artifactCount > 0 ? `${String(artifactCount)} staged` : "none staged"],
+      ["Next", nextAction],
+      ["Validation", validationLabel],
+    ];
+    for (const [label, value] of factsList) {
+      const item = doc.createElement("div");
+      item.className = "kw-agent-run-summary-item";
+      const labelEl = doc.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      item.append(labelEl, valueEl);
+      facts.append(item);
+    }
+
+    card.append(head, body, facts);
+    return card;
   }
 
   function buildRunContractStrip(

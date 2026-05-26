@@ -1789,6 +1789,12 @@ describe("workbench ??? chat workbench", () => {
         return flush();
       })
       .then(() => {
+        const runSummary = root.querySelector<HTMLElement>('[data-testid="agent-run-summary"]');
+        expect(runSummary).not.toBeNull();
+        expect(runSummary?.textContent).toContain("Checking result");
+        expect(runSummary?.textContent).toContain("Artifacts");
+        expect(runSummary?.textContent).toContain("1 staged");
+        expect(runSummary?.textContent).toContain("Next");
         const steps = root.querySelectorAll<HTMLElement>(".kw-agent-step");
         const ids = Array.from(steps).map((s) => s.dataset["agentId"]);
         expect(ids).toContain("researcher");
@@ -1879,6 +1885,12 @@ describe("workbench ??? chat workbench", () => {
     const ids = Array.from(root.querySelectorAll<HTMLElement>(".kw-agent-step"))
       .map((step) => step.dataset["agentId"]);
     expect(ids).toEqual(expect.arrayContaining(["planner", "coder", "validator", "reviewer", "finalizer"]));
+    const runSummary = root.querySelector<HTMLElement>('[data-testid="agent-run-summary"]');
+    expect(runSummary).not.toBeNull();
+    expect(runSummary?.textContent).toContain("Ready for review");
+    expect(runSummary?.textContent).toContain("Apply Changes");
+    expect(runSummary?.textContent).toContain("passed / reviewer skipped");
+    expect(runSummary?.textContent).toContain("5/5 steps");
     const reviewer = root.querySelector<HTMLElement>('.kw-agent-step[data-agent-id="reviewer"]')!;
     expect(reviewer.dataset["status"]).toBe("skipped");
     expect(reviewer.textContent).toContain("Пропущен");
@@ -1949,6 +1961,11 @@ describe("workbench ??? chat workbench", () => {
     root.querySelector<HTMLButtonElement>(".kw-modal-confirm")!.click();
     await flush();
 
+    const runSummary = root.querySelector<HTMLElement>('[data-testid="agent-run-summary"]');
+    expect(runSummary).not.toBeNull();
+    expect(runSummary?.textContent).toContain("Run stopped before success");
+    expect(runSummary?.textContent).toContain("Partial staged artifacts stay reviewable");
+    expect(runSummary?.textContent).toContain("Use recovery actions");
     const recovery = root.querySelector<HTMLElement>('[data-testid="agent-recovery-summary"]')!;
     expect(recovery.textContent).toContain("src/karo-demo-site/script.js");
     expect(recovery.textContent).toContain("src/karo-demo-site/index.html");

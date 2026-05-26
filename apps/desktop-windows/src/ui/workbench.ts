@@ -5887,82 +5887,108 @@ export function mountWorkspaceShell(
     title.textContent = "Models";
     card.append(title);
 
-    // Beautiful Model Settings widget
+    // Active model setup surface.
     const settingsWidget = doc.createElement("div");
     settingsWidget.className = "kw-model-settings-widget";
-    settingsWidget.style.display = "flex";
-    settingsWidget.style.flexDirection = "column";
-    settingsWidget.style.gap = "12px";
-    settingsWidget.style.padding = "16px";
-    settingsWidget.style.background = "var(--karo-elev, #18181b)";
-    settingsWidget.style.border = "1px solid var(--karo-border, #27272a)";
-    settingsWidget.style.borderRadius = "8px";
-    settingsWidget.style.marginBottom = "20px";
+
+    const widgetHeader = doc.createElement("div");
+    widgetHeader.className = "kw-model-settings-header";
+
+    const widgetTitleWrap = doc.createElement("div");
+    widgetTitleWrap.className = "kw-model-settings-title-wrap";
+    const widgetEyebrow = doc.createElement("div");
+    widgetEyebrow.className = "kw-model-settings-eyebrow";
+    widgetEyebrow.textContent = "Model setup";
 
     const widgetTitle = doc.createElement("h3");
-    widgetTitle.className = "kw-pane-subtitle";
-    widgetTitle.textContent = "Active Provider & Model Config";
-    widgetTitle.style.margin = "0 0 8px 0";
-    settingsWidget.append(widgetTitle);
+    widgetTitle.className = "kw-model-settings-title";
+    widgetTitle.textContent = "Active provider and model";
+    const widgetCopy = doc.createElement("p");
+    widgetCopy.className = "kw-model-settings-copy";
+    widgetCopy.textContent =
+      "Chat, Plan, and Agent use this model by default. Agent-specific overrides stay local on the Agents page.";
+    widgetTitleWrap.append(widgetEyebrow, widgetTitle, widgetCopy);
 
-    const configList = doc.createElement("dl");
-    configList.className = "kw-final-list";
+    const setupState = doc.createElement("span");
+    setupState.className = "kw-model-status-pill";
+    setupState.dataset["state"] = "checking";
+    setupState.textContent = "Checking key";
+    widgetHeader.append(widgetTitleWrap, setupState);
+    settingsWidget.append(widgetHeader);
 
-    appendKv(doc, configList, "Provider", formatProvider(state.metadata.provider));
+    const configGrid = doc.createElement("div");
+    configGrid.className = "kw-model-config-grid";
+    const appendConfig = (label: string, value: string | HTMLElement): void => {
+      const item = doc.createElement("div");
+      item.className = "kw-model-config-item";
+      const key = doc.createElement("span");
+      key.className = "kw-model-config-label";
+      key.textContent = label;
+      const valueEl = doc.createElement("div");
+      valueEl.className = "kw-model-config-value";
+      if (typeof value === "string") {
+        valueEl.textContent = value;
+      } else {
+        valueEl.append(value);
+      }
+      item.append(key, valueEl);
+      configGrid.append(item);
+    };
 
-    // Model Badge
+    appendConfig("Provider", formatProvider(state.metadata.provider));
+
     const modelBadgeWrap = doc.createElement("div");
-    modelBadgeWrap.style.display = "flex";
-    modelBadgeWrap.style.alignItems = "center";
-    modelBadgeWrap.style.gap = "8px";
+    modelBadgeWrap.className = "kw-model-badge-wrap";
     const mId = doc.createElement("span");
     mId.className = "kw-model-badge";
-    mId.style.fontFamily = "var(--karo-mono)";
-    mId.style.fontSize = "11px";
-    mId.style.padding = "3px 6px";
-    mId.style.borderRadius = "4px";
-    mId.style.background = "var(--karo-accent-soft, #27272a)";
-    mId.style.color = "var(--karo-accent-bright, #d4d4d8)";
     mId.textContent = formatFriendlyModelName(state.metadata.modelId);
     mId.title = state.metadata.modelId ?? "(none)";
     modelBadgeWrap.append(mId);
-    appendKvElement(doc, configList, "Active Model", modelBadgeWrap);
+    appendConfig("Active model", modelBadgeWrap);
 
-    appendKv(doc, configList, "Base URL", state.metadata.baseUrl ?? "(provider default)");
+    appendConfig("Base URL", state.metadata.baseUrl ?? "(provider default)");
 
-    // API Key Status
     const keyStatusWrap = doc.createElement("div");
-    keyStatusWrap.style.display = "flex";
-    keyStatusWrap.style.alignItems = "center";
-    keyStatusWrap.style.gap = "8px";
+    keyStatusWrap.className = "kw-key-status-wrap";
     const keyStatusEl = doc.createElement("span");
     keyStatusEl.className = "kw-key-status";
-    keyStatusEl.textContent = "Checking API key...";
-    keyStatusEl.style.fontSize = "12px";
-    keyStatusEl.style.fontWeight = "500";
+    keyStatusEl.dataset["state"] = "checking";
+    keyStatusEl.textContent = "Checking encrypted key";
     keyStatusWrap.append(keyStatusEl);
 
     resolveApiKeyForUi()
       .then(() => {
-        keyStatusEl.textContent = "Configured (Encrypted)";
-        keyStatusEl.style.color = "var(--karo-success, #22c55e)";
+        keyStatusEl.textContent = "API key encrypted";
+        keyStatusEl.dataset["state"] = "configured";
+        setupState.textContent = "Ready to connect";
+        setupState.dataset["state"] = "configured";
       })
       .catch(() => {
-        keyStatusEl.textContent = "Missing / Unconfigured";
-        keyStatusEl.style.color = "var(--karo-danger, #ef4444)";
+        keyStatusEl.textContent = "API key missing";
+        keyStatusEl.dataset["state"] = "missing";
+        setupState.textContent = "Needs API key";
+        setupState.dataset["state"] = "missing";
       });
-    appendKvElement(doc, configList, "API Key Status", keyStatusWrap);
+    appendConfig("API key status", keyStatusWrap);
 
-    settingsWidget.append(configList);
+    settingsWidget.append(configGrid);
 
-    // Test Connection Controls
+    const guardrailList = doc.createElement("div");
+    guardrailList.className = "kw-model-guardrail-list";
+    for (const copy of [
+      "Secrets never rendered",
+      "Agent writes still require Apply",
+      "Image-only models stay blocked for chat",
+    ]) {
+      const item = doc.createElement("span");
+      item.className = "kw-model-guardrail";
+      item.textContent = copy;
+      guardrailList.append(item);
+    }
+    settingsWidget.append(guardrailList);
+
     const testControls = doc.createElement("div");
-    testControls.style.display = "flex";
-    testControls.style.alignItems = "center";
-    testControls.style.gap = "12px";
-    testControls.style.marginTop = "12px";
-    testControls.style.paddingTop = "12px";
-    testControls.style.borderTop = "1px solid var(--karo-border, #27272a)";
+    testControls.className = "kw-model-connection-row";
 
     const testBtn = doc.createElement("button");
     testBtn.type = "button";
@@ -5982,17 +6008,15 @@ export function mountWorkspaceShell(
 
     const testResultEl = doc.createElement("div");
     testResultEl.className = "kw-test-result";
-    testResultEl.style.fontSize = "12px";
-    testResultEl.style.fontWeight = "500";
-    testResultEl.style.marginTop = "8px";
-    testResultEl.style.transition = "opacity 0.2s ease";
+    testResultEl.dataset["state"] = "idle";
+    testResultEl.textContent = "Connection test uses a short ping and never displays the API key.";
     settingsWidget.append(testResultEl);
 
     testBtn.addEventListener("click", () => {
       testBtn.disabled = true;
       testBtn.textContent = "Testing...";
-      testResultEl.textContent = "Sending ping request...";
-      testResultEl.style.color = "var(--karo-text-muted, #71717a)";
+      testResultEl.textContent = "Checking encrypted key and sending a short ping...";
+      testResultEl.dataset["state"] = "loading";
 
       const start = performance.now();
       resolveApiKeyForUi()
@@ -6013,18 +6037,18 @@ export function mountWorkspaceShell(
         .then((res) => {
           const latency = Math.round(performance.now() - start);
           if (res.kind === "ok") {
-            testResultEl.textContent = `✓ Connection successful! Latency: ${latency}ms. Response: "${res.text.trim()}"`;
-            testResultEl.style.color = "var(--karo-success, #22c55e)";
+            testResultEl.textContent = `Connection successful. Latency: ${latency}ms. Response: "${res.text.trim()}"`;
+            testResultEl.dataset["state"] = "success";
             showToast("success", `Model connection succeeded (${latency}ms)`);
           } else {
-            testResultEl.textContent = `✗ Connection failed: ${res.providerCode} - ${res.providerMessage}`;
-            testResultEl.style.color = "var(--karo-danger, #ef4444)";
+            testResultEl.textContent = `Connection failed: ${res.providerCode} - ${res.providerMessage}`;
+            testResultEl.dataset["state"] = "error";
             showToast("error", `Model connection failed: ${res.providerMessage}`);
           }
         })
         .catch((err: unknown) => {
-          testResultEl.textContent = `✗ Connection error: ${describeError(err)}`;
-          testResultEl.style.color = "var(--karo-danger, #ef4444)";
+          testResultEl.textContent = `Connection error: ${describeError(err)}`;
+          testResultEl.dataset["state"] = "error";
           showToast("error", `Connection error: ${describeError(err)}`);
         })
         .finally(() => {
@@ -11055,16 +11079,6 @@ function appendKv(doc: Document, list: HTMLDListElement, label: string, value: s
   const dd = doc.createElement("dd");
   dd.className = "kw-kv-value";
   dd.textContent = value;
-  list.append(dt, dd);
-}
-
-function appendKvElement(doc: Document, list: HTMLDListElement, label: string, element: HTMLElement): void {
-  const dt = doc.createElement("dt");
-  dt.className = "kw-kv-key";
-  dt.textContent = label;
-  const dd = doc.createElement("dd");
-  dd.className = "kw-kv-value";
-  dd.append(element);
   list.append(dt, dd);
 }
 

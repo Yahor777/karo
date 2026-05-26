@@ -1344,6 +1344,20 @@ export async function runScenarioWorkspacePages(ctx: KaroAutomationContext): Pro
           details: `openDiagnostics=${openDiagnostics}`,
         });
       }
+      if (pageName === "models") {
+        bag.assertions.push(
+          await assertTextContains(ctx, {
+            selector: ".kw-model-settings-widget",
+            text: "Active provider and model",
+            name: "models-active-setup-readable",
+          }),
+          await assertTextContains(ctx, {
+            selector: ".kw-model-settings-widget",
+            text: "Secrets never rendered",
+            name: "models-secret-guardrail-visible",
+          }),
+        );
+      }
       bag.screenshots.push((await karoScreenshot(ctx, { name: `page-${pageName}` })).path);
       if (pageName === "models") bag.screenshots.push((await karoScreenshot(ctx, { name: "product-models" })).path);
       if (pageName === "settings") bag.screenshots.push((await karoScreenshot(ctx, { name: "product-settings" })).path);

@@ -3500,6 +3500,11 @@ describe("workbench ??? Models", () => {
     expect(modelBadge).not.toBeNull();
     expect(modelBadge!.textContent).toBe("Llama V3.1 8B Instruct");
     expect((modelBadge as HTMLElement).title).toBe(SAMPLE_METADATA.modelId);
+    expect(root.querySelector(".kw-model-settings-title")?.textContent).toBe("Active provider and model");
+    expect(root.querySelector(".kw-model-settings-copy")?.textContent).toContain("Chat, Plan, and Agent");
+    expect(root.querySelector(".kw-model-config-grid")).not.toBeNull();
+    expect((root.querySelector(".kw-model-settings-widget") as HTMLElement | null)?.getAttribute("style")).toBeNull();
+    expect((modelBadge as HTMLElement).getAttribute("style")).toBeNull();
   });
 
   it("composer model chip opens a selector popover instead of switching tabs", () => {
@@ -3541,7 +3546,9 @@ describe("workbench ??? Models", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     const status = root.querySelector(".kw-key-status")!;
-    expect(status.textContent).toBe("Missing / Unconfigured");
+    expect(status.textContent).toBe("API key missing");
+    expect((status as HTMLElement).dataset["state"]).toBe("missing");
+    expect(root.querySelector(".kw-model-status-pill")?.textContent).toBe("Needs API key");
   });
 
   it("handles test connection success and failure correctly", async () => {
@@ -3567,6 +3574,7 @@ describe("workbench ??? Models", () => {
     const resultEl = root.querySelector(".kw-test-result")!;
     expect(resultEl.textContent).toContain("Connection successful");
     expect(resultEl.textContent).toContain('Response: "pong"');
+    expect((resultEl as HTMLElement).dataset["state"]).toBe("success");
 
     // Failure test
     opts.chatModelClient.chat = vi.fn().mockRejectedValue(new Error("Model connection timeout"));
@@ -3575,6 +3583,7 @@ describe("workbench ??? Models", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(resultEl.textContent).toContain("Connection error: Model connection timeout");
+    expect((resultEl as HTMLElement).dataset["state"]).toBe("error");
   });
 });
 

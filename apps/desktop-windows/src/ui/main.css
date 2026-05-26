@@ -5907,6 +5907,188 @@ html, body {
 }
 
 /* Models / Credentials Screen Enhancements */
+.kw-model-settings-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  margin-bottom: 20px;
+  border: 1px solid rgba(139, 92, 246, 0.26);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at top left, rgba(56, 213, 232, 0.1), transparent 32%),
+    linear-gradient(135deg, rgba(23, 23, 32, 0.96), rgba(18, 16, 29, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.kw-model-settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.kw-model-settings-title-wrap {
+  min-width: 0;
+}
+
+.kw-model-settings-eyebrow {
+  color: var(--karo-cyan);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.kw-model-settings-title {
+  margin: 3px 0 0;
+  color: var(--karo-text);
+  font-size: 16px;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.kw-model-settings-copy {
+  max-width: 680px;
+  margin: 6px 0 0;
+  color: var(--karo-text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.kw-model-status-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 10px;
+  border: 1px solid rgba(56, 213, 232, 0.22);
+  border-radius: 999px;
+  background: rgba(56, 213, 232, 0.08);
+  color: var(--karo-cyan);
+  font-size: 11px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.kw-model-status-pill[data-state="configured"] {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: var(--karo-success-bg);
+  color: var(--karo-success);
+}
+
+.kw-model-status-pill[data-state="missing"] {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: var(--karo-warn-bg);
+  color: var(--karo-warn);
+}
+
+.kw-model-config-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.kw-model-config-item {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(71, 85, 105, 0.34);
+  border-radius: 8px;
+  background: rgba(5, 8, 13, 0.4);
+}
+
+.kw-model-config-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--karo-text-faint);
+  font-size: 10.5px;
+  font-weight: 760;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.kw-model-config-value {
+  min-width: 0;
+  color: var(--karo-text);
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.kw-model-badge-wrap,
+.kw-key-status-wrap {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.kw-key-status {
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.kw-key-status[data-state="checking"] {
+  color: var(--karo-text-muted);
+}
+
+.kw-key-status[data-state="configured"] {
+  color: var(--karo-success);
+}
+
+.kw-key-status[data-state="missing"] {
+  color: var(--karo-warn);
+}
+
+.kw-model-guardrail-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kw-model-guardrail {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--karo-text-muted);
+  font-size: 11.2px;
+  font-weight: 650;
+}
+
+.kw-model-connection-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.kw-test-result {
+  min-height: 19px;
+  color: var(--karo-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+  transition: color 0.16s ease;
+}
+
+.kw-test-result[data-state="success"] {
+  color: var(--karo-success);
+}
+
+.kw-test-result[data-state="error"] {
+  color: var(--karo-error);
+}
+
+.kw-test-result[data-state="loading"] {
+  color: var(--karo-cyan);
+}
+
 .kw-model-config-header {
   border-bottom: 1px solid var(--karo-border);
   padding-bottom: 16px;
@@ -5915,14 +6097,17 @@ html, body {
 
 .kw-model-badge {
   display: inline-block;
-  padding: 3px 10px;
+  max-width: 100%;
+  padding: 4px 9px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 11.5px;
   font-family: var(--karo-mono);
   background: var(--karo-accent-soft);
   color: var(--karo-accent-bright);
   border: 1px solid rgba(139, 92, 246, 0.25);
-  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .kw-status-card {
@@ -6132,8 +6317,13 @@ html, body {
   .kw-project-readiness-grid,
   .kw-project-mode-lanes,
   .kw-terminal-safety-cockpit,
-  .kw-settings-trust-summary {
+  .kw-settings-trust-summary,
+  .kw-model-config-grid {
     grid-template-columns: 1fr;
+  }
+
+  .kw-model-settings-header {
+    flex-direction: column;
   }
 
   .kw-project-command-center {

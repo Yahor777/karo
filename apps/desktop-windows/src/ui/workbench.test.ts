@@ -1495,6 +1495,65 @@ describe("workbench ??? chat workbench", () => {
     });
   });
 
+  it("resolved read-only clarification renders a result card instead of an empty thread", async () => {
+    const opts = buildOptions();
+    mountWorkspaceShell(root, opts);
+    (root as any)._karoState.activeTaskId = "clarify-readonly";
+    opts.transport.emitTaskState({
+      id: "clarify-readonly",
+      status: "completed",
+      currentAgentId: null,
+      reviewCycles: 0,
+      maxReviewCycles: 3,
+      createdAt: "2026-05-22T00:00:00.000Z",
+      updatedAt: "2026-05-22T00:00:01.000Z",
+      originalPrompt: "Improve it\nUser clarification: let's just discuss",
+      modelId: SAMPLE_METADATA.modelId!,
+      provider: SAMPLE_METADATA.provider,
+      participants: ["orchestrator"],
+      isExplainOnly: true,
+      decision: {
+        intent: "casual_chat",
+        executionMode: "chat",
+        confidence: 0.86,
+        needsClarification: false,
+        clarificationOptions: [],
+        allowWebSearch: false,
+        allowFileChanges: false,
+        allowCommands: false,
+        requiresContextEngine: false,
+        expectedOutput: "chat",
+        riskLevel: "low",
+        reasoningSummary: "Clarification resolved as casual chat.",
+      },
+      clarificationState: {
+        question: "What should Karo improve?",
+        options: [],
+        customAnswer: "let's just discuss",
+        resolved: true,
+      },
+    });
+    opts.transport.emitFinalReport({
+      taskId: "clarify-readonly",
+      status: "completed",
+      originalPrompt: "Improve it\nUser clarification: let's just discuss",
+      bossSummary: "Ready to keep this as a read-only chat.",
+      participants: ["orchestrator"],
+      reviewCyclesPerformed: 0,
+      finalArtifacts: [],
+      createdAt: "2026-05-22T00:00:01.000Z",
+    });
+
+    const readonlyResult = root.querySelector<HTMLElement>('[data-testid="readonly-result"]');
+    expect(readonlyResult).not.toBeNull();
+    expect(readonlyResult?.textContent).toContain("Clarification resolved");
+    expect(readonlyResult?.textContent).toContain("No coding pipeline ran");
+    expect(readonlyResult?.textContent).toContain("none staged");
+    expect(readonlyResult?.textContent).toContain("Ready to keep this as a read-only chat.");
+    expect(root.querySelector(".kw-pipeline-bar")).toBeNull();
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
   it("Command Safety shows destructive notification and dry-run suggestion", async () => {
     const opts = buildOptions();
     localStorage.setItem("karo.permissionMode", "smart_approval");

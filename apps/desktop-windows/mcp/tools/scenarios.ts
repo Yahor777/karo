@@ -396,6 +396,9 @@ export async function runScenarioClarification(ctx: KaroAutomationContext): Prom
       await continueBtn.click();
       await waitForAssistantSettled(ctx, 10_000);
       bag.assertions.push(await assertNotVisible(ctx, { selector: ".kw-pipeline-bar", name: "no-pipeline-after-casual-clarification" }));
+      bag.assertions.push(
+        await assertVisible(ctx, { testId: TEST_IDS.readonlyResult, name: "clarification-readonly-result-visible" }),
+      );
     }
     bag.screenshots.push((await karoScreenshot(ctx, { name: "clarification-after-continue" })).path);
   });

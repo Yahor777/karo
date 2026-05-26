@@ -49,6 +49,7 @@ export const TEST_IDS = {
   safetyCard: "safety-card",
   planResult: "plan-result",
   analysisResult: "analysis-result",
+  readonlyResult: "readonly-result",
   securityReviewResult: "security-review-result",
   agentCard: "agent-card",
   agentActivityDetails: "agent-activity-details",

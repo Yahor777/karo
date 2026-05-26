@@ -1537,6 +1537,8 @@ export function mountWorkspaceShell(
               renderRoute();
             }),
           );
+        } else if (isReadOnlyTaskState(taskState) && isTerminalTaskStatus(taskState.status)) {
+          thread.append(buildReadOnlyTerminalResultMessage(doc, taskState, finalReport));
         }
       }
   }
@@ -2202,6 +2204,136 @@ export function mountWorkspaceShell(
       ? "Selecting local context and preparing a read-only answer. No file changes will be produced."
       : "Preparing a read-only answer. No file changes will be produced.";
     wrap.append(author, body);
+    return wrap;
+  }
+
+  function buildReadOnlyTerminalResultMessage(
+    doc: Document,
+    taskState: TaskStateSnapshot,
+    report: FinalReportSummary | null,
+  ): HTMLElement {
+    const wrap = doc.createElement("article");
+    wrap.className = "kw-chat-message kw-chat-assistant kw-readonly-result";
+    wrap.dataset["testid"] = "readonly-result";
+    wrap.dataset["status"] = taskState.status;
+
+    const author = doc.createElement("header");
+    author.className = "kw-chat-author";
+    author.textContent = "KARO";
+    const pill = doc.createElement("span");
+    pill.className = "kw-chat-status-pill";
+    pill.dataset["variant"] = taskState.status === "completed" ? "success" : "error";
+    pill.textContent =
+      taskState.clarificationState?.resolved === true
+        ? taskState.status === "completed"
+          ? "Clarification resolved"
+          : "Clarification failed"
+        : taskState.status === "completed"
+          ? "Read-only completed"
+          : "Read-only failed";
+    author.append(pill);
+
+    const title = doc.createElement("h4");
+    title.className = "kw-readonly-result-title";
+    title.textContent =
+      taskState.status === "completed"
+        ? "Read-only answer"
+        : "Read-only route did not complete";
+
+    const summary = doc.createElement("p");
+    summary.className = "kw-readonly-result-summary";
+    summary.textContent =
+      taskState.status === "completed"
+        ? "No coding pipeline ran, no artifacts were staged, and Apply Changes stays unavailable."
+        : "No files were changed and no artifacts were staged. The run stopped before a read-only answer was produced.";
+
+    const facts = doc.createElement("div");
+    facts.className = "kw-readonly-result-facts";
+    const artifactCount = report?.finalArtifacts.length ?? 0;
+    const factItems: ReadonlyArray<readonly [string, string]> = [
+      ["Route", formatTaskIntentLabel(taskState.agentCoreEstimate?.mode ?? taskState.decision?.executionMode ?? "read_only")],
+      ["Intent", formatTaskIntentLabel(taskState.decision?.intent)],
+      ["Context", taskState.decision?.requiresContextEngine === true ? "Project context requested" : "No project scan"],
+      ["Artifacts", artifactCount === 0 ? "none staged" : `${String(artifactCount)} staged`],
+    ];
+    for (const [label, value] of factItems) {
+      const item = doc.createElement("div");
+      item.className = "kw-readonly-result-fact";
+      const labelEl = doc.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      item.append(labelEl, valueEl);
+      facts.append(item);
+    }
+
+    const answerText = report?.bossSummary?.trim() ?? "";
+    const body = doc.createElement("div");
+    body.className = "kw-readonly-result-body";
+    if (answerText.length > 0) {
+      body.append(renderMarkdownBlock(doc, answerText));
+    } else {
+      const empty = doc.createElement("p");
+      empty.textContent =
+        taskState.errorReason ??
+        report?.outstandingIssues?.join("; ") ??
+        "No model answer was returned for this read-only route.";
+      body.append(empty);
+    }
+
+    if (report?.outstandingIssues !== undefined && report.outstandingIssues.length > 0) {
+      const issues = doc.createElement("ul");
+      issues.className = "kw-readonly-result-issues";
+      for (const issue of report.outstandingIssues) {
+        const item = doc.createElement("li");
+        item.textContent = issue;
+        issues.append(item);
+      }
+      body.append(issues);
+    }
+
+    const actions = doc.createElement("div");
+    actions.className = "kw-readonly-result-actions";
+    if (answerText.length > 0) {
+      const copy = doc.createElement("button");
+      copy.type = "button";
+      copy.className = "kw-button kw-button-secondary";
+      copy.textContent = "Copy answer";
+      copy.addEventListener("click", () => void copyToClipboard(answerText));
+      actions.append(copy);
+    }
+    const followUp = doc.createElement("button");
+    followUp.type = "button";
+    followUp.className = "kw-button kw-button-secondary";
+    followUp.textContent = "Ask follow-up";
+    followUp.addEventListener("click", () => prefillComposerPrompt("chat", "Continue the read-only discussion: "));
+    const plan = doc.createElement("button");
+    plan.type = "button";
+    plan.className = "kw-button kw-button-secondary";
+    plan.textContent = "Make a plan";
+    plan.addEventListener("click", () => {
+      prefillComposerPrompt(
+        "plan",
+        `Make a read-only plan for this clarified request. Do not change files or create artifacts.\n\n${taskState.originalPrompt}`,
+      );
+    });
+    const usage = doc.createElement("button");
+    usage.type = "button";
+    usage.className = "kw-button kw-button-secondary";
+    usage.textContent = "Show Usage";
+    usage.addEventListener("click", () => setRightTab("usage"));
+    actions.append(followUp, plan, usage);
+
+    wrap.append(author, title, summary, facts, body, actions);
+    if (taskState.status === "error" && report !== null) {
+      wrap.append(
+        buildReadOnlyFailureRecovery(doc, report, taskState, {
+          openUsage: () => setRightTab("usage"),
+          retryFailedStage: () => options.transport!.resumeTask(report.taskId, { kind: "retryFailedStage" }),
+          retryReducedContext: () => options.transport!.resumeTask(report.taskId, { kind: "retryReducedContext" }),
+        }),
+      );
+    }
     return wrap;
   }
 
@@ -8245,6 +8377,15 @@ function formatComposerModeLabel(mode: ComposerMode): string {
   if (mode === "plan") return "Plan";
   if (mode === "chat") return "Chat";
   return "Agent";
+}
+
+function formatTaskIntentLabel(intent: string | undefined): string {
+  if (intent === undefined) return "Read-only";
+  return intent
+    .split("_")
+    .filter((part) => part.length > 0)
+    .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+    .join(" ");
 }
 
 function shouldRouteToPlan(prompt: string): boolean {

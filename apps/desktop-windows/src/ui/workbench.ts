@@ -6369,6 +6369,14 @@ export function mountWorkspaceShell(
       surface: "preview",
       hasStaticArtifact: staticPreviewArtifact !== undefined,
     });
+    const previewPreflight = buildPreviewPreflightChecklist(doc, {
+      taskState,
+      hasStaticArtifact: staticPreviewArtifact !== undefined,
+      staticPreviewApplied,
+      terminalAvailable,
+      suggestedCommand: suggested,
+      detectedUrl,
+    });
     const staticPreview = doc.createElement("div");
     staticPreview.className = "kw-system-notice kw-preview-static-note";
     if (staticPreviewArtifact !== undefined) {
@@ -6479,8 +6487,80 @@ export function mountWorkspaceShell(
     if (previewValidationEvidence !== null) {
       wrap.append(previewValidationEvidence);
     }
+    wrap.append(previewPreflight);
     wrap.append(commandLabel, meta, urlState, staticPreview, embeddedNote, notice, actions);
     return wrap;
+  }
+
+  function buildPreviewPreflightChecklist(
+    doc: Document,
+    args: {
+      readonly taskState: TaskStateSnapshot | null;
+      readonly hasStaticArtifact: boolean;
+      readonly staticPreviewApplied: boolean;
+      readonly terminalAvailable: boolean;
+      readonly suggestedCommand: string;
+      readonly detectedUrl: string | null;
+    },
+  ): HTMLElement {
+    const list = doc.createElement("section");
+    list.className = "kw-preview-preflight";
+    list.dataset["testid"] = "preview-preflight";
+
+    const title = doc.createElement("strong");
+    title.textContent = "Preview preflight";
+    const subtitle = doc.createElement("p");
+    subtitle.textContent = "Karo opens only applied files or explicit safe terminal output. These checks explain the current gate.";
+
+    const items = doc.createElement("div");
+    items.className = "kw-preview-preflight-grid";
+    const validation = args.taskState?.deterministicValidation;
+    const checklist: ReadonlyArray<{
+      readonly label: string;
+      readonly value: string;
+      readonly state: "ready" | "blocked" | "warn" | "idle";
+    }> = [
+      args.hasStaticArtifact
+        ? args.staticPreviewApplied
+          ? { label: "Static file", value: "Applied index.html is openable", state: "ready" }
+          : { label: "Static file", value: "Staged index.html waits for Apply", state: "blocked" }
+        : { label: "Static file", value: "No index.html staged", state: "idle" },
+      validation !== undefined
+        ? validation.status === "passed"
+          ? { label: "Quality", value: "Deterministic checks passed", state: "ready" }
+          : validation.status === "failed"
+            ? { label: "Quality", value: "Deterministic checks failed", state: "blocked" }
+            : { label: "Quality", value: "Needs model review", state: "warn" }
+        : args.hasStaticArtifact
+          ? { label: "Quality", value: "No website quality record", state: "warn" }
+          : { label: "Quality", value: "Waiting for website artifacts", state: "idle" },
+      args.hasStaticArtifact
+        ? args.staticPreviewApplied
+          ? { label: "Open gate", value: "Apply completed for this file", state: "ready" }
+          : { label: "Open gate", value: "Apply Changes required first", state: "blocked" }
+        : args.detectedUrl !== null
+          ? { label: "Open gate", value: "Dev server URL detected", state: "ready" }
+          : { label: "Open gate", value: "No preview target yet", state: "idle" },
+      args.terminalAvailable
+        ? args.suggestedCommand.trim().length > 0
+          ? { label: "Command", value: "Safe terminal command available", state: "ready" }
+          : { label: "Command", value: "No command detected", state: "idle" }
+        : { label: "Command", value: "Terminal backend unavailable", state: "warn" },
+    ];
+    for (const check of checklist) {
+      const item = doc.createElement("div");
+      item.className = "kw-preview-preflight-item";
+      item.dataset["state"] = check.state;
+      const label = doc.createElement("span");
+      label.textContent = check.label;
+      const value = doc.createElement("strong");
+      value.textContent = check.value;
+      item.append(label, value);
+      items.append(item);
+    }
+
+    list.append(title, subtitle, items);
+    return list;
   }
 
   function getApplyResultForTask(taskId: string): any {

@@ -2382,6 +2382,9 @@ describe("workbench ??? right panel", () => {
     expect(text).toContain("Terminal status");
     expect(text).toContain("No fake iframe preview");
     expect(text).toContain("Embedded preview is not implemented");
+    expect(text).toContain("Preview preflight");
+    expect(text).toContain("No index.html staged");
+    expect(text).toContain("No preview target yet");
     expect(root.querySelector<HTMLButtonElement>(".kw-preview-panel .kw-button-primary")?.disabled).toBe(true);
   });
 
@@ -2460,7 +2463,10 @@ describe("workbench ??? right panel", () => {
     expect(text).toContain("Static preview");
     expect(text).toContain("Preview status: staged-only/apply-required");
     expect(text).toContain("Preview gate evidence");
+    expect(text).toContain("Preview preflight");
     expect(text).toContain("no deterministic website quality validation was recorded");
+    expect(text).toContain("No website quality record");
+    expect(text).toContain("Apply Changes required first");
     expect(text).toContain("Apply changes before preview");
     expect(text).toContain("src/karo-demo-site/index.html");
     expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-copy-static-path"]')?.disabled).toBe(false);
@@ -2557,7 +2563,10 @@ describe("workbench ??? right panel", () => {
     const previewText = root.querySelector(".kw-right-content")?.textContent ?? "";
     expect(previewText).toContain("Preview status: static-file-ready");
     expect(previewText).toContain("Preview gate evidence");
+    expect(previewText).toContain("Preview preflight");
     expect(previewText).toContain("Website acceptance signals passed.");
+    expect(previewText).toContain("Deterministic checks passed");
+    expect(previewText).toContain("Apply completed for this file");
     expect(previewText).toContain("document metadata");
     open.click();
     await flush();

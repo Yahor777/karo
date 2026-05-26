@@ -626,27 +626,58 @@ describe("workbench ??? chat workbench", () => {
     expect(root.querySelector(".kw-chat-welcome")?.textContent).toContain("Disk writes require the Apply gate.");
     expect(root.querySelector(".kw-chat-welcome")?.textContent).toContain("Choose project");
     expect(root.querySelector(".kw-composer-input")).not.toBeNull();
+    const contract = root.querySelector<HTMLElement>('[data-testid="composer-mode-contract"]');
+    expect(contract).not.toBeNull();
+    expect(contract?.textContent).toContain("Auto route");
+    expect(contract?.textContent).toContain("Only Agent can stage");
+    expect(contract?.textContent).toContain("Required after artifacts");
     const send = root.querySelector<HTMLButtonElement>(".kw-composer-start")!;
     expect(send.textContent).toBe("\u2191");
     expect(send.title).toBe("Send");
     expect(send.disabled).toBe(true);
   });
 
+  it("composer mode contract updates with the selected mode", () => {
+    mountWorkspaceShell(root, buildOptions());
+    const contract = root.querySelector<HTMLElement>('[data-testid="composer-mode-contract"]')!;
+
+    root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-chat"]')!.click();
+    expect(contract.dataset["tone"]).toBe("readonly");
+    expect(contract.textContent).toContain("Chat Mode");
+    expect(contract.textContent).toContain("Never staged");
+    expect(contract.textContent).toContain("Unavailable");
+
+    root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-agent"]')!.click();
+    expect(contract.dataset["tone"]).toBe("agent");
+    expect(contract.textContent).toContain("Agent Mode");
+    expect(contract.textContent).toContain("Stage artifacts");
+    expect(contract.textContent).toContain("Explicit gate");
+
+    root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-auto"]')!.click();
+    expect(contract.dataset["tone"]).toBe("auto");
+    expect(contract.textContent).toContain("Auto route");
+    expect(contract.textContent).toContain("Only Agent can stage");
+  });
+
   it("welcome suggestions preselect the safest matching composer mode", () => {
     mountWorkspaceShell(root, buildOptions());
     const input = root.querySelector<HTMLTextAreaElement>('[data-testid="composer-textarea"]')!;
+    const contract = root.querySelector<HTMLElement>('[data-testid="composer-mode-contract"]')!;
 
     root.querySelector<HTMLButtonElement>('[data-testid="welcome-suggestion-plan-make-a-plan"]')!.click();
     expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-plan"]')?.getAttribute("aria-current")).toBe("true");
+    expect(contract.textContent).toContain("Plan Mode");
     expect(input.value).toContain("read-only plan");
     expect(root.querySelector<HTMLButtonElement>(".kw-composer-start")?.disabled).toBe(false);
 
     root.querySelector<HTMLButtonElement>('[data-testid="welcome-suggestion-agent-create-a-file"]')!.click();
     expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-agent"]')?.getAttribute("aria-current")).toBe("true");
+    expect(contract.textContent).toContain("Explicit gate");
     expect(input.value).toBe("Create file src/karo-test.txt with text hello");
 
     root.querySelector<HTMLButtonElement>('[data-testid="welcome-suggestion-chat-security-review"]')!.click();
     expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-chat"]')?.getAttribute("aria-current")).toBe("true");
+    expect(contract.textContent).toContain("Never staged");
     expect(input.value).toContain("Do not change files");
   });
 

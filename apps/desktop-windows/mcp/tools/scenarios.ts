@@ -238,12 +238,37 @@ export async function runScenarioComposer(ctx: KaroAutomationContext): Promise<S
       await assertVisible(ctx, { testId: TEST_IDS.composerModeChat }),
       await assertVisible(ctx, { testId: TEST_IDS.composerModePlan }),
       await assertVisible(ctx, { testId: TEST_IDS.composerModeAgent }),
+      await assertVisible(ctx, { testId: TEST_IDS.composerModeContract }),
       await assertVisible(ctx, { testId: TEST_IDS.composerModelChip }),
       await assertVisible(ctx, { testId: TEST_IDS.composerContextTrigger }),
       await assertNotVisible(ctx, { selector: `${byTestId(TEST_IDS.composer)} > .kw-composer-controls > ${byTestId(TEST_IDS.composerCommandMode)}`, name: "command-mode-not-primary" }),
       await assertNotVisible(ctx, { selector: `${byTestId(TEST_IDS.composer)} > .kw-composer-controls > ${byTestId(TEST_IDS.composerWebMode)}`, name: "web-mode-not-primary" }),
       await assertComposerToolbarRows(ctx, 2),
     );
+    await karoClick(ctx, { testId: TEST_IDS.composerModeChat });
+    const chatContract = await ctx.page.locator(byTestId(TEST_IDS.composerModeContract)).textContent().catch(() => "");
+    await karoClick(ctx, { testId: TEST_IDS.composerModePlan });
+    const planContract = await ctx.page.locator(byTestId(TEST_IDS.composerModeContract)).textContent().catch(() => "");
+    await karoClick(ctx, { testId: TEST_IDS.composerModeAgent });
+    const agentContract = await ctx.page.locator(byTestId(TEST_IDS.composerModeContract)).textContent().catch(() => "");
+    bag.assertions.push(
+      {
+        name: "composer-mode-contract-chat-readonly",
+        passed: /Chat Mode|Read-only answer|Never staged|Unavailable/i.test(chatContract ?? ""),
+        details: chatContract ?? "",
+      },
+      {
+        name: "composer-mode-contract-plan-readonly",
+        passed: /Plan Mode|Read-only plan|No artifacts|Prepare Agent/i.test(planContract ?? ""),
+        details: planContract ?? "",
+      },
+      {
+        name: "composer-mode-contract-agent-apply-gate",
+        passed: /Agent Mode|Stage artifacts|Review before disk|Explicit gate/i.test(agentContract ?? ""),
+        details: agentContract ?? "",
+      },
+    );
+    await karoClick(ctx, { testId: TEST_IDS.composerModeAuto });
     await karoClick(ctx, { testId: TEST_IDS.composerAdvancedToggle });
     bag.assertions.push(
       await assertVisible(ctx, { testId: TEST_IDS.composerAdvancedPanel }),

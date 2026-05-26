@@ -211,6 +211,49 @@ const TERMINAL_COMMAND_SUGGESTIONS: ReadonlyArray<{
   },
 ];
 
+const COMPOSER_MODE_CONTRACTS: Readonly<Record<ComposerMode, {
+  readonly title: string;
+  readonly tone: "auto" | "readonly" | "plan" | "agent";
+  readonly facts: ReadonlyArray<readonly [string, string]>;
+}>> = {
+  auto: {
+    title: "Auto route",
+    tone: "auto",
+    facts: [
+      ["Intent", "Classified before run"],
+      ["Files", "Only Agent can stage"],
+      ["Apply", "Required after artifacts"],
+    ],
+  },
+  chat: {
+    title: "Chat Mode",
+    tone: "readonly",
+    facts: [
+      ["Intent", "Read-only answer"],
+      ["Files", "Never staged"],
+      ["Apply", "Unavailable"],
+    ],
+  },
+  plan: {
+    title: "Plan Mode",
+    tone: "plan",
+    facts: [
+      ["Intent", "Read-only plan"],
+      ["Files", "No artifacts"],
+      ["Next", "Prepare Agent manually"],
+    ],
+  },
+  agent: {
+    title: "Agent Mode",
+    tone: "agent",
+    facts: [
+      ["Intent", "Stage artifacts"],
+      ["Files", "Review before disk"],
+      ["Apply", "Explicit gate"],
+    ],
+  },
+};
+
 type ComposerMode = "auto" | "chat" | "plan" | "agent";
 type IntentKind = "casual_message" | "question" | "assist_request" | "coding_task" | "unclear_task";
 type ResolvedWorkMode = "chat" | "plan" | "assist" | "agent";
@@ -1189,11 +1232,11 @@ export function mountWorkspaceShell(
       const margin = 12;
       const viewportW = doc.defaultView?.innerWidth ?? 1024;
       const viewportH = doc.defaultView?.innerHeight ?? 768;
-      const width = Math.min(360, Math.max(280, viewportW - margin * 2));
+      const width = Math.min(320, Math.max(280, viewportW - margin * 2));
       el.style.width = `${width}px`;
-      el.style.maxHeight = `min(520px, calc(100vh - 24px))`;
-      const height = Math.min(el.offsetHeight || 360, Math.min(520, viewportH - margin * 2));
-      let left = rect.right - width;
+      el.style.maxHeight = `min(300px, calc(100vh - 24px))`;
+      const height = Math.min(el.offsetHeight || 300, Math.min(300, viewportH - margin * 2));
+      let left = rect.left + rect.width / 2 - width / 2;
       if (left + width + margin > viewportW) left = viewportW - width - margin;
       if (left < margin) left = margin;
       let top = rect.bottom + 8;
@@ -3964,6 +4007,11 @@ export function mountWorkspaceShell(
     }
     composer.append(textarea);
 
+    const modeContract = doc.createElement("section");
+    modeContract.className = "kw-composer-mode-contract";
+    modeContract.dataset["testid"] = "composer-mode-contract";
+    composer.append(modeContract);
+
     const attachments: Array<{ id: string; file: File; kind: "text" | "image" | "unsupported" }> = [];
     const attachmentInput = doc.createElement("input");
     attachmentInput.type = "file";
@@ -4297,6 +4345,25 @@ export function mountWorkspaceShell(
       return wrap;
     }
 
+    function renderModeContract(): void {
+      const contract = COMPOSER_MODE_CONTRACTS[mode];
+      modeContract.innerHTML = "";
+      modeContract.dataset["tone"] = contract.tone;
+      const title = doc.createElement("strong");
+      title.textContent = contract.title;
+      modeContract.append(title);
+      for (const [label, value] of contract.facts) {
+        const item = doc.createElement("span");
+        item.className = "kw-composer-mode-fact";
+        const factLabel = doc.createElement("em");
+        factLabel.textContent = label;
+        const factValue = doc.createElement("b");
+        factValue.textContent = value;
+        item.append(factLabel, factValue);
+        modeContract.append(item);
+      }
+    }
+
     function applyMode(next: ComposerMode): void {
       mode = next;
       state.composerMode = next;
@@ -4304,6 +4371,7 @@ export function mountWorkspaceShell(
       for (const [value, button] of modeButtons.entries()) {
         button.setAttribute("aria-current", mode === value ? "true" : "false");
       }
+      renderModeContract();
       const pipelineEditable = mode === "agent";
       bossToggle.disabled = !pipelineEditable;
       for (const [id, cb] of agentChecks.entries()) {

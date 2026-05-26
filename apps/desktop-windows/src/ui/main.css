@@ -2767,6 +2767,74 @@ html, body {
   outline-offset: 0;
 }
 
+.kw-composer-mode-contract {
+  display: grid;
+  grid-template-columns: minmax(98px, auto) repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  align-items: stretch;
+  padding: 7px;
+  border: 1px solid rgba(71, 85, 105, 0.42);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.kw-composer-mode-contract[data-tone="auto"] {
+  border-color: rgba(56, 213, 232, 0.24);
+  background: rgba(56, 213, 232, 0.045);
+}
+
+.kw-composer-mode-contract[data-tone="readonly"] {
+  border-color: rgba(34, 197, 94, 0.24);
+  background: rgba(34, 197, 94, 0.04);
+}
+
+.kw-composer-mode-contract[data-tone="plan"] {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.045);
+}
+
+.kw-composer-mode-contract[data-tone="agent"] {
+  border-color: rgba(139, 92, 246, 0.38);
+  background: rgba(139, 92, 246, 0.07);
+}
+
+.kw-composer-mode-contract > strong,
+.kw-composer-mode-fact {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(71, 85, 105, 0.32);
+  border-radius: 7px;
+  background: rgba(5, 8, 13, 0.46);
+}
+
+.kw-composer-mode-contract > strong {
+  color: var(--karo-text);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.kw-composer-mode-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kw-composer-mode-fact em {
+  color: var(--karo-text-faint);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 760;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.kw-composer-mode-fact b {
+  color: var(--karo-text);
+  font-size: 11.5px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .kw-composer-controls {
   position: relative;
   display: flex;
@@ -6052,6 +6120,7 @@ html, body {
   .kw-welcome-suggestions,
   .kw-run-contract,
   .kw-preview-contract-grid,
+  .kw-composer-mode-contract,
   .kw-agent-run-summary-grid,
   .kw-preview-preflight-grid,
   .kw-validation-proof-grid,

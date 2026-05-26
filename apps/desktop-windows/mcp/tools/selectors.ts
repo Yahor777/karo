@@ -24,6 +24,7 @@ export const TEST_IDS = {
   composerTextarea: "composer-textarea",
   composerSend: "composer-send",
   composerAttach: "composer-attach",
+  composerModeContract: "composer-mode-contract",
   composerModeAuto: "composer-mode-auto",
   composerModeChat: "composer-mode-chat",
   composerModePlan: "composer-mode-plan",

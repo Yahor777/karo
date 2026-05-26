@@ -2050,6 +2050,7 @@ describe("workbench ??? chat workbench", () => {
           "offline-safe local assets",
           "premium visual depth",
           "interactive polish",
+          "balanced accent palette",
         ],
         reason: "Website acceptance signals passed.",
       },
@@ -2128,6 +2129,8 @@ describe("workbench ??? chat workbench", () => {
     expect(contract).toContain("Local assets only");
     expect(contract).toContain("Polish");
     expect(contract).toContain("Depth + hover/focus");
+    expect(contract).toContain("Palette");
+    expect(contract).toContain("Balanced accents");
     expect(root.querySelectorAll(".kw-agent-step-details[open]")).toHaveLength(0);
     expect(root.querySelector('[data-testid="chat-thread"]')?.textContent).not.toMatch(/\bthought\b/i);
   });
@@ -2901,6 +2904,7 @@ describe("workbench ??? right panel", () => {
           "offline-safe local assets",
           "premium visual depth",
           "interactive polish",
+          "balanced accent palette",
         ],
         reason: "Website acceptance signals passed.",
       },
@@ -2962,6 +2966,7 @@ describe("workbench ??? right panel", () => {
     expect(previewText).toContain("First viewport scene");
     expect(previewText).toContain("Local assets only");
     expect(previewText).toContain("Depth + hover/focus");
+    expect(previewText).toContain("Balanced accents");
     open.click();
     await flush();
 

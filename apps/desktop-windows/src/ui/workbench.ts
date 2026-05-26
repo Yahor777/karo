@@ -3358,6 +3358,11 @@ export function mountWorkspaceShell(
         value: "Depth + hover/focus",
         signals: ["premium visual depth", "interactive polish"],
       },
+      {
+        label: "Palette",
+        value: "Balanced accents",
+        signals: ["balanced accent palette"],
+      },
     ];
     for (const item of items) {
       const ready = item.signals.every((signal) => validationSignalPassed(validation, signal));

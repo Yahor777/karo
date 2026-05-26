@@ -356,6 +356,7 @@ export function buildAgentImplementationPlan(input: {
         "index.html contains substantive subject-specific copy, not just section labels or placeholder cards.",
         "index.html uses a multi-card product composition with FAQ details or equivalent expandable/readable answers.",
         "styles.css contains responsive premium dark anime/card styling, visual depth, stable spacing, and a mobile layout.",
+        "styles.css uses a balanced accent palette instead of a one-note monochrome theme.",
         "styles.css includes interactive polish for links/cards without layout shift.",
         "script.js is present, non-empty, user-visible, and limited to safe local progressive enhancement.",
         "README.md explains Apply Changes and preview/open flow.",
@@ -375,6 +376,7 @@ export function buildAgentImplementationPlan(input: {
         "offline-safe local assets only",
         "responsive styling signal exists",
         "premium visual polish signal exists",
+        "balanced accent palette exists",
         "interactive polish signal exists",
         "safe progressive enhancement exists",
         "preview instructions exist",
@@ -589,6 +591,7 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
         "responsive layout",
         "dark anime/card styling",
         "premium visual depth",
+        "balanced accent palette",
         "stable spacing system",
         "interactive polish",
       ],
@@ -599,6 +602,7 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
       hasIssue(args.issues, "responsive layout") ||
       hasIssue(args.issues, "dark anime/card styling") ||
       hasIssue(args.issues, "premium visual depth") ||
+      hasIssue(args.issues, "balanced accent palette") ||
       hasIssue(args.issues, "stable spacing system") ||
       hasIssue(args.issues, "first-viewport hero visual") ||
       hasIssue(args.issues, "interactive polish");
@@ -614,6 +618,7 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
           "responsive layout",
           "dark anime/card styling",
           "premium visual depth",
+          "balanced accent palette",
           "stable spacing system",
           "first-viewport hero visual",
           "interactive polish",
@@ -850,6 +855,7 @@ function validateStaticWebsiteArtifacts(
     /linear-gradient|radial-gradient|box-shadow|backdrop-filter|rgba\(|transition|transform/iu.test(cssContent),
     "premium visual depth",
   );
+  recordSignal(checkedSignals, issues, hasBalancedAccentPalette(cssContent), "balanced accent palette");
   recordSignal(
     checkedSignals,
     issues,
@@ -985,6 +991,85 @@ function hasFaqDetails(content: string): boolean {
 function hasSafeWebsiteInteractionScript(content: string): boolean {
   return /querySelector(All)?\s*\(|addEventListener\s*\(|classList\./iu.test(content) &&
     !/\b(?:fetch|XMLHttpRequest|sendBeacon|importScripts|eval|new Function|localStorage\.setItem)\s*\(/iu.test(content);
+}
+
+function hasBalancedAccentPalette(content: string): boolean {
+  const colors = Array.from(
+    content.matchAll(/#(?:[0-9a-f]{3}|[0-9a-f]{6})\b|rgba?\([^)]*\)|hsla?\([^)]*\)/giu),
+    (match) => match[0].toLowerCase(),
+  ).filter((color) => !isNeutralWebsiteColor(color));
+  const families = new Set(colors.map(classifyAccentFamily).filter((family): family is string => family !== null));
+  return families.size >= 2;
+}
+
+function isNeutralWebsiteColor(color: string): boolean {
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    const expanded =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map((part) => part + part)
+            .join("")
+        : hex;
+    const value = Number.parseInt(expanded, 16);
+    if (!Number.isFinite(value)) return false;
+    const red = (value >> 16) & 255;
+    const green = (value >> 8) & 255;
+    const blue = value & 255;
+    const max = Math.max(red, green, blue);
+    const min = Math.min(red, green, blue);
+    return max < 48 || max - min < 18;
+  }
+  return /rgba?\(\s*(?:0|7|8|9|1[0-9]|2[0-9]|3[0-9])\s*,\s*(?:0|7|8|9|1[0-9]|2[0-9]|3[0-9])\s*,\s*(?:0|7|8|9|1[0-9]|2[0-9]|3[0-9])/iu.test(color);
+}
+
+function classifyAccentFamily(color: string): string | null {
+  if (color.startsWith("#")) {
+    const hex = color.slice(1);
+    const expanded =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map((part) => part + part)
+            .join("")
+        : hex;
+    const value = Number.parseInt(expanded, 16);
+    if (!Number.isFinite(value)) return null;
+    const red = (value >> 16) & 255;
+    const green = (value >> 8) & 255;
+    const blue = value & 255;
+    return classifyRgbAccentFamily(red, green, blue);
+  }
+  const rgb = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/iu.exec(color);
+  if (rgb !== null) {
+    return classifyRgbAccentFamily(Number(rgb[1]), Number(rgb[2]), Number(rgb[3]));
+  }
+  const hsl = /^hsla?\(\s*(\d{1,3})/iu.exec(color);
+  if (hsl !== null) {
+    const hue = Number(hsl[1]) % 360;
+    if (hue < 25 || hue >= 335) return "red";
+    if (hue < 70) return "amber";
+    if (hue < 160) return "green";
+    if (hue < 215) return "cyan";
+    if (hue < 285) return "violet";
+    return "rose";
+  }
+  return null;
+}
+
+function classifyRgbAccentFamily(red: number, green: number, blue: number): string | null {
+  if (![red, green, blue].every((part) => Number.isFinite(part) && part >= 0 && part <= 255)) return null;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  if (max < 60 || max - min < 24) return null;
+  if (red >= green + 36 && red >= blue + 24) return blue > green + 24 ? "rose" : "red";
+  if (green >= red + 24 && green >= blue + 24) return blue >= red + 18 ? "cyan" : "green";
+  if (blue >= red + 24 && blue >= green + 24) return red >= green + 24 ? "violet" : "blue";
+  if (red >= 140 && green >= 90 && blue < 120) return "amber";
+  if (green >= 140 && blue >= 140 && red < 120) return "cyan";
+  if (red >= 120 && blue >= 140 && green < 130) return "violet";
+  return null;
 }
 
 function buildSafeWebsiteInteractionScript(): string {

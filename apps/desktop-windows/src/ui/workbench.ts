@@ -1487,28 +1487,41 @@ export function mountWorkspaceShell(
     if (taskId !== null && options.transport !== undefined) {
       if (renderedRunBlocks.has(taskId)) {
         center.append(buildComposer());
-        requestAnimationFrame(() => {
-          if (wasNearBottom) {
-            thread.scrollTop = thread.scrollHeight;
-          } else {
-            thread.scrollTop = previousScrollTop;
-          }
-          state.chatScrollTop = thread.scrollTop;
-        });
+        restoreChatThreadScroll(thread, wasNearBottom, previousScrollTop);
         return;
       }
       appendRunBlocksForTask(thread, taskId, renderedRunBlocks);
     }
 
     center.append(buildComposer());
+    restoreChatThreadScroll(thread, wasNearBottom, previousScrollTop);
+  }
+
+  function restoreChatThreadScroll(thread: HTMLElement, wasNearBottom: boolean, previousScrollTop: number): void {
     requestAnimationFrame(() => {
       if (wasNearBottom) {
-        thread.scrollTop = thread.scrollHeight;
+        if (!scrollLatestRecoveryFocusIntoView(thread)) {
+          thread.scrollTop = thread.scrollHeight;
+        }
       } else {
         thread.scrollTop = previousScrollTop;
       }
       state.chatScrollTop = thread.scrollTop;
     });
+  }
+
+  function scrollLatestRecoveryFocusIntoView(thread: HTMLElement): boolean {
+    const primaryTargets = Array.from(thread.querySelectorAll<HTMLElement>('[data-testid="failure-focus"]'));
+    const fallbackTargets = Array.from(
+      thread.querySelectorAll<HTMLElement>('[data-testid="readonly-result"][data-status="error"], [data-testid="plan-failure-recovery"]'),
+    );
+    const target = primaryTargets.at(-1) ?? fallbackTargets.at(-1);
+    if (target === undefined) return false;
+    const targetRect = target.getBoundingClientRect();
+    const threadRect = thread.getBoundingClientRect();
+    const targetTop = thread.scrollTop + targetRect.top - threadRect.top - 12;
+    thread.scrollTop = Math.max(0, targetTop);
+    return true;
   }
 
   function appendRunBlocksForTask(thread: HTMLElement, taskId: string, renderedRunBlocks: Set<string>): void {
@@ -1682,6 +1695,23 @@ export function mountWorkspaceShell(
       if (message.kind === "clarification") {
         body.append(buildLocalClarificationCard(doc, message.text));
       } else {
+        if (message.error === true) {
+          const modeLabel =
+            displayMode !== undefined ? `${displayMode[0]!.toUpperCase()}${displayMode.slice(1)} Mode` : "Read-only route";
+          body.append(
+            buildFailureFocusStrip(doc, {
+              title: "Safe stop: no writes",
+              summary:
+                "This route stopped before success. Karo did not change files, stage artifacts, or enable Apply Changes.",
+              facts: [
+                ["Route", modeLabel],
+                ["Files", "No files changed"],
+                ["Artifacts", "none staged"],
+                ["Next", message.recovery?.kind === "plan_failure" ? "Use recovery actions" : "Check model or retry"],
+              ],
+            }),
+          );
+        }
         body.append(renderMarkdownBlock(doc, message.text));
       }
       if (message.recovery?.kind === "plan_failure") {
@@ -1715,6 +1745,45 @@ export function mountWorkspaceShell(
     }
     wrap.append(author, body);
     return wrap;
+  }
+
+  function buildFailureFocusStrip(
+    doc: Document,
+    input: {
+      readonly title: string;
+      readonly summary: string;
+      readonly facts: ReadonlyArray<readonly [string, string]>;
+    },
+  ): HTMLElement {
+    const card = doc.createElement("section");
+    card.className = "kw-failure-focus";
+    card.dataset["testid"] = "failure-focus";
+    const head = doc.createElement("div");
+    head.className = "kw-failure-focus-head";
+    const title = doc.createElement("strong");
+    title.textContent = input.title;
+    const badge = doc.createElement("span");
+    badge.textContent = "recovery state";
+    head.append(title, badge);
+
+    const summary = doc.createElement("p");
+    summary.textContent = input.summary;
+
+    const facts = doc.createElement("div");
+    facts.className = "kw-failure-focus-grid";
+    for (const [label, value] of input.facts) {
+      const item = doc.createElement("div");
+      item.className = "kw-failure-focus-item";
+      const labelEl = doc.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      item.append(labelEl, valueEl);
+      facts.append(item);
+    }
+
+    card.append(head, summary, facts);
+    return card;
   }
 
   function buildPlanFailureRecoveryCard(doc: Document, recovery: ChatRecoveryView): HTMLElement {
@@ -2247,6 +2316,29 @@ export function mountWorkspaceShell(
         ? "No coding pipeline ran, no artifacts were staged, and Apply Changes stays unavailable."
         : "No files were changed and no artifacts were staged. The run stopped before a read-only answer was produced.";
 
+    const focus =
+      taskState.status === "error"
+        ? buildFailureFocusStrip(doc, {
+            title: "Read-only stop: no writes",
+            summary:
+              "The read-only route failed before a final answer. Karo kept Apply disabled and did not create staged files.",
+            facts: [
+              [
+                "Route",
+                formatTaskIntentLabel(taskState.agentCoreEstimate?.mode ?? taskState.decision?.executionMode ?? "read_only"),
+              ],
+              ["Artifacts", "none staged"],
+              ["Apply", "disabled"],
+              [
+                "Next",
+                report?.outstandingIssues !== undefined && report.outstandingIssues.length > 0
+                  ? "Resolve issue or retry"
+                  : "Ask follow-up or plan",
+              ],
+            ],
+          })
+        : null;
+
     const facts = doc.createElement("div");
     facts.className = "kw-readonly-result-facts";
     const artifactCount = report?.finalArtifacts.length ?? 0;
@@ -2324,7 +2416,9 @@ export function mountWorkspaceShell(
     usage.addEventListener("click", () => setRightTab("usage"));
     actions.append(followUp, plan, usage);
 
-    wrap.append(author, title, summary, facts, body, actions);
+    wrap.append(author, title, summary);
+    if (focus !== null) wrap.append(focus);
+    wrap.append(facts, body, actions);
     if (taskState.status === "error" && report !== null) {
       wrap.append(
         buildReadOnlyFailureRecovery(doc, report, taskState, {

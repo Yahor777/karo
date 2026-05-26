@@ -1272,6 +1272,83 @@ html, body {
   color: var(--karo-error);
 }
 
+.kw-failure-focus {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid rgba(245, 158, 11, 0.58);
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at 9% 0%, rgba(245, 158, 11, 0.18), transparent 36%),
+    linear-gradient(145deg, rgba(31, 25, 20, 0.98), rgba(15, 15, 22, 0.98));
+  box-shadow: inset 3px 0 0 rgba(245, 158, 11, 0.82);
+}
+
+.kw-failure-focus-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kw-failure-focus-head strong {
+  color: #fff7ed;
+  font-size: 13px;
+  font-weight: 840;
+}
+
+.kw-failure-focus-head span {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid rgba(245, 158, 11, 0.52);
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.kw-failure-focus p {
+  margin: 0;
+  color: #f4edf8;
+  font-size: 12.3px;
+  line-height: 1.45;
+}
+
+.kw-failure-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.kw-failure-focus-item {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  border-radius: 8px;
+  background: rgba(5, 8, 13, 0.58);
+}
+
+.kw-failure-focus-item span {
+  display: block;
+  margin-bottom: 3px;
+  color: #fbbf24;
+  font-size: 10.5px;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.kw-failure-focus-item strong {
+  display: block;
+  color: #fff7ed;
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .kw-plan-recovery-card {
   display: flex;
   flex-direction: column;
@@ -4688,6 +4765,7 @@ html, body {
   .kw-welcome-contract-grid,
   .kw-run-contract,
   .kw-preview-contract-grid,
+  .kw-failure-focus-grid,
   .kw-plan-recovery-facts,
   .kw-readonly-result-facts,
   .kw-project-readiness-grid,

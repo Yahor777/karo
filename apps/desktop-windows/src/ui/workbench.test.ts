@@ -741,6 +741,12 @@ describe("workbench ??? chat workbench", () => {
     expect(text).toContain("provider_timeout");
     expect(text).toContain("No files were changed");
     expect(text).not.toContain("Artifacts staged");
+    const failureFocus = root.querySelector<HTMLElement>('[data-testid="failure-focus"]');
+    expect(failureFocus).not.toBeNull();
+    expect(failureFocus?.textContent).toContain("Safe stop: no writes");
+    expect(failureFocus?.textContent).toContain("No files changed");
+    expect(failureFocus?.textContent).toContain("none staged");
+    expect(failureFocus?.textContent).toContain("Use recovery actions");
     const recovery = root.querySelector<HTMLElement>('[data-testid="plan-failure-recovery"]');
     expect(recovery).not.toBeNull();
     expect(recovery?.textContent).toContain("read-only failure");
@@ -1550,6 +1556,69 @@ describe("workbench ??? chat workbench", () => {
     expect(readonlyResult?.textContent).toContain("No coding pipeline ran");
     expect(readonlyResult?.textContent).toContain("none staged");
     expect(readonlyResult?.textContent).toContain("Ready to keep this as a read-only chat.");
+    expect(root.querySelector(".kw-pipeline-bar")).toBeNull();
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+  });
+
+  it("failed read-only clarification surfaces a safe-stop focus instead of an empty thread", async () => {
+    const opts = buildOptions();
+    mountWorkspaceShell(root, opts);
+    (root as any)._karoState.activeTaskId = "clarify-failed";
+    opts.transport.emitTaskState({
+      id: "clarify-failed",
+      status: "error",
+      currentAgentId: null,
+      reviewCycles: 0,
+      maxReviewCycles: 3,
+      createdAt: "2026-05-22T00:00:00.000Z",
+      updatedAt: "2026-05-22T00:00:01.000Z",
+      originalPrompt: "Improve it\nUser clarification: let's just discuss",
+      modelId: SAMPLE_METADATA.modelId!,
+      provider: SAMPLE_METADATA.provider,
+      participants: ["orchestrator"],
+      isExplainOnly: true,
+      errorReason: "No encrypted API key was found for the active provider.",
+      decision: {
+        intent: "casual_chat",
+        executionMode: "chat",
+        confidence: 0.86,
+        needsClarification: false,
+        clarificationOptions: [],
+        allowWebSearch: false,
+        allowFileChanges: false,
+        allowCommands: false,
+        requiresContextEngine: false,
+        expectedOutput: "chat",
+        riskLevel: "low",
+        reasoningSummary: "Clarification resolved as casual chat.",
+      },
+      clarificationState: {
+        question: "What should Karo improve?",
+        options: [],
+        customAnswer: "let's just discuss",
+        resolved: true,
+      },
+    });
+    opts.transport.emitFinalReport({
+      taskId: "clarify-failed",
+      status: "error",
+      originalPrompt: "Improve it\nUser clarification: let's just discuss",
+      participants: ["orchestrator"],
+      reviewCyclesPerformed: 0,
+      finalArtifacts: [],
+      outstandingIssues: ["No encrypted API key was found for the active provider."],
+      createdAt: "2026-05-22T00:00:01.000Z",
+    });
+
+    const readonlyResult = root.querySelector<HTMLElement>('[data-testid="readonly-result"]');
+    expect(readonlyResult).not.toBeNull();
+    expect(readonlyResult?.textContent).toContain("Clarification failed");
+    const focus = root.querySelector<HTMLElement>('[data-testid="failure-focus"]');
+    expect(focus).not.toBeNull();
+    expect(focus?.textContent).toContain("Read-only stop: no writes");
+    expect(focus?.textContent).toContain("none staged");
+    expect(focus?.textContent).toContain("Apply");
+    expect(focus?.textContent).toContain("disabled");
     expect(root.querySelector(".kw-pipeline-bar")).toBeNull();
     expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
   });

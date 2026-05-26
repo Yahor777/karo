@@ -3020,7 +3020,59 @@ export function mountWorkspaceShell(
     }
 
     card.append(head, body, facts);
+    const actions = buildAgentRunSummaryActions(doc, taskState, artifactCount, validation !== undefined);
+    if (actions !== null) {
+      card.append(actions);
+    }
     return card;
+  }
+
+  function buildAgentRunSummaryActions(
+    doc: Document,
+    taskState: TaskStateSnapshot,
+    artifactCount: number,
+    hasValidation: boolean,
+  ): HTMLElement | null {
+    if (artifactCount === 0 && !hasValidation && taskState.recoveryState === undefined) return null;
+
+    const actions = doc.createElement("div");
+    actions.className = "kw-agent-run-summary-actions";
+    actions.dataset["testid"] = "agent-run-summary-actions";
+
+    const appendAction = (
+      label: string,
+      testId: string,
+      onClick: () => void,
+      variant: "primary" | "secondary" = "secondary",
+    ): void => {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = `kw-button ${variant === "primary" ? "kw-button-primary" : "kw-button-secondary"}`;
+      button.dataset["testid"] = testId;
+      button.textContent = label;
+      button.addEventListener("click", onClick);
+      actions.append(button);
+    };
+
+    if (artifactCount > 0) {
+      appendAction(
+        "Review Changes",
+        "agent-summary-open-changes",
+        () => {
+          state.routeId = "changes";
+          renderRoute();
+          setRightTab("changes");
+        },
+        "primary",
+      );
+      appendAction("Preview", "agent-summary-open-preview", () => setRightTab("preview"));
+    }
+
+    if (hasValidation || taskState.recoveryState !== undefined) {
+      appendAction("Run Evidence", "agent-summary-open-usage", () => setRightTab("usage"));
+    }
+
+    return actions.childElementCount > 0 ? actions : null;
   }
 
   function buildRunContractStrip(
@@ -3210,6 +3262,11 @@ export function mountWorkspaceShell(
         signals: ["hero section", "FAQ section", "substantive section copy"],
       },
       {
+        label: "Hero visual",
+        value: "First viewport scene",
+        signals: ["first-viewport hero visual"],
+      },
+      {
         label: "Responsive",
         value: "Mobile layout + spacing",
         signals: ["responsive layout", "stable spacing system"],
@@ -3247,7 +3304,7 @@ export function mountWorkspaceShell(
   function isWebsiteQualityValidation(validation: NonNullable<TaskStateSnapshot["deterministicValidation"]>): boolean {
     return (
       validation.checkedSignals.some((signal) =>
-        /index\.html artifact|document metadata|stylesheet\/script wiring|substantive section copy|offline-safe local assets|premium visual depth|interactive polish/i.test(
+        /index\.html artifact|document metadata|stylesheet\/script wiring|substantive section copy|first-viewport hero visual|offline-safe local assets|premium visual depth|interactive polish/i.test(
           signal,
         ),
       ) || /website|static site|static website/i.test(validation.reason)

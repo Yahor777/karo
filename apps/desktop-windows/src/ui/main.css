@@ -1639,6 +1639,20 @@ html, body {
   overflow-wrap: anywhere;
 }
 
+.kw-agent-run-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.kw-agent-run-summary-actions .kw-button {
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 760;
+}
+
 .kw-run-contract {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1813,7 +1827,7 @@ html, body {
 
 .kw-validation-proof-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 7px;
 }
 

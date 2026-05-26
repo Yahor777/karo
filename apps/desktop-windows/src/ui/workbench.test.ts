@@ -1814,6 +1814,10 @@ describe("workbench ??? chat workbench", () => {
         expect(runSummary?.textContent).toContain("Artifacts");
         expect(runSummary?.textContent).toContain("1 staged");
         expect(runSummary?.textContent).toContain("Next");
+        const summaryActions = root.querySelector<HTMLElement>('[data-testid="agent-run-summary-actions"]');
+        expect(summaryActions).not.toBeNull();
+        expect(summaryActions?.textContent).toContain("Review Changes");
+        expect(summaryActions?.textContent).toContain("Preview");
         const steps = root.querySelectorAll<HTMLElement>(".kw-agent-step");
         const ids = Array.from(steps).map((s) => s.dataset["agentId"]);
         expect(ids).toContain("researcher");
@@ -1832,6 +1836,10 @@ describe("workbench ??? chat workbench", () => {
         expect(researcherStep.dataset["status"]).toBe("finished");
         const coderStep = root.querySelector<HTMLElement>('.kw-agent-step[data-agent-id="coder"]')!;
         expect(coderStep.querySelector(".kw-agent-file-chip")?.textContent).toBe("src/example.ts");
+        root.querySelector<HTMLButtonElement>('[data-testid="agent-summary-open-preview"]')!.click();
+        expect(root.querySelector<HTMLElement>('[data-testid="right-tab-preview"]')?.getAttribute("aria-current")).toBe(
+          "page",
+        );
       });
   });
 
@@ -1857,6 +1865,7 @@ describe("workbench ??? chat workbench", () => {
           "hero section",
           "FAQ section",
           "substantive section copy",
+          "first-viewport hero visual",
           "responsive layout",
           "stable spacing system",
           "offline-safe local assets",
@@ -1932,6 +1941,8 @@ describe("workbench ??? chat workbench", () => {
     expect(contract).toContain("Website acceptance signals passed.");
     expect(contract).toContain("Content");
     expect(contract).toContain("Sections + body copy");
+    expect(contract).toContain("Hero visual");
+    expect(contract).toContain("First viewport scene");
     expect(contract).toContain("Responsive");
     expect(contract).toContain("Mobile layout + spacing");
     expect(contract).toContain("Safety");

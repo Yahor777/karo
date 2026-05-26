@@ -648,6 +648,18 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
         passed: /src\/karo-mcp-proof\.txt/i.test(firstAgentText),
         details: firstAgentText,
       },
+      await assertVisible(ctx, {
+        testId: TEST_IDS.agentRunSummaryActions,
+        name: "agent-summary-actions-visible-after-artifact",
+      }),
+      await assertVisible(ctx, {
+        testId: TEST_IDS.agentSummaryOpenChanges,
+        name: "agent-summary-review-changes-action-visible",
+      }),
+      await assertVisible(ctx, {
+        testId: TEST_IDS.agentSummaryOpenPreview,
+        name: "agent-summary-preview-action-visible",
+      }),
       await assertVisible(ctx, { testId: TEST_IDS.changesApplyButton, name: "apply-available-after-quick-edit-artifact" }),
     );
     await karoClick(ctx, { testId: TEST_IDS.rightTabUsage });

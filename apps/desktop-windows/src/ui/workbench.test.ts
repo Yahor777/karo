@@ -2908,6 +2908,48 @@ describe("workbench ??? Settings", () => {
     });
     expect(JSON.stringify(parsed)).not.toContain("fw-test-key");
   });
+
+  it("does not fake model capability probes from Settings", () => {
+    mountWorkspaceShell(root, buildOptions());
+    root.querySelector<HTMLButtonElement>('.kw-sidebar-button[data-route-id="settings"]')!.click();
+
+    const text = root.textContent ?? "";
+    expect(text).toContain("Open model catalog");
+    expect(text).toContain("Karo does not fabricate compatibility scores.");
+    expect(text).not.toContain("Test Model Capability");
+    expect(text).not.toContain("Compatibility score: 98%");
+
+    const modelCatalogBtn = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent === "Open model catalog",
+    )!;
+    modelCatalogBtn.click();
+    expect(root.querySelector<HTMLElement>(".kw-center")?.dataset["routeId"]).toBe("models");
+  });
+
+  it("shows real last command diagnostics when the terminal stores them", () => {
+    localStorage.setItem("karo.lastCommand", "npm run build");
+    localStorage.setItem("karo.lastCommandRiskLevel", "safe");
+    localStorage.setItem("karo.lastCommandDecision", "Auto");
+    localStorage.setItem("karo.lastCommandRequiredApproval", "false");
+    localStorage.setItem("karo.lastCommandRollbackAvailable", "false");
+    localStorage.setItem("karo.lastCommandReason", "Allowed inside workspace");
+
+    mountWorkspaceShell(root, buildOptions());
+    root.querySelector<HTMLButtonElement>('.kw-sidebar-button[data-route-id="settings"]')!.click();
+
+    const commandDiag = Array.from(root.querySelectorAll<HTMLPreElement>(".kw-diagnostics")).find((pre) =>
+      pre.textContent?.includes("npm run build"),
+    )!;
+    const parsed = JSON.parse(commandDiag.textContent ?? "{}");
+    expect(parsed).toMatchObject({
+      lastCommand: "npm run build",
+      lastCommandRiskLevel: "safe",
+      lastCommandDecision: "Auto",
+      lastCommandRequiredApproval: "false",
+      lastCommandRollbackAvailable: "false",
+      lastCommandReason: "Allowed inside workspace",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

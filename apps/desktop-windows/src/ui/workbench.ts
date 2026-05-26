@@ -5388,6 +5388,55 @@ export function mountWorkspaceShell(
   }
 
   // ------ Settings ------
+  function isSettingsSimulationModeActive(bridgeLive = options.desktopShell.isNativeBridgeWired?.() ?? false): boolean {
+    if (!bridgeLive) {
+      return true;
+    }
+    return (
+      localStorage.getItem("karo.showSimulationMode") === "true" &&
+      localStorage.getItem("karo.enableSimulationMode") === "true"
+    );
+  }
+
+  function buildSettingsTrustSummary(): HTMLElement {
+    const summary = doc.createElement("section");
+    summary.className = "kw-settings-trust-summary";
+    const bridgeLive = options.desktopShell.isNativeBridgeWired?.() ?? false;
+    const simulationModeActive = isSettingsSimulationModeActive(bridgeLive);
+    const executionLabel = bridgeLive
+      ? simulationModeActive
+        ? "Simulation mode"
+        : "Live workspace"
+      : "Bridge offline";
+    const items: ReadonlyArray<readonly [string, string, string]> = [
+      ["Secrets", "Encrypted local key", "Plaintext never rendered after save"],
+      ["Model", formatFriendlyModelName(state.metadata.modelId), `Provider: ${formatProvider(state.metadata.provider)}`],
+      ["Commands", formatCommandPermissionMode(readCommandPermissionMode()), "Destructive commands require explicit approval"],
+      [
+        "Execution",
+        executionLabel,
+        bridgeLive && !simulationModeActive
+          ? "Apply Changes remains the disk write gate"
+          : bridgeLive
+            ? "Simulation mode disables disk writes"
+            : "Real disk apply unavailable",
+      ],
+    ];
+    for (const [label, value, detail] of items) {
+      const item = doc.createElement("div");
+      item.className = "kw-settings-trust-item";
+      const labelEl = doc.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      const detailEl = doc.createElement("small");
+      detailEl.textContent = detail;
+      item.append(labelEl, valueEl, detailEl);
+      summary.append(item);
+    }
+    return summary;
+  }
+
   function renderSettingsPane(): void {
     center.innerHTML = "";
     center.dataset["routeId"] = "settings";
@@ -5398,7 +5447,11 @@ export function mountWorkspaceShell(
     const title = doc.createElement("h2");
     title.className = "kw-pane-title";
     title.textContent = "Settings";
-    card.append(title);
+    const note = doc.createElement("p");
+    note.className = "kw-pane-note";
+    note.textContent =
+      "Control the local model key, command policy, and execution contract. Karo does not show secrets or claim synthetic probe success.";
+    card.append(title, note, buildSettingsTrustSummary());
 
     const provider = doc.createElement("dl");
     provider.className = "kw-final-list";
@@ -5443,7 +5496,7 @@ export function mountWorkspaceShell(
     diag.className = "kw-diagnostics-card";
     const diagTitle = doc.createElement("summary");
     diagTitle.className = "kw-pane-subtitle";
-    diagTitle.textContent = "Developer Diagnostics";
+    diagTitle.textContent = "Safe diagnostics";
     const diagPre = doc.createElement("pre");
     diagPre.className = "kw-diagnostics";
     diagPre.textContent = JSON.stringify(
@@ -5453,7 +5506,7 @@ export function mountWorkspaceShell(
         storageStatus: "local-encrypted-active",
         tauriInvokeAvailable: options.desktopShell.isNativeBridgeWired ? options.desktopShell.isNativeBridgeWired() : false,
         backendStatus: (options.desktopShell.isNativeBridgeWired && options.desktopShell.isNativeBridgeWired()) ? "online" : "offline",
-        executionMode: state.demoPipelineMode ? "simulation" : "live",
+        executionMode: isSettingsSimulationModeActive() ? "simulation" : "live",
         displayProjectRoot: toDisplayPath(state.project?.path ?? null),
         rawProjectRoot: state.project?.path ?? null,
         storagePath: "%APPDATA%\\com.ai-agent-orchestrator.desktop",
@@ -5584,20 +5637,21 @@ export function mountWorkspaceShell(
       showToast("info", "System prompt restored to defaults");
     });
 
-    const testModelBtn = doc.createElement("button");
-    testModelBtn.type = "button";
-    testModelBtn.className = "kw-button kw-button-secondary";
-    testModelBtn.textContent = "⚙️ Test Model Capability";
-    testModelBtn.style.fontSize = "12px";
-    testModelBtn.addEventListener("click", () => {
-      showToast("info", "Probing model capability compliance...");
-      setTimeout(() => {
-        showToast("success", "Capability probe completed! Recommended Preset: medium_model_balanced. Compatibility score: 98%");
-      }, 1500);
-    });
+    const modelCatalogBtn = doc.createElement("button");
+    modelCatalogBtn.type = "button";
+    modelCatalogBtn.className = "kw-button kw-button-secondary";
+    modelCatalogBtn.textContent = "Open model catalog";
+    modelCatalogBtn.style.fontSize = "12px";
+    modelCatalogBtn.title = "Refresh real provider model data from the Models page; no simulated compatibility score.";
+    modelCatalogBtn.addEventListener("click", () => navigate("models"));
 
-    promptActions.append(restoreBtn, testModelBtn);
+    promptActions.append(restoreBtn, modelCatalogBtn);
     dcForm.append(promptActions);
+    const honestNote = doc.createElement("p");
+    honestNote.className = "kw-settings-honest-note";
+    honestNote.textContent =
+      "Model capability status is only shown from real provider or catalog data. Karo does not fabricate compatibility scores.";
+    dcForm.append(honestNote);
 
     // Diagnostics последнего решения
     const decisionDiagTitle = doc.createElement("h4");
@@ -5741,12 +5795,23 @@ export function mountWorkspaceShell(
     cmdDiagPre.style.fontSize = "11px";
 
     const cmdDiagData = {
-      lastCommand: localStorage.getItem("karo.commandDiagnostics.lastCommand") || "none",
-      lastCommandRiskLevel: localStorage.getItem("karo.commandDiagnostics.lastCommandRiskLevel") || "none",
-      lastCommandDecision: localStorage.getItem("karo.commandDiagnostics.lastCommandDecision") || "none",
-      lastCommandRequiredApproval: localStorage.getItem("karo.commandDiagnostics.lastCommandRequiredApproval") || "none",
-      lastCommandRollbackAvailable: localStorage.getItem("karo.commandDiagnostics.lastCommandRollbackAvailable") || "none",
-      lastCommandReason: localStorage.getItem("karo.commandDiagnostics.lastCommandReason") || "none",
+      lastCommand: localStorage.getItem("karo.commandDiagnostics.lastCommand") || localStorage.getItem("karo.lastCommand") || "none",
+      lastCommandRiskLevel:
+        localStorage.getItem("karo.commandDiagnostics.lastCommandRiskLevel") ||
+        localStorage.getItem("karo.lastCommandRiskLevel") ||
+        "none",
+      lastCommandDecision:
+        localStorage.getItem("karo.commandDiagnostics.lastCommandDecision") || localStorage.getItem("karo.lastCommandDecision") || "none",
+      lastCommandRequiredApproval:
+        localStorage.getItem("karo.commandDiagnostics.lastCommandRequiredApproval") ||
+        localStorage.getItem("karo.lastCommandRequiredApproval") ||
+        "none",
+      lastCommandRollbackAvailable:
+        localStorage.getItem("karo.commandDiagnostics.lastCommandRollbackAvailable") ||
+        localStorage.getItem("karo.lastCommandRollbackAvailable") ||
+        "none",
+      lastCommandReason:
+        localStorage.getItem("karo.commandDiagnostics.lastCommandReason") || localStorage.getItem("karo.lastCommandReason") || "none",
     };
     cmdDiagPre.textContent = JSON.stringify(cmdDiagData, null, 2);
 

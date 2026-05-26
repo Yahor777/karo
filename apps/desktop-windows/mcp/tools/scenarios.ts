@@ -18,7 +18,7 @@ import {
   type AssertionResult,
 } from "./assertions.js";
 import { karoClick, karoFill, karoGetText, karoPress } from "./browser.js";
-import { karoScreenshot } from "./screenshots.js";
+import { karoScreenshot, karoScreenshotElement } from "./screenshots.js";
 import { byTestId, TEST_IDS } from "./selectors.js";
 
 export interface ScenarioResult {
@@ -1034,6 +1034,69 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
         },
       );
     }
+    await ctx.page.evaluate((projectPath) => {
+      const root = document.getElementById("app") as unknown as {
+        _karoState?: {
+          project: { path: string; savedAt: string } | null;
+          terminalStatus?: string;
+        };
+      } | null;
+      if (root?._karoState !== undefined) {
+        root._karoState.project = {
+          path: projectPath,
+          savedAt: new Date().toISOString(),
+        };
+        root._karoState.terminalStatus = "idle";
+      }
+    }, ctx.state.repoRoot);
+    await karoClick(ctx, { testId: TEST_IDS.rightTabPreview });
+    await karoFill(ctx, { selector: ".kw-preview-command input", text: "pnpm build" });
+    const invalidPreviewText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
+    const previewRunDisabled = await ctx.page.locator(byTestId(TEST_IDS.previewRunButton)).isDisabled().catch(() => false);
+    const terminalStatusAfterInvalidPreview = await ctx.page.evaluate(() => {
+      const root = document.getElementById("app") as unknown as {
+        _karoState?: { terminalStatus?: string; terminalSessionId?: string | null };
+      } | null;
+      return {
+        terminalStatus: root?._karoState?.terminalStatus ?? "unknown",
+        terminalSessionId: root?._karoState?.terminalSessionId ?? null,
+      };
+    });
+    bag.assertions.push(
+      {
+        name: "preview-invalid-command-shows-allowlist-gate",
+        passed: /Not in MVP allowlist/i.test(invalidPreviewText ?? "") && /Exact command preflight/i.test(invalidPreviewText ?? ""),
+        details: invalidPreviewText ?? "",
+      },
+      {
+        name: "preview-invalid-command-run-disabled",
+        passed: previewRunDisabled,
+        details: `disabled=${String(previewRunDisabled)}`,
+      },
+      {
+        name: "preview-invalid-command-does-not-start-terminal",
+        passed:
+          terminalStatusAfterInvalidPreview.terminalStatus === "idle" &&
+          terminalStatusAfterInvalidPreview.terminalSessionId === null,
+        details: JSON.stringify(terminalStatusAfterInvalidPreview),
+      },
+    );
+    bag.screenshots.push((await karoScreenshotElement(ctx, { testId: TEST_IDS.rightPanel, name: "preview-invalid-command-gate" })).path);
+    await ctx.page.evaluate(() => {
+      const root = document.getElementById("app") as unknown as {
+        _karoState?: {
+          project: { path: string; savedAt: string } | null;
+          terminalCommandText?: string;
+        };
+      } | null;
+      if (root?._karoState !== undefined) {
+        root._karoState.project = null;
+        root._karoState.terminalCommandText = "";
+      }
+      localStorage.removeItem("karo.previewCommand");
+      localStorage.removeItem("karo.previewCommandSource");
+    });
+    await karoClick(ctx, { testId: TEST_IDS.rightTabUsage });
     await ctx.page.locator(byTestId(TEST_IDS.terminalPanel)).click();
     const terminalText = await ctx.page.locator(byTestId(TEST_IDS.terminalPanel)).textContent().catch(() => "");
     const terminalConnected = /Safe terminal (backend connected|MVP runner connected)/i.test(terminalText ?? "");

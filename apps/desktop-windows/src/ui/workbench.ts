@@ -177,6 +177,7 @@ interface ChatMessageView {
   readonly pending?: boolean;
   readonly error?: boolean;
   readonly chatContext?: ChatReadOnlyContextView;
+  readonly recovery?: ChatRecoveryView;
 }
 
 interface ChatReadOnlyContextView {
@@ -185,6 +186,13 @@ interface ChatReadOnlyContextView {
   readonly scannedFilesCount: number;
   readonly selectedFiles: readonly string[];
   readonly warnings: readonly string[];
+}
+
+interface ChatRecoveryView {
+  readonly kind: "plan_failure";
+  readonly originalPrompt: string;
+  readonly error: string;
+  readonly context?: ChatReadOnlyContextView;
 }
 
 interface ChatReadOnlyContext extends ChatReadOnlyContextView {
@@ -1674,6 +1682,9 @@ export function mountWorkspaceShell(
       } else {
         body.append(renderMarkdownBlock(doc, message.text));
       }
+      if (message.recovery?.kind === "plan_failure") {
+        body.append(buildPlanFailureRecoveryCard(doc, message.recovery));
+      }
       if (message.chatContext !== undefined) {
         body.append(buildChatReadOnlyContextSummary(doc, message.chatContext));
       }
@@ -1702,6 +1713,87 @@ export function mountWorkspaceShell(
     }
     wrap.append(author, body);
     return wrap;
+  }
+
+  function buildPlanFailureRecoveryCard(doc: Document, recovery: ChatRecoveryView): HTMLElement {
+    const card = doc.createElement("section");
+    card.className = "kw-plan-recovery-card";
+    card.dataset["testid"] = "plan-failure-recovery";
+
+    const head = doc.createElement("div");
+    head.className = "kw-plan-recovery-head";
+    const title = doc.createElement("strong");
+    title.textContent = "Plan recovery";
+    const badge = doc.createElement("span");
+    badge.textContent = "read-only failure";
+    head.append(title, badge);
+
+    const body = doc.createElement("p");
+    body.className = "kw-plan-recovery-body";
+    body.textContent =
+      "No files were changed, no artifacts were staged, and Apply Changes is unavailable. Choose the next safe path below.";
+
+    const facts = doc.createElement("div");
+    facts.className = "kw-plan-recovery-facts";
+    const contextLabel =
+      recovery.context !== undefined
+        ? `${String(recovery.context.selectedFilesCount)} selected / ${String(recovery.context.scannedFilesCount)} scanned (${recovery.context.profile})`
+        : "No project context collected before failure";
+    const factItems: ReadonlyArray<readonly [string, string]> = [
+      ["Failure", recovery.error],
+      ["Context", contextLabel],
+      ["Write gate", "Read-only; no Apply Changes"],
+    ];
+    for (const [label, value] of factItems) {
+      const item = doc.createElement("div");
+      item.className = "kw-plan-recovery-fact";
+      const labelEl = doc.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      item.append(labelEl, valueEl);
+      facts.append(item);
+    }
+
+    const actions = doc.createElement("div");
+    actions.className = "kw-plan-recovery-actions";
+
+    const retry = doc.createElement("button");
+    retry.type = "button";
+    retry.className = "kw-button kw-button-primary";
+    retry.textContent = "Retry Plan";
+    retry.addEventListener("click", () => prefillComposerPrompt("plan", recovery.originalPrompt));
+
+    const smaller = doc.createElement("button");
+    smaller.type = "button";
+    smaller.className = "kw-button kw-button-secondary";
+    smaller.textContent = "Make smaller plan";
+    smaller.addEventListener("click", () => {
+      prefillComposerPrompt(
+        "plan",
+        [
+          "Make a concise read-only plan with minimal context. Do not change files or create artifacts.",
+          "",
+          `Original request: ${recovery.originalPrompt}`,
+        ].join("\n"),
+      );
+    });
+
+    const models = doc.createElement("button");
+    models.type = "button";
+    models.className = "kw-button kw-button-secondary";
+    models.textContent = "Open Models";
+    models.addEventListener("click", () => navigate("models"));
+
+    const usage = doc.createElement("button");
+    usage.type = "button";
+    usage.className = "kw-button kw-button-secondary";
+    usage.textContent = "Show Usage";
+    usage.addEventListener("click", () => setRightTab("usage"));
+
+    actions.append(retry, smaller, models, usage);
+    card.append(head, body, facts, actions);
+    return card;
   }
 
   function buildChatReadOnlyContextSummary(doc: Document, context: ChatReadOnlyContextView): HTMLElement {
@@ -3642,6 +3734,16 @@ export function mountWorkspaceShell(
           pending: false,
           error: !answer.ok,
           ...(answer.context !== undefined ? { chatContext: answer.context } : {}),
+          ...(!answer.ok
+            ? {
+                recovery: {
+                  kind: "plan_failure",
+                  originalPrompt: promptText,
+                  error: answer.error,
+                  ...(answer.context !== undefined ? { context: answer.context } : {}),
+                },
+              }
+            : {}),
         });
         status.textContent = answer.ok
           ? "Plan Mode completed without file changes."
@@ -8292,38 +8394,21 @@ function renderStructuredPlanResult(
 }
 
 function buildPlanFailureMessage(
-  prompt: string,
+  _prompt: string,
   error: string,
   context?: ChatReadOnlyContext,
 ): string {
-  const ru = isLikelyRussian(prompt);
-  if (ru) {
-    return [
-      "## Plan Mode could not complete",
-      "",
-      `Ошибка: ${error}`,
-      "",
-      "Файлы не менялись, artifacts не создавались, Apply Changes недоступен.",
-      context !== undefined ? `Контекст был выбран до ошибки: ${String(context.selectedFilesCount)} файлов (${context.profile}).` : "Контекст проекта не использовался или не был выбран до ошибки.",
-      "",
-      "### Recovery options",
-      "- Retry Plan: повторить тот же planning prompt.",
-      "- Retry with reduced context: уменьшить выбранный контекст и повторить.",
-      "- Switch model: выбери другую text/code модель на странице Models, если текущая недоступна.",
-    ].join("\n");
-  }
   return [
     "## Plan Mode could not complete",
     "",
     `Error: ${error}`,
     "",
     "No files were changed, no artifacts were created, and Apply Changes is unavailable.",
-    context !== undefined ? `Context selected before failure: ${String(context.selectedFilesCount)} files (${context.profile}).` : "No project context was used or selected before the failure.",
+    context !== undefined
+      ? `Context selected before failure: ${String(context.selectedFilesCount)} files (${context.profile}).`
+      : "No project context was collected before the failure.",
     "",
-    "### Recovery options",
-    "- Retry Plan: re-submit the same planning prompt.",
-    "- Retry with reduced context: reduce selected context and try again.",
-    "- Switch model: choose another text/code model on the Models page if this one is unavailable.",
+    "Use the recovery actions below to retry safely. This remains read-only until you explicitly choose Agent Mode.",
   ].join("\n");
 }
 

@@ -728,7 +728,8 @@ describe("workbench ??? chat workbench", () => {
     mountWorkspaceShell(root, opts);
     root.querySelector<HTMLButtonElement>('.kw-pill[data-value="plan"]')!.click();
     const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
-    prompt.value = "сделай план улучшения UI Karo";
+    const promptText = "make a plan to improve Karo UI";
+    prompt.value = promptText;
     prompt.dispatchEvent(new Event("input"));
     root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
     await flush();
@@ -738,9 +739,21 @@ describe("workbench ??? chat workbench", () => {
     expect(text).toContain("Plan Mode could not complete");
     expect(text).toContain("Retry Plan");
     expect(text).toContain("provider_timeout");
+    expect(text).toContain("No files were changed");
     expect(text).not.toContain("Artifacts staged");
+    const recovery = root.querySelector<HTMLElement>('[data-testid="plan-failure-recovery"]');
+    expect(recovery).not.toBeNull();
+    expect(recovery?.textContent).toContain("read-only failure");
+    expect(recovery?.textContent).toContain("Make smaller plan");
     expect(opts.transport.createCalls).toHaveLength(0);
     expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+
+    const retryPlan = Array.from(recovery?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+      .find((button) => button.textContent === "Retry Plan");
+    retryPlan?.click();
+    await flush();
+    expect(root.querySelector<HTMLTextAreaElement>(".kw-composer-input")?.value).toBe(promptText);
+    expect(root.querySelector<HTMLElement>('.kw-pill[data-value="plan"]')?.getAttribute("aria-current")).toBe("true");
   });
 
   it("Plan Mode missing API key is honest failure, not fake success", async () => {
@@ -759,6 +772,8 @@ describe("workbench ??? chat workbench", () => {
     const text = root.textContent ?? "";
     expect(text).toContain("Plan Mode could not complete");
     expect(text).toContain("API key");
+    expect(root.querySelector('[data-testid="plan-failure-recovery"]')?.textContent).toContain("Open Models");
+    expect(root.querySelector('[data-testid="plan-failure-recovery"]')?.textContent).toContain("No project context collected");
     expect(opts.chatModelClient.calls).toHaveLength(0);
     expect(opts.transport.createCalls).toHaveLength(0);
     expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
@@ -779,7 +794,8 @@ describe("workbench ??? chat workbench", () => {
     const text = root.textContent ?? "";
     expect(text).toContain("Plan Mode could not complete");
     expect(text).toContain("plan_parse_failed");
-    expect(text).not.toContain("Шаги реализации");
+    expect(root.querySelector('[data-testid="plan-failure-recovery"]')).not.toBeNull();
+    expect(text).not.toContain("Implementation steps");
     expect(opts.transport.createCalls).toHaveLength(0);
   });
 

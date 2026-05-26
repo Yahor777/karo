@@ -1834,7 +1834,16 @@ describe("workbench ??? chat workbench", () => {
         status: "passed",
         skipModelReview: true,
         issues: [],
-        checkedSignals: ["hero", "faq", "responsive"],
+        checkedSignals: [
+          "hero section",
+          "FAQ section",
+          "substantive section copy",
+          "responsive layout",
+          "stable spacing system",
+          "offline-safe local assets",
+          "premium visual depth",
+          "interactive polish",
+        ],
         reason: "Website acceptance signals passed.",
       },
     });
@@ -1902,8 +1911,14 @@ describe("workbench ??? chat workbench", () => {
     expect(contract).toContain("passed / reviewer skipped");
     expect(contract).toContain("Validation evidence");
     expect(contract).toContain("Website acceptance signals passed.");
-    expect(contract).toContain("hero");
-    expect(contract).toContain("responsive");
+    expect(contract).toContain("Content");
+    expect(contract).toContain("Sections + body copy");
+    expect(contract).toContain("Responsive");
+    expect(contract).toContain("Mobile layout + spacing");
+    expect(contract).toContain("Safety");
+    expect(contract).toContain("Local assets only");
+    expect(contract).toContain("Polish");
+    expect(contract).toContain("Depth + hover/focus");
     expect(root.querySelectorAll(".kw-agent-step-details[open]")).toHaveLength(0);
     expect(root.querySelector('[data-testid="chat-thread"]')?.textContent).not.toMatch(/\bthought\b/i);
   });
@@ -2607,7 +2622,19 @@ describe("workbench ??? right panel", () => {
         status: "passed",
         skipModelReview: true,
         issues: [],
-        checkedSignals: ["document metadata", "stylesheet/script wiring", "visible CTA"],
+        checkedSignals: [
+          "document metadata",
+          "stylesheet/script wiring",
+          "visible CTA",
+          "hero section",
+          "FAQ section",
+          "substantive section copy",
+          "responsive layout",
+          "stable spacing system",
+          "offline-safe local assets",
+          "premium visual depth",
+          "interactive polish",
+        ],
         reason: "Website acceptance signals passed.",
       },
       decision: {
@@ -2651,9 +2678,12 @@ describe("workbench ??? right panel", () => {
     expect(previewText).toContain("Preview gate evidence");
     expect(previewText).toContain("Preview preflight");
     expect(previewText).toContain("Website acceptance signals passed.");
-    expect(previewText).toContain("Deterministic checks passed");
+    expect(previewText).toContain("Website quality checks passed");
     expect(previewText).toContain("Apply completed for this file");
     expect(previewText).toContain("document metadata");
+    expect(previewText).toContain("Sections + body copy");
+    expect(previewText).toContain("Local assets only");
+    expect(previewText).toContain("Depth + hover/focus");
     open.click();
     await flush();
 

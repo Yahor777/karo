@@ -3113,6 +3113,10 @@ export function mountWorkspaceShell(
       card.append(chips);
     }
 
+    if (validation !== undefined && isWebsiteQualityValidation(validation)) {
+      card.append(buildWebsiteQualityProofGrid(doc, validation));
+    }
+
     if (validation !== undefined && validation.issues.length > 0) {
       const issueList = doc.createElement("ul");
       issueList.className = "kw-validation-issues";
@@ -3125,6 +3129,77 @@ export function mountWorkspaceShell(
     }
 
     return card;
+  }
+
+  function buildWebsiteQualityProofGrid(
+    doc: Document,
+    validation: NonNullable<TaskStateSnapshot["deterministicValidation"]>,
+  ): HTMLElement {
+    const grid = doc.createElement("div");
+    grid.className = "kw-validation-proof-grid";
+    grid.dataset["testid"] = "website-quality-proof-grid";
+    const items: ReadonlyArray<{
+      readonly label: string;
+      readonly value: string;
+      readonly signals: readonly string[];
+    }> = [
+      {
+        label: "Content",
+        value: "Sections + body copy",
+        signals: ["hero section", "FAQ section", "substantive section copy"],
+      },
+      {
+        label: "Responsive",
+        value: "Mobile layout + spacing",
+        signals: ["responsive layout", "stable spacing system"],
+      },
+      {
+        label: "Safety",
+        value: "Local assets only",
+        signals: ["offline-safe local assets"],
+      },
+      {
+        label: "Polish",
+        value: "Depth + hover/focus",
+        signals: ["premium visual depth", "interactive polish"],
+      },
+    ];
+    for (const item of items) {
+      const ready = item.signals.every((signal) => validationSignalPassed(validation, signal));
+      const tile = doc.createElement("div");
+      tile.className = "kw-validation-proof-item";
+      tile.dataset["state"] = ready ? "ready" : "warn";
+      const label = doc.createElement("span");
+      label.textContent = item.label;
+      const value = doc.createElement("strong");
+      value.textContent = ready ? item.value : "Needs validation";
+      tile.append(label, value);
+      grid.append(tile);
+    }
+    return grid;
+  }
+
+  function describePreviewQualityValue(validation: NonNullable<TaskStateSnapshot["deterministicValidation"]>): string {
+    return isWebsiteQualityValidation(validation) ? "Website quality checks passed" : "Deterministic checks passed";
+  }
+
+  function isWebsiteQualityValidation(validation: NonNullable<TaskStateSnapshot["deterministicValidation"]>): boolean {
+    return (
+      validation.checkedSignals.some((signal) =>
+        /index\.html artifact|document metadata|stylesheet\/script wiring|substantive section copy|offline-safe local assets|premium visual depth|interactive polish/i.test(
+          signal,
+        ),
+      ) || /website|static site|static website/i.test(validation.reason)
+    );
+  }
+
+  function validationSignalPassed(
+    validation: NonNullable<TaskStateSnapshot["deterministicValidation"]>,
+    signal: string,
+  ): boolean {
+    const signalRecorded = validation.checkedSignals.some((item) => item.toLowerCase().includes(signal.toLowerCase()));
+    const issueRecorded = validation.issues.some((issue) => issue.toLowerCase().includes(signal.toLowerCase()));
+    return signalRecorded && !issueRecorded;
   }
 
   function buildAgentGroupCard(
@@ -6737,7 +6812,7 @@ export function mountWorkspaceShell(
         : { label: "Static file", value: "No index.html staged", state: "idle" },
       validation !== undefined
         ? validation.status === "passed"
-          ? { label: "Quality", value: "Deterministic checks passed", state: "ready" }
+          ? { label: "Quality", value: describePreviewQualityValue(validation), state: "ready" }
           : validation.status === "failed"
             ? { label: "Quality", value: "Deterministic checks failed", state: "blocked" }
             : { label: "Quality", value: "Needs model review", state: "warn" }

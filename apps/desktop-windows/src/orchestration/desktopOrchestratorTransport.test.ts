@@ -1565,6 +1565,8 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     expect(indexPrompt).toContain("no placeholder copy");
     expect(indexPrompt).toContain("substantive body copy");
     expect(indexPrompt).toContain("visual depth");
+    expect(indexPrompt).toContain("readable hero typography");
+    expect(indexPrompt).toContain("balanced wrapping");
     expect(indexPrompt).toContain("hover/focus polish");
     expect(indexPrompt).toContain("safe progressive enhancement");
     expect(t.getTaskState(taskId)?.agentCoreEstimate?.expectedModelCalls).toBe(5);

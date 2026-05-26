@@ -356,6 +356,7 @@ export function buildAgentImplementationPlan(input: {
         "index.html contains substantive subject-specific copy, not just section labels or placeholder cards.",
         "index.html uses a multi-card product composition with FAQ details or equivalent expandable/readable answers.",
         "styles.css contains responsive premium dark anime/card styling, visual depth, stable spacing, and a mobile layout.",
+        "styles.css keeps first-viewport hero typography readable with balanced wrapping instead of oversized one-word lines.",
         "styles.css uses a balanced accent palette instead of a one-note monochrome theme.",
         "styles.css includes interactive polish for links/cards without layout shift.",
         "script.js is present, non-empty, user-visible, and limited to safe local progressive enhancement.",
@@ -376,6 +377,7 @@ export function buildAgentImplementationPlan(input: {
         "offline-safe local assets only",
         "responsive styling signal exists",
         "premium visual polish signal exists",
+        "readable hero typography exists",
         "balanced accent palette exists",
         "interactive polish signal exists",
         "safe progressive enhancement exists",
@@ -591,6 +593,7 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
         "responsive layout",
         "dark anime/card styling",
         "premium visual depth",
+        "readable hero typography",
         "balanced accent palette",
         "stable spacing system",
         "interactive polish",
@@ -602,6 +605,7 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
       hasIssue(args.issues, "responsive layout") ||
       hasIssue(args.issues, "dark anime/card styling") ||
       hasIssue(args.issues, "premium visual depth") ||
+      hasIssue(args.issues, "readable hero typography") ||
       hasIssue(args.issues, "balanced accent palette") ||
       hasIssue(args.issues, "stable spacing system") ||
       hasIssue(args.issues, "first-viewport hero visual") ||
@@ -618,6 +622,7 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
           "responsive layout",
           "dark anime/card styling",
           "premium visual depth",
+          "readable hero typography",
           "balanced accent palette",
           "stable spacing system",
           "first-viewport hero visual",
@@ -855,6 +860,7 @@ function validateStaticWebsiteArtifacts(
     /linear-gradient|radial-gradient|box-shadow|backdrop-filter|rgba\(|transition|transform/iu.test(cssContent),
     "premium visual depth",
   );
+  recordSignal(checkedSignals, issues, hasReadableHeroTypography(cssContent), "readable hero typography");
   recordSignal(checkedSignals, issues, hasBalancedAccentPalette(cssContent), "balanced accent palette");
   recordSignal(
     checkedSignals,
@@ -933,6 +939,38 @@ function hasHeroVisual(content: string): boolean {
     /class=["'][^"']*\bhero-visual\b|role=["']img["']|<figure\b|<svg\b|<canvas\b/iu.test(content) &&
     /\b(domain|cursed|technique|energy|visual|poster|arena|minecraft|jjk)\b|aria-label|figcaption/iu.test(content)
   );
+}
+
+function hasReadableHeroTypography(cssContent: string): boolean {
+  const heroTitleRules = Array.from(
+    cssContent.matchAll(/(?:^|[},])\s*(?:h1|\.hero-title|\.hero\s+h1)[^{]*\{([^}]*)\}/giu),
+  ).map((match) => match[1] ?? "");
+  if (heroTitleRules.length === 0) return false;
+  const titleCss = heroTitleRules.join("\n");
+  const hasBalancedWrap = /text-wrap\s*:\s*balance|overflow-wrap\s*:\s*(?:anywhere|break-word)/iu.test(titleCss);
+  const hasStableMeasure = /max-width\s*:\s*(?:[0-9.]+ch|clamp\(|min\()/iu.test(titleCss);
+  const hasReadableLeading = /line-height\s*:\s*(?:0?\.[9][0-9]*|1(?:\.[0-3][0-9]*)?)/iu.test(titleCss);
+  const clamps = Array.from(titleCss.matchAll(/font-size\s*:\s*clamp\(([^)]*)\)/giu)).map((match) => match[1] ?? "");
+  if (!hasBalancedWrap || !hasStableMeasure || !hasReadableLeading || clamps.length === 0) return false;
+  return clamps.every(heroClampIsReadable);
+}
+
+function heroClampIsReadable(clampArgs: string): boolean {
+  const parts = clampArgs.split(",").map((part) => part.trim().toLowerCase());
+  if (parts.length < 3) return false;
+  const maxPx = cssLengthToPx(parts[2]!);
+  if (maxPx === null || maxPx > 88) return false;
+  const preferredVw = /^([0-9.]+)vw$/iu.exec(parts[1]!);
+  if (preferredVw !== null && Number(preferredVw[1]) > 10) return false;
+  return true;
+}
+
+function cssLengthToPx(value: string): number | null {
+  const px = /^([0-9.]+)px$/iu.exec(value);
+  if (px !== null) return Number(px[1]);
+  const rem = /^([0-9.]+)rem$/iu.exec(value);
+  if (rem !== null) return Number(rem[1]) * 16;
+  return null;
 }
 
 function insertHeroVisual(content: string): string {
@@ -1103,6 +1141,7 @@ function buildWebsiteQualityCssRepairSnippet(): string {
     ".hero { min-height: min(72vh, 720px); align-content: center; background: linear-gradient(135deg, rgba(139, 92, 246, .12), rgba(34, 211, 238, .05)); }",
     ".hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(260px, .95fr); align-items: center; gap: clamp(22px, 5vw, 56px); }",
     ".hero > :not(.hero-visual) { grid-column: 1; }",
+    "h1, .hero-title { max-width: 12ch; font-size: clamp(2.75rem, 6vw, 4.9rem); line-height: .96; text-wrap: balance; margin: 0; }",
     ".hero-visual { position: relative; min-height: 320px; margin: 0; border: 1px solid rgba(34, 211, 238, .22); border-radius: 22px; overflow: hidden; background: radial-gradient(circle at 50% 44%, rgba(34, 211, 238, .24), transparent 28%), linear-gradient(145deg, rgba(139, 92, 246, .18), rgba(251, 113, 133, .08)); box-shadow: inset 0 0 80px rgba(34, 211, 238, .08), 0 24px 70px rgba(0, 0, 0, .28); }",
     ".hero-visual { grid-column: 2; grid-row: 1 / span 6; }",
     ".domain-orb, .energy-ring { position: absolute; inset: 18%; border: 1px solid rgba(34, 211, 238, .42); border-radius: 999px; box-shadow: 0 0 60px rgba(34, 211, 238, .18); }",
@@ -1123,7 +1162,7 @@ function buildWebsiteQualityCssRepairSnippet(): string {
     ".cta-button:focus-visible, a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--jjk-cyan); outline-offset: 3px; }",
     "@media (min-width: 860px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .cta, .experience-grid, .ability-grid, .faq { grid-column: 1 / -1; } }",
     "@media (max-width: 820px) { .hero { grid-template-columns: 1fr; } .hero-visual { grid-column: 1; grid-row: auto; min-height: 260px; } }",
-    "@media (max-width: 680px) { .site-nav { align-items: flex-start; flex-direction: column; } h1 { font-size: clamp(2.5rem, 16vw, 4rem); } }",
+    "@media (max-width: 680px) { .site-nav { align-items: flex-start; flex-direction: column; } h1, .hero-title { max-width: 11ch; font-size: clamp(2.35rem, 9.5vw, 3.4rem); } }",
     "",
   ].join("\n");
 }

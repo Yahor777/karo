@@ -443,6 +443,12 @@ async function runWebsiteCreationScenario(): Promise<RuntimeScenario> {
         /:\s*root|--[a-z0-9-]+\s*:|gap\s*:|padding\s*:|minmax\(|clamp\(/i.test(stylesCss),
       stylesCss.slice(0, 600),
     ),
+    bool(
+      "website-quality-readable-hero-typography",
+      /h1\s*\{[^}]*font-size\s*:\s*clamp\([^)]*(?:4\.[0-9]rem|[5-7][0-9]px)[^)]*\)[^}]*text-wrap\s*:\s*balance/is.test(stylesCss) &&
+        !/h1\s*\{[^}]*font-size\s*:\s*clamp\([^)]*(?:9[0-9]px|1[1-9]vw|[2-9][0-9]vw)/is.test(stylesCss),
+      stylesCss.slice(0, 800),
+    ),
     ...renderProof.assertions,
     bool("website-run-completed", state?.status === "completed", state?.status),
   ];
@@ -936,7 +942,7 @@ class ProbeModelClient {
   <main id="top" class="jjk-page">
     <section class="hero">
       <p class="eyebrow">Domain-ready combat hub</p>
-      <h1>Dark anime battles with readable cursed-technique mastery</h1>
+      <h1>Cursed energy battles, built to read</h1>
       <p class="lead">Preview a focused Minecraft JJK mod landing page with ability roles, energy flow, install guidance, and reviewable staged files before anything touches disk.</p>
       <a class="cta-button" href="#abilities">Explore cursed techniques</a>
       <figure class="hero-visual" role="img" aria-label="Cursed energy arena with domain rings and technique cards">
@@ -972,7 +978,7 @@ body { margin: 0; background: radial-gradient(circle at 12% 8%, rgba(34, 211, 23
 .hero { min-height: min(72vh, 720px); display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr); align-items: center; gap: clamp(24px, 5vw, 56px); padding: clamp(28px, 5vw, 64px); border: 1px solid rgba(139, 92, 246, .25); border-radius: 24px; background: linear-gradient(135deg, rgba(139, 92, 246, .14), rgba(34, 211, 238, .06)); box-shadow: 0 28px 90px rgba(0, 0, 0, .36); }
 .hero > :not(.hero-visual) { grid-column: 1; }
 .eyebrow { color: var(--cyan); text-transform: uppercase; letter-spacing: 0; font-weight: 800; }
-h1 { max-width: 900px; font-size: clamp(48px, 8vw, 92px); line-height: .92; margin: 0; }
+h1 { max-width: 12ch; font-size: clamp(2.75rem, 6vw, 4.9rem); line-height: .96; text-wrap: balance; margin: 0; }
 h2 { margin: 0 0 10px; }
 .lead { color: #d8d1ea; font-size: clamp(18px, 2vw, 24px); max-width: 820px; }
 .cta-button { display: inline-flex; margin-top: 20px; padding: 13px 18px; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--cyan)); color: white; text-decoration: none; box-shadow: 0 18px 60px rgba(139, 92, 246, .34); transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
@@ -995,7 +1001,7 @@ summary { cursor: pointer; color: #f8f6ff; }
 .cta-button:focus-visible, .site-nav a:focus-visible, summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
 @media (min-width: 860px) { .jjk-page { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .ability-grid, .faq { grid-column: 1 / -1; } }
 @media (max-width: 820px) { .hero { grid-template-columns: 1fr; } .hero-visual { grid-column: 1; grid-row: auto; min-height: 260px; } }
-@media (max-width: 680px) { .site-nav { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 680px) { .site-nav { align-items: flex-start; flex-direction: column; } h1 { max-width: 11ch; font-size: clamp(2.35rem, 9.5vw, 3.4rem); } }
 `,
           "src/karo-demo-site/script.js":
             "document.documentElement.dataset.karoPreviewReady = 'true';\nfor (const detail of document.querySelectorAll('details')) {\n  detail.addEventListener('toggle', () => {\n    detail.dataset.state = detail.open ? 'open' : 'closed';\n  });\n}\nfor (const link of document.querySelectorAll('a[href^=\"#\"]')) {\n  link.addEventListener('click', () => {\n    document.documentElement.dataset.lastNavigation = link.getAttribute('href') ?? '';\n  });\n}\n",

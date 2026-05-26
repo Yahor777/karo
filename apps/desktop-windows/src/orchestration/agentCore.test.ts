@@ -188,8 +188,10 @@ describe("Agent Core v1", () => {
     expect(plan.previewInstructionsNeeded).toBe(true);
     expect(plan.acceptanceCriteria.join("\n")).toContain("FAQ");
     expect(plan.acceptanceCriteria.join("\n")).toContain("hero visual");
+    expect(plan.acceptanceCriteria.join("\n")).toContain("hero typography");
     expect(plan.acceptanceCriteria.join("\n")).toContain("balanced accent palette");
     expect(plan.requiredChecks.join("\n")).toContain("first-viewport hero visual");
+    expect(plan.requiredChecks.join("\n")).toContain("readable hero typography");
     expect(plan.requiredChecks.join("\n")).toContain("balanced accent palette");
   });
 
@@ -205,7 +207,7 @@ describe("Agent Core v1", () => {
         {
           fileName: "src/karo-demo-site/styles.css",
           content:
-            ":root{--card:rgba(17,17,26,.86);--accent:#8b5cf6}body{background:radial-gradient(circle at top,#211334,#07070b)}.site-nav{display:flex;gap:12px}.feature-card,.faq details,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.ability-grid{display:grid}.hero{display:grid;grid-template-columns:1fr 320px}.hero-visual{min-height:260px;border-radius:20px;background:radial-gradient(circle,#22d3ee,transparent 60%)}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible,summary:focus-visible{outline:2px solid var(--accent)}@media (min-width: 800px){main{grid-template-columns:repeat(2,minmax(0,1fr))}.hero,.ability-grid,.faq{grid-column:1/-1}}",
+            ":root{--card:rgba(17,17,26,.86);--accent:#8b5cf6}body{background:radial-gradient(circle at top,#211334,#07070b)}.site-nav{display:flex;gap:12px}.feature-card,.faq details,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.ability-grid{display:grid}.hero{display:grid;grid-template-columns:1fr 320px}h1{max-width:12ch;font-size:clamp(2.75rem,6vw,4.9rem);line-height:.96;text-wrap:balance}.hero-visual{min-height:260px;border-radius:20px;background:radial-gradient(circle,#22d3ee,transparent 60%)}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible,summary:focus-visible{outline:2px solid var(--accent)}@media (min-width: 800px){main{grid-template-columns:repeat(2,minmax(0,1fr))}.hero,.ability-grid,.faq{grid-column:1/-1}}",
         },
         { fileName: "src/karo-demo-site/script.js", content: "document.querySelectorAll('details').forEach((detail)=>detail.addEventListener('toggle',()=>{detail.dataset.state=detail.open?'open':'closed'}));" },
         { fileName: "src/karo-demo-site/README.md", content: "Apply Changes first, then open index.html in preview." },
@@ -249,9 +251,9 @@ describe("Agent Core v1", () => {
           '<!doctype html><html><head><title>Minecraft JJK Mod</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><nav class="site-nav"><a href="#abilities">Abilities</a><a href="#features">Features</a></nav><main><section class="hero"><h1>Minecraft JJK Mod</h1><p>Preview cursed technique combat with focused ability cards, character energy roles, and clear player guidance before installing the build.</p><a class="cta-button" href="#abilities">Explore abilities</a><figure class="hero-visual" role="img" aria-label="Cursed energy arena visual"><div class="domain-orb"></div><figcaption>Local domain visual for ability timing.</figcaption></figure></section><section id="abilities" class="ability-grid"><h2>Abilities</h2><article class="feature-card"><h3>Black Flash</h3><p>Timing windows turn combat into a readable high-skill loop.</p></article><article class="feature-card"><h3>Infinity</h3><p>Spatial defense creates pressure and counterplay for players.</p></article><article class="feature-card"><h3>Cursed tools</h3><p>Loadout choices connect weapons, roles, and energy routing.</p></article></section><section class="energy"><h2>Characters and energy</h2><p>Energy flow, character roles, and progression hooks connect the landing page to the actual mod fantasy.</p></section><section class="features"><h2>Features</h2><p>Responsive cards, preview-safe content, and dark anime presentation make the page feel like a real product surface.</p></section></main></body></html>',
       },
       {
-        fileName: "src/karo-demo-site/styles.css",
-        content:
-          ":root{--card:rgba(17,17,26,.86)}body{background:radial-gradient(circle at top,#211334,#07070b)}.site-nav{display:flex;gap:12px}.feature-card,.faq details,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.ability-grid{display:grid}.hero{display:grid;grid-template-columns:1fr 320px}.hero-visual{min-height:260px;border-radius:20px;background:radial-gradient(circle,#22d3ee,transparent 60%)}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible{outline:2px solid #8b5cf6}@media (min-width: 800px){.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}",
+          fileName: "src/karo-demo-site/styles.css",
+          content:
+          ":root{--card:rgba(17,17,26,.86)}body{background:radial-gradient(circle at top,#211334,#07070b)}.site-nav{display:flex;gap:12px}.feature-card,.faq details,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.ability-grid{display:grid}.hero{display:grid;grid-template-columns:1fr 320px}h1{max-width:12ch;font-size:clamp(2.75rem,6vw,4.9rem);line-height:.96;text-wrap:balance}.hero-visual{min-height:260px;border-radius:20px;background:radial-gradient(circle,#22d3ee,transparent 60%)}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible{outline:2px solid #8b5cf6}@media (min-width: 800px){.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}",
       },
       { fileName: "src/karo-demo-site/script.js", content: "document.querySelectorAll('a').forEach((link)=>link.addEventListener('click',()=>{document.documentElement.dataset.clicked='true'}));" },
       { fileName: "src/karo-demo-site/README.md", content: "Apply Changes first, then open index.html in preview." },
@@ -298,6 +300,7 @@ describe("Agent Core v1", () => {
     expect(validation.issues.join("\n")).toContain("substantive section copy");
     expect(validation.issues.join("\n")).toContain("FAQ details");
     expect(validation.issues.join("\n")).toContain("premium visual depth");
+    expect(validation.issues.join("\n")).toContain("readable hero typography");
     expect(validation.issues.join("\n")).toContain("balanced accent palette");
     expect(validation.issues.join("\n")).toContain("first-viewport hero visual");
     expect(repairs.map((repair) => repair.fileName).sort()).toEqual([
@@ -313,6 +316,7 @@ describe("Agent Core v1", () => {
     expect(repairs.find((repair) => repair.fileName.endsWith("index.html"))?.content).toContain("Cursed technique showcase");
     expect(repairs.find((repair) => repair.fileName.endsWith("script.js"))?.content).toContain("addEventListener");
     expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain("box-shadow");
+    expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain("text-wrap: balance");
     expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain(".hero-visual");
     expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain(".site-nav");
     expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain(":focus-visible");
@@ -326,9 +330,9 @@ describe("Agent Core v1", () => {
           '<!doctype html><html><head><title>Minecraft JJK Mod</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><nav class="site-nav"><a href="#abilities">Abilities</a><a href="#characters">Characters</a><a href="#faq">FAQ</a></nav><main><section class="hero"><h1>Minecraft JJK Mod</h1><p>Preview cursed technique combat with focused ability cards, character energy roles, install guidance, and clear player guidance before installing the build.</p><a class="cta-button" href="#abilities">Explore abilities</a><figure class="hero-visual" role="img" aria-label="Cursed energy arena visual"><div class="domain-orb"></div><figcaption>Local domain visual for ability timing.</figcaption></figure></section><section id="abilities" class="ability-grid"><h2>Abilities</h2><article class="feature-card"><h3>Black Flash</h3><p>Timing windows turn combat into a readable high-skill loop.</p></article><article class="feature-card"><h3>Infinity</h3><p>Spatial defense creates pressure and counterplay for players.</p></article><article class="feature-card"><h3>Cursed tools</h3><p>Loadout choices connect weapons, roles, and energy routing.</p></article></section><section id="characters" class="energy"><h2>Characters and energy</h2><p>Energy flow, character roles, and progression hooks connect the landing page to the actual mod fantasy.</p></section><section class="features"><h2>Features</h2><p>Responsive cards, preview-safe content, and dark anime presentation make the page feel like a real product surface.</p></section><section id="faq" class="faq"><h2>FAQ</h2><details open><summary>Can I preview this safely?</summary><p>Apply Changes first, then open index.html from Preview to inspect the static site locally.</p></details></section></main></body></html>',
       },
       {
-        fileName: "src/karo-demo-site/styles.css",
-        content:
-          ":root{--card:rgba(17,17,26,.86);--accent:#7c3aed}body{background:radial-gradient(circle at top,#211334,#07070b)}.site-nav{display:flex;gap:12px}.feature-card,.faq details,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.ability-grid{display:grid}.hero{display:grid;grid-template-columns:1fr 320px}.hero-visual{min-height:260px;border-radius:20px;background:radial-gradient(circle,#6d28d9,transparent 60%)}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible,summary:focus-visible{outline:2px solid var(--accent)}@media (min-width: 800px){main{grid-template-columns:repeat(2,minmax(0,1fr))}.hero,.ability-grid,.faq{grid-column:1/-1}}",
+          fileName: "src/karo-demo-site/styles.css",
+          content:
+          ":root{--card:rgba(17,17,26,.86);--accent:#7c3aed}body{background:radial-gradient(circle at top,#211334,#07070b)}.site-nav{display:flex;gap:12px}.feature-card,.faq details,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.ability-grid{display:grid}.hero{display:grid;grid-template-columns:1fr 320px}h1{max-width:12ch;font-size:clamp(2.75rem,6vw,4.9rem);line-height:.96;text-wrap:balance}.hero-visual{min-height:260px;border-radius:20px;background:radial-gradient(circle,#6d28d9,transparent 60%)}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible,summary:focus-visible{outline:2px solid var(--accent)}@media (min-width: 800px){main{grid-template-columns:repeat(2,minmax(0,1fr))}.hero,.ability-grid,.faq{grid-column:1/-1}}",
       },
       { fileName: "src/karo-demo-site/script.js", content: "document.querySelectorAll('details').forEach((detail)=>detail.addEventListener('toggle',()=>{detail.dataset.state=detail.open?'open':'closed'}));" },
       { fileName: "src/karo-demo-site/README.md", content: "Apply Changes first, then open index.html in preview." },
@@ -347,6 +351,38 @@ describe("Agent Core v1", () => {
     expect(repairs.map((repair) => repair.fileName)).toContain("src/karo-demo-site/styles.css");
     expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain("--jjk-cyan");
     expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain("--jjk-rose");
+  });
+
+  it("rejects oversized website hero typography and repairs it with balanced responsive type", () => {
+    const artifacts = [
+      {
+        fileName: "src/karo-demo-site/index.html",
+        content:
+          '<!doctype html><html><head><title>Minecraft JJK Mod</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><nav class="site-nav"><a href="#abilities">Abilities</a><a href="#characters">Characters</a><a href="#faq">FAQ</a></nav><main><section class="hero"><h1>Dark anime battles with readable cursed-technique mastery</h1><p>Preview cursed technique combat with focused ability cards, character energy roles, install guidance, and clear player guidance before installing the build.</p><a class="cta-button" href="#abilities">Explore abilities</a><figure class="hero-visual" role="img" aria-label="Cursed energy arena visual"><div class="domain-orb"></div><figcaption>Local domain visual for ability timing.</figcaption></figure></section><section id="abilities" class="ability-grid"><h2>Abilities</h2><article class="feature-card"><h3>Black Flash</h3><p>Timing windows turn combat into a readable high-skill loop.</p></article><article class="feature-card"><h3>Infinity</h3><p>Spatial defense creates pressure and counterplay for players.</p></article><article class="feature-card"><h3>Cursed tools</h3><p>Loadout choices connect weapons, roles, and energy routing.</p></article></section><section id="characters" class="energy"><h2>Characters and energy</h2><p>Energy flow, character roles, and progression hooks connect the landing page to the actual mod fantasy.</p></section><section class="features"><h2>Features</h2><p>Responsive cards, preview-safe content, and dark anime presentation make the page feel like a real product surface.</p></section><section id="faq" class="faq"><h2>FAQ</h2><details open><summary>Can I preview this safely?</summary><p>Apply Changes first, then open index.html from Preview to inspect the static site locally.</p></details></section></main></body></html>',
+      },
+      {
+        fileName: "src/karo-demo-site/styles.css",
+        content:
+          ":root{--card:rgba(17,17,26,.86);--accent:#8b5cf6;--cyan:#22d3ee;--rose:#fb7185}body{background:radial-gradient(circle at top,#211334,#07070b)}.site-nav{display:flex;gap:12px}.feature-card,.faq details,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.ability-grid{display:grid}.hero{display:grid;grid-template-columns:1fr 320px}h1{max-width:900px;font-size:clamp(48px,8vw,92px);line-height:.92}.hero-visual{min-height:260px;border-radius:20px;background:radial-gradient(circle,var(--cyan),transparent 60%),linear-gradient(135deg,var(--accent),var(--rose))}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible,summary:focus-visible{outline:2px solid var(--accent)}@media (min-width: 800px){main{grid-template-columns:repeat(2,minmax(0,1fr))}.hero,.ability-grid,.faq{grid-column:1/-1}}@media (max-width:680px){h1{font-size:clamp(2.5rem,16vw,4rem)}}",
+      },
+      { fileName: "src/karo-demo-site/script.js", content: "document.querySelectorAll('details').forEach((detail)=>detail.addEventListener('toggle',()=>{detail.dataset.state=detail.open?'open':'closed'}));" },
+      { fileName: "src/karo-demo-site/README.md", content: "Apply Changes first, then open index.html in preview." },
+    ];
+    const validation = validateStagedArtifactsDeterministically({
+      prompt: "Create a landing page website with hero, abilities, characters, energy, features, FAQ, responsive cards.",
+      artifacts,
+    });
+    const repairs = repairStaticWebsiteArtifactsTargeted({
+      artifacts,
+      issues: validation.issues,
+    });
+
+    expect(validation.status).toBe("needs_model_review");
+    expect(validation.issues.join("\n")).toContain("readable hero typography");
+    expect(repairs.map((repair) => repair.fileName)).toContain("src/karo-demo-site/styles.css");
+    const repairedCss = repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content ?? "";
+    expect(repairedCss).toContain("text-wrap: balance");
+    expect(repairedCss).toContain("font-size: clamp(2.75rem, 6vw, 4.9rem)");
   });
 
   it("keeps external network dependencies out of deterministic website approval", () => {

@@ -12,6 +12,7 @@ import type { ChatMessage } from "../src/orchestration/modelClient.js";
 import type { ArtifactMetadata, TaskStateSnapshot, TraceEvent } from "../src/orchestration/types.js";
 import type { DesktopShell, TaskContextPackage } from "../src/shell/types.js";
 import type { ApiKeyMetadata } from "../src/ui/desktopApiKeySink.js";
+import { chromium, type Browser, type Page } from "playwright";
 
 type ProbeStatus = "passed" | "failed";
 
@@ -68,6 +69,21 @@ interface RuntimeScenario {
   readonly notes?: readonly string[];
 }
 
+interface WebsiteRenderMetrics {
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly overflow: number;
+  readonly sectionCount: number;
+  readonly wordCount: number;
+  readonly ctaVisible: boolean;
+  readonly heroVisible: boolean;
+  readonly bodyHeight: number;
+  readonly bodyBackground: string;
+  readonly cardLikeCount: number;
+  readonly screenshotPath: string;
+  readonly screenshotBytes: number;
+}
+
 interface TauriRuntimeReport {
   readonly timestamp: string;
   readonly status: ProbeStatus;
@@ -103,6 +119,7 @@ const appRoot = resolve(__dirname, "..");
 const repoRoot = resolve(appRoot, "..", "..");
 const srcTauriRoot = resolve(appRoot, "src-tauri");
 const reportsDir = resolve(appRoot, "e2e-artifacts", "reports");
+const screenshotsDir = resolve(appRoot, "e2e-artifacts", "screenshots");
 const devServerUrl = "http://127.0.0.1:1420";
 
 const metadata: ApiKeyMetadata = {
@@ -381,6 +398,8 @@ async function runWebsiteCreationScenario(): Promise<RuntimeScenario> {
   );
   const indexHtml = artifactContent.get("src/karo-demo-site/index.html") ?? "";
   const stylesCss = artifactContent.get("src/karo-demo-site/styles.css") ?? "";
+  const scriptJs = artifactContent.get("src/karo-demo-site/script.js") ?? "";
+  const renderProof = await renderGeneratedWebsiteProof({ indexHtml, stylesCss, scriptJs });
   const traceAgents = result.traceAgentIds;
   const assertions: Assertion[] = [
     bool("agent-route-selected", state?.decision?.executionMode === "agent", state?.decision?.executionMode),
@@ -414,6 +433,7 @@ async function runWebsiteCreationScenario(): Promise<RuntimeScenario> {
         /:\s*root|--[a-z0-9-]+\s*:|gap\s*:|padding\s*:|minmax\(|clamp\(/i.test(stylesCss),
       stylesCss.slice(0, 600),
     ),
+    ...renderProof.assertions,
     bool("website-run-completed", state?.status === "completed", state?.status),
   ];
   return scenarioResult("one_prompt_website_creation", WEBSITE_PROMPT, assertions, {
@@ -426,9 +446,183 @@ async function runWebsiteCreationScenario(): Promise<RuntimeScenario> {
       `status=${state?.status ?? "unknown"}`,
       `artifacts=${artifactNames.join(", ") || "none"}`,
       `trace=${traceAgents.join(", ") || "none"}`,
+      ...renderProof.notes,
       "previewCommand=detected via package scripts in renderer UI; task itself does not execute preview automatically",
     ],
   });
+}
+
+async function renderGeneratedWebsiteProof(args: {
+  readonly indexHtml: string;
+  readonly stylesCss: string;
+  readonly scriptJs: string;
+}): Promise<{ readonly assertions: readonly Assertion[]; readonly notes: readonly string[] }> {
+  if (args.indexHtml.trim().length === 0 || args.stylesCss.trim().length === 0) {
+    return {
+      assertions: [bool("website-render-runtime-inputs-present", false, "index.html or styles.css artifact is empty")],
+      notes: [],
+    };
+  }
+
+  await mkdir(screenshotsDir, { recursive: true });
+  const html = composeGeneratedWebsiteHtml(args.indexHtml, args.stylesCss, args.scriptJs);
+  const externalRequests: string[] = [];
+  const pageErrors: string[] = [];
+  let browser: Browser | null = null;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const desktop = await renderGeneratedWebsiteViewport({
+      browser,
+      html,
+      viewport: { width: 1280, height: 900 },
+      screenshotName: "generated-website-runtime-desktop.png",
+      externalRequests,
+      pageErrors,
+    });
+    const mobile = await renderGeneratedWebsiteViewport({
+      browser,
+      html,
+      viewport: { width: 390, height: 760 },
+      screenshotName: "generated-website-runtime-mobile.png",
+      externalRequests,
+      pageErrors,
+    });
+
+    return {
+      assertions: [
+        bool(
+          "website-render-desktop-visible-complete-page",
+          desktop.heroVisible && desktop.ctaVisible && desktop.sectionCount >= 5 && desktop.bodyHeight > 600,
+          JSON.stringify(desktop),
+        ),
+        bool("website-render-copy-density", desktop.wordCount >= 45, JSON.stringify(desktop)),
+        bool(
+          "website-render-visual-density",
+          desktop.cardLikeCount >= 3 && /gradient|rgba|rgb/i.test(desktop.bodyBackground),
+          JSON.stringify(desktop),
+        ),
+        bool(
+          "website-render-mobile-no-horizontal-overflow",
+          mobile.overflow <= 2 && mobile.ctaVisible && mobile.sectionCount >= 5,
+          JSON.stringify(mobile),
+        ),
+        bool("website-render-no-external-network", externalRequests.length === 0, externalRequests.join(", ")),
+        bool("website-render-no-page-errors", pageErrors.length === 0, pageErrors.join("; ")),
+        bool(
+          "website-render-screenshots-written",
+          desktop.screenshotBytes > 10_000 && mobile.screenshotBytes > 8_000,
+          `desktop=${desktop.screenshotBytes}; mobile=${mobile.screenshotBytes}`,
+        ),
+      ],
+      notes: [
+        `renderDesktopScreenshot=${desktop.screenshotPath}`,
+        `renderMobileScreenshot=${mobile.screenshotPath}`,
+        `renderDesktopMetrics=${JSON.stringify({
+          sections: desktop.sectionCount,
+          words: desktop.wordCount,
+          overflow: desktop.overflow,
+          cardLike: desktop.cardLikeCount,
+        })}`,
+        `renderMobileMetrics=${JSON.stringify({
+          sections: mobile.sectionCount,
+          words: mobile.wordCount,
+          overflow: mobile.overflow,
+          cardLike: mobile.cardLikeCount,
+        })}`,
+      ],
+    };
+  } catch (error) {
+    return {
+      assertions: [bool("website-render-runtime-available", false, error instanceof Error ? error.message : String(error))],
+      notes: [],
+    };
+  } finally {
+    await browser?.close().catch(() => undefined);
+  }
+}
+
+async function renderGeneratedWebsiteViewport(args: {
+  readonly browser: Browser;
+  readonly html: string;
+  readonly viewport: { readonly width: number; readonly height: number };
+  readonly screenshotName: string;
+  readonly externalRequests: string[];
+  readonly pageErrors: string[];
+}): Promise<WebsiteRenderMetrics> {
+  const page = await args.browser.newPage({ viewport: args.viewport });
+  await wireRenderProofPage(page, args.externalRequests, args.pageErrors);
+  await page.setContent(args.html, { waitUntil: "load", timeout: 10_000 });
+  await page.waitForTimeout(120);
+  const screenshotPath = resolve(screenshotsDir, args.screenshotName);
+  const screenshot = await page.screenshot({ path: screenshotPath, fullPage: true });
+  const metrics = await page.evaluate(String.raw`(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const visible = (element) => {
+      if (element === null) return false;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 1 && rect.height > 1 && style.visibility !== "hidden" && style.display !== "none";
+    };
+    const sections = Array.from(document.querySelectorAll("main section, section")).filter(visible);
+    const cardLikeCount = sections.filter((section) => {
+      const style = getComputedStyle(section);
+      return style.boxShadow !== "none" || style.borderStyle !== "none" || style.backgroundColor !== "rgba(0, 0, 0, 0)";
+    }).length;
+    const text = body.innerText.replace(/\s+/g, " ").trim();
+    const words = text.match(/[\p{L}\p{N}][\p{L}\p{N}'-]{2,}/gu) ?? [];
+    const bodyStyle = getComputedStyle(body);
+    return {
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      overflow: Math.max(root.scrollWidth - root.clientWidth, body.scrollWidth - body.clientWidth),
+      sectionCount: sections.length,
+      wordCount: words.length,
+      ctaVisible: visible(document.querySelector(".cta-button, a[href], button")),
+      heroVisible: visible(document.querySelector(".hero, h1")),
+      bodyHeight: Math.max(body.scrollHeight, root.scrollHeight),
+      bodyBackground: bodyStyle.backgroundImage + " " + bodyStyle.backgroundColor,
+      cardLikeCount,
+    };
+  })()`);
+  await page.close();
+  return {
+    ...metrics,
+    screenshotPath,
+    screenshotBytes: screenshot.length,
+  };
+}
+
+async function wireRenderProofPage(page: Page, externalRequests: string[], pageErrors: string[]): Promise<void> {
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") pageErrors.push(message.text());
+  });
+  await page.route("**/*", async (route) => {
+    const url = route.request().url();
+    if (/^https?:\/\//i.test(url)) {
+      externalRequests.push(url);
+      await route.abort().catch(() => undefined);
+      return;
+    }
+    await route.continue().catch(() => undefined);
+  });
+}
+
+function composeGeneratedWebsiteHtml(indexHtml: string, stylesCss: string, scriptJs: string): string {
+  const styleTag = `<style data-karo-runtime-proof>\n${stylesCss.replace(/<\/style/giu, "<\\/style")}\n</style>`;
+  const scriptTag =
+    scriptJs.trim().length > 0
+      ? `<script data-karo-runtime-proof>\n${scriptJs.replace(/<\/script/giu, "<\\/script")}\n</script>`
+      : "";
+  let html = indexHtml
+    .replace(/<link\b[^>]*href=["'][^"']*styles\.css[^"']*["'][^>]*>/giu, "")
+    .replace(/<script\b[^>]*src=["'][^"']*script\.js[^"']*["'][^>]*>\s*<\/script>/giu, "");
+  html = /<\/head>/iu.test(html) ? html.replace(/<\/head>/iu, `${styleTag}\n</head>`) : `${styleTag}\n${html}`;
+  if (scriptTag.length === 0) return html;
+  return /<\/body>/iu.test(html) ? html.replace(/<\/body>/iu, `${scriptTag}\n</body>`) : `${html}\n${scriptTag}`;
 }
 
 async function runWebsiteCoderTimeoutFallbackScenario(): Promise<RuntimeScenario> {

@@ -1065,7 +1065,10 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
     bag.assertions.push(
       {
         name: "preview-invalid-command-shows-allowlist-gate",
-        passed: /Not in MVP allowlist/i.test(invalidPreviewText ?? "") && /Exact command preflight/i.test(invalidPreviewText ?? ""),
+        passed:
+          /Preview status:\s*dev-command-gated/i.test(invalidPreviewText ?? "") &&
+          /Not in MVP allowlist/i.test(invalidPreviewText ?? "") &&
+          /Exact command preflight/i.test(invalidPreviewText ?? ""),
         details: invalidPreviewText ?? "",
       },
       {

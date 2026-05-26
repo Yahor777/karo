@@ -6614,15 +6614,13 @@ export function mountWorkspaceShell(
       state.activeTaskId !== null &&
       isStaticPreviewApplied(state.activeTaskId, staticPreviewArtifact.fileName);
     const previewStatus =
-      staticPreviewArtifact !== undefined
-        ? staticPreviewApplied
-          ? "static-file-ready"
-          : "staged-only/apply-required"
-        : detectedUrl !== null
-          ? "running"
-          : suggested.trim().length > 0
-            ? "dev-command-available"
-            : "unavailable";
+      describePreviewStatus({
+        hasStaticArtifact: staticPreviewArtifact !== undefined,
+        staticPreviewApplied,
+        detectedUrl,
+        command: commandInput.value,
+        commandPreflight: previewCommandPreflight,
+      });
     const statusCard = doc.createElement("div");
     statusCard.className = "kw-preview-status";
     statusCard.dataset["testid"] = "preview-status";
@@ -6773,6 +6771,15 @@ export function mountWorkspaceShell(
     openTerminal.textContent = "Terminal status";
     openTerminal.addEventListener("click", () => setRightTab("terminal"));
     function updatePreviewCommandControls(): void {
+      const nextStatus = describePreviewStatus({
+        hasStaticArtifact: staticPreviewArtifact !== undefined,
+        staticPreviewApplied,
+        detectedUrl,
+        command: commandInput.value,
+        commandPreflight: previewCommandPreflight,
+      });
+      statusCard.dataset["state"] = nextStatus;
+      statusCard.textContent = `Preview status: ${nextStatus}`;
       start.disabled = !previewCommandPreflight.canStart || state.terminalStatus === "running";
       start.title = previewCommandPreflight.blockReason ?? "Run this command through the safe terminal backend.";
       restart.disabled = !previewCommandPreflight.canStart;
@@ -6877,6 +6884,25 @@ export function mountWorkspaceShell(
 
     list.append(title, subtitle, items);
     return list;
+  }
+
+  function describePreviewStatus(args: {
+    readonly hasStaticArtifact: boolean;
+    readonly staticPreviewApplied: boolean;
+    readonly detectedUrl: string | null;
+    readonly command: string;
+    readonly commandPreflight: TerminalCommandPreflight;
+  }): string {
+    if (args.hasStaticArtifact) {
+      return args.staticPreviewApplied ? "static-file-ready" : "staged-only/apply-required";
+    }
+    if (args.detectedUrl !== null) {
+      return "running";
+    }
+    if (args.command.trim().length === 0) {
+      return "unavailable";
+    }
+    return args.commandPreflight.canStart ? "dev-command-available" : "dev-command-gated";
   }
 
   function describePreviewCommandPreflight(

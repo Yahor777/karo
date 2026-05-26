@@ -2509,6 +2509,7 @@ describe("workbench ??? right panel", () => {
 
     root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!.click();
     const text = root.querySelector(".kw-right-content")?.textContent ?? "";
+    expect(text).toContain("Preview status: dev-command-gated");
     expect(text).toContain("Project root required");
     expect(text).not.toContain("Not in MVP allowlist");
     expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-run-button"]')?.disabled).toBe(true);
@@ -2837,6 +2838,7 @@ describe("workbench ??? right panel", () => {
     input.value = "pnpm build";
     input.dispatchEvent(new Event("input", { bubbles: true }));
 
+    expect(root.querySelector('[data-testid="preview-status"]')?.textContent).toContain("Preview status: dev-command-gated");
     expect(root.querySelector('[data-testid="preview-preflight"]')?.textContent).toContain("Not in MVP allowlist");
     const run = root.querySelector<HTMLButtonElement>('[data-testid="preview-run-button"]')!;
     expect(run.disabled).toBe(true);

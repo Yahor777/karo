@@ -371,6 +371,32 @@ describe("workbench ??? layout", () => {
     expect(root.querySelector(".kw-right-content")?.textContent).toContain("Suggested command");
   });
 
+  it("Usage empty state explains run evidence and only prepares explicit next actions", () => {
+    mountWorkspaceShell(root, buildOptions());
+    root.querySelector<HTMLButtonElement>('[data-testid="right-tab-usage"]')!.click();
+
+    const readiness = root.querySelector<HTMLElement>('[data-testid="usage-readiness"]');
+    expect(readiness).not.toBeNull();
+    expect(readiness?.textContent).toContain("No usage recorded yet");
+    expect(readiness?.textContent).toContain("Model calls");
+    expect(readiness?.textContent).toContain("0");
+    expect(readiness?.textContent).toContain("Apply");
+    expect(readiness?.textContent).toContain("Unavailable");
+    expect(readiness?.textContent).not.toContain("Open Composer");
+
+    root.querySelector<HTMLButtonElement>('[data-testid="usage-plan-next"]')!.click();
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-plan"]')?.getAttribute("aria-current")).toBe(
+      "true",
+    );
+    expect(root.querySelector<HTMLTextAreaElement>('[data-testid="composer-textarea"]')?.value).toContain(
+      "Plan the next focused Karo AI IDE improvement",
+    );
+    expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
+
+    root.querySelector<HTMLButtonElement>('[data-testid="usage-choose-project"]')!.click();
+    expect(root.querySelector<HTMLElement>(".kw-center")?.dataset["routeId"]).toBe("project");
+  });
+
   it("refreshes right inspector tabs after persisted project hydration", async () => {
     const built = buildShell();
     built.reads.set("recentProject", {

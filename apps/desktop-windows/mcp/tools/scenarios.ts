@@ -1070,9 +1070,15 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
       if (tab === "usage") {
         bag.assertions.push({
           name: "usage-tab-readable",
-          passed: /Usage|Context|Model|tokens/i.test(tabText ?? ""),
+          passed:
+            /Run evidence|Context|Model calls|tokens/i.test(tabText ?? "") &&
+            /No usage recorded yet|Model calls\s*0/i.test(tabText ?? "") &&
+            /Apply\s*Unavailable/i.test(tabText ?? ""),
           details: tabText ?? "",
         });
+        bag.assertions.push(
+          await assertVisible(ctx, { testId: TEST_IDS.usageReadiness, name: "usage-readiness-empty-state-visible" }),
+        );
       }
     }
     const filesTab = ctx.page.locator(byTestId(TEST_IDS.rightTabFiles));

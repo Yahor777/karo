@@ -8698,13 +8698,6 @@ export function mountWorkspaceShell(
   function buildUsageView(): HTMLElement {
     const wrap = doc.createElement("div");
     wrap.className = "kw-usage-view";
-    wrap.style.padding = "16px";
-    wrap.style.display = "flex";
-    wrap.style.flexDirection = "column";
-    wrap.style.gap = "20px";
-    wrap.style.color = "var(--vscode-foreground, #cccccc)";
-    wrap.style.overflowY = "auto";
-    wrap.style.height = "100%";
 
     const taskId = state.activeTaskId;
     let breakdown: any = null;
@@ -8735,22 +8728,7 @@ export function mountWorkspaceShell(
     }
 
     if (!breakdown) {
-      const noData = doc.createElement("div");
-      noData.style.textAlign = "center";
-      noData.style.padding = "40px 20px";
-      noData.style.color = "var(--vscode-descriptionForeground, #8c8c8c)";
-
-      const title = doc.createElement("h3");
-      title.textContent = "No usage yet";
-      title.style.margin = "0 0 8px 0";
-
-      const desc = doc.createElement("p");
-      desc.textContent = "Start a project analysis, plan, or agent run to see token usage, selected files, and context pressure.";
-      desc.style.fontSize = "12px";
-      desc.style.margin = "0";
-
-      noData.append(title, desc);
-      wrap.append(noData);
+      wrap.append(buildUsageReadinessState());
       return wrap;
     }
 
@@ -9118,6 +9096,159 @@ export function mountWorkspaceShell(
     }
 
     return wrap;
+  }
+
+  function buildUsageReadinessState(): HTMLElement {
+    const section = doc.createElement("section");
+    section.className = "kw-usage-readiness";
+    section.dataset["testid"] = "usage-readiness";
+
+    const head = doc.createElement("div");
+    head.className = "kw-usage-readiness-head";
+    const eyebrow = doc.createElement("p");
+    eyebrow.className = "kw-section-eyebrow";
+    eyebrow.textContent = "Run evidence";
+    const title = doc.createElement("h3");
+    title.textContent = "No usage recorded yet";
+    const body = doc.createElement("p");
+    body.textContent =
+      "Karo has not spent model calls in this thread. This panel will become the receipt for context, routing, tokens, commands, artifacts, and recovery.";
+    head.append(eyebrow, title, body);
+
+    const modelId = state.metadata.modelId ?? "";
+    const activePreset = getActivePromptPreset(modelId);
+    const contextWindow = getConfiguredContextWindowTokens(
+      state.metadata.provider,
+      modelId,
+      activePreset.contextBudgetMultiplier * 128_000,
+    );
+    const projectPath = state.project?.path ?? "";
+    const projectReady = projectPath.trim().length > 0;
+    const terminalAvailable = hasTerminalBackend();
+    const contextMeta = state.lastContextBuildCalled
+      ? `${String(state.lastContextSelectedFiles.length)} selected / ${String(state.lastContextFileCount)} scanned`
+      : "Collected on demand";
+    const contextWindowMeta =
+      contextWindow.warning === undefined ? `Source: ${contextWindow.source}` : "Unknown max; custom values need care.";
+
+    const facts = doc.createElement("div");
+    facts.className = "kw-usage-readiness-grid";
+    const factItems: ReadonlyArray<{
+      readonly label: string;
+      readonly value: string;
+      readonly meta: string;
+      readonly tone: "safe" | "warn" | "blocked" | "muted";
+    }> = [
+      {
+        label: "Model calls",
+        value: "0",
+        meta: "No provider call has started for this thread.",
+        tone: "safe",
+      },
+      {
+        label: "Context",
+        value: contextMeta,
+        meta: state.lastContextError ?? "Files stay explicit until requested.",
+        tone: state.lastContextError === null ? "muted" : "warn",
+      },
+      {
+        label: "Window",
+        value: `${formatContextWindowLabel(contextWindow.tokens)} tokens`,
+        meta: contextWindowMeta,
+        tone: contextWindow.warning === undefined ? "safe" : "warn",
+      },
+      {
+        label: "Commands",
+        value: terminalAvailable ? (projectReady ? "Safe allowlist" : "Project required") : "Disabled",
+        meta: terminalAvailable
+          ? projectReady
+            ? "Exact commands still pass preflight."
+            : "No commands until project root."
+          : "Terminal backend is not connected.",
+        tone: terminalAvailable && projectReady ? "safe" : "blocked",
+      },
+      {
+        label: "Apply",
+        value: "Unavailable",
+        meta: "Only after Agent stages artifacts.",
+        tone: "muted",
+      },
+    ];
+
+    for (const item of factItems) {
+      const fact = doc.createElement("div");
+      fact.className = "kw-usage-readiness-fact";
+      fact.dataset["tone"] = item.tone;
+      const label = doc.createElement("span");
+      label.textContent = item.label;
+      const value = doc.createElement("strong");
+      value.textContent = item.value;
+      const meta = doc.createElement("small");
+      meta.textContent = item.meta;
+      fact.append(label, value, meta);
+      facts.append(fact);
+    }
+
+    const lanes = doc.createElement("div");
+    lanes.className = "kw-usage-readiness-lanes";
+    const laneItems: ReadonlyArray<readonly [string, string, string]> = [
+      ["Chat", "Read-only", "Answers questions and can use selected context, but never writes files."],
+      ["Plan", "Read-only", "Produces a scoped plan. No artifacts and no Apply Changes button."],
+      ["Agent", "Staged", "Creates reviewable artifacts. Disk writes still require Apply Changes."],
+    ];
+    for (const [label, badge, copy] of laneItems) {
+      const lane = doc.createElement("article");
+      lane.className = "kw-usage-readiness-lane";
+      const top = doc.createElement("div");
+      const name = doc.createElement("strong");
+      name.textContent = label;
+      const chip = doc.createElement("span");
+      chip.textContent = badge;
+      top.append(name, chip);
+      const text = doc.createElement("p");
+      text.textContent = copy;
+      lane.append(top, text);
+      lanes.append(lane);
+    }
+
+    const actions = doc.createElement("div");
+    actions.className = "kw-usage-readiness-actions";
+    const project = doc.createElement("button");
+    project.type = "button";
+    project.className = "kw-button kw-button-secondary";
+    project.dataset["testid"] = "usage-choose-project";
+    project.textContent = projectReady ? "View Project" : "Choose Project";
+    project.addEventListener("click", () => navigate("project"));
+    actions.append(project);
+
+    const plan = doc.createElement("button");
+    plan.type = "button";
+    plan.className = "kw-button kw-button-secondary";
+    plan.dataset["testid"] = "usage-plan-next";
+    plan.textContent = "Plan safely";
+    plan.addEventListener("click", () =>
+      prefillComposerPrompt(
+        "plan",
+        "Plan the next focused Karo AI IDE improvement. Keep it read-only and include risks, validation, recovery, and Apply gate impact.",
+      ),
+    );
+    actions.append(plan);
+
+    const agent = doc.createElement("button");
+    agent.type = "button";
+    agent.className = "kw-button kw-button-secondary";
+    agent.dataset["testid"] = "usage-stage-agent";
+    agent.textContent = "Stage with Agent";
+    agent.addEventListener("click", () =>
+      prefillComposerPrompt(
+        "agent",
+        "Implement one focused Karo AI IDE improvement using staged artifacts only. Do not apply changes automatically; keep Preview, Terminal, Recovery, and safety states honest.",
+      ),
+    );
+    actions.append(agent);
+
+    section.append(head, facts, actions, lanes);
+    return section;
   }
 
   function pushLog(level: "info" | "warn" | "error", text: string): void {

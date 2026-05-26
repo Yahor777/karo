@@ -8761,15 +8761,15 @@ export function mountWorkspaceShell(
       return wrap;
     }
 
-    const header = doc.createElement("div");
-    header.style.display = "flex";
-    header.style.alignItems = "center";
-    header.style.gap = "20px";
-    header.style.background = "rgba(255, 255, 255, 0.02)";
-    header.style.border = "1px solid rgba(255, 255, 255, 0.05)";
-    header.style.padding = "16px";
-    header.style.borderRadius = "8px";
-
+    const decision = taskState?.decision;
+    const estimate = taskState?.agentCoreEstimate;
+    const diagnostics = taskState?.providerDiagnostics ?? [];
+    const modelCalls = diagnostics.length;
+    const elapsedMs = diagnostics.reduce((sum: number, diagnostic: any) => sum + (diagnostic.elapsedMs ?? 0), 0);
+    const artifactsCount = options.transport !== undefined && taskId !== null
+      ? options.transport.getArtifacts(taskId).length
+      : 0;
+    const fallbackUsed = diagnostics.some((diagnostic: any) => /fallback/i.test(String(diagnostic.stageName ?? "")));
     const usagePercent = Math.round(breakdown.usageRatio * 100);
 
     let ringColor = "#10b981";
@@ -8777,8 +8777,13 @@ export function mountWorkspaceShell(
     else if (usagePercent > 75 && usagePercent <= 90) ringColor = "#f97316";
     else if (usagePercent > 90) ringColor = "#ef4444";
 
+    const header = doc.createElement("section");
+    header.className = "kw-usage-evidence-card";
+    header.dataset["testid"] = "usage-evidence-summary";
+
     const svgNS = "http://www.w3.org/2000/svg";
     const svg = doc.createElementNS(svgNS, "svg");
+    svg.classList.add("kw-usage-evidence-ring");
     svg.setAttribute("width", "70");
     svg.setAttribute("height", "70");
     svg.setAttribute("viewBox", "0 0 36 36");
@@ -8818,30 +8823,68 @@ export function mountWorkspaceShell(
     svg.append(bgCircle, valCircle, textPercent);
 
     const summaryInfo = doc.createElement("div");
-    summaryInfo.style.display = "flex";
-    summaryInfo.style.flexDirection = "column";
-    summaryInfo.style.gap = "4px";
+    summaryInfo.className = "kw-usage-evidence-main";
 
     const modelName = doc.createElement("div");
-    modelName.style.fontSize = "13px";
-    modelName.style.fontWeight = "bold";
+    modelName.className = "kw-usage-evidence-model";
     modelName.textContent = formatFriendlyModelName(breakdown.modelId);
     modelName.title = breakdown.modelId;
 
     const usedTotal = doc.createElement("div");
-    usedTotal.style.fontSize = "12px";
-    usedTotal.style.color = "var(--vscode-descriptionForeground, #8c8c8c)";
+    usedTotal.className = "kw-usage-evidence-muted";
     usedTotal.textContent = `Used: ${breakdown.usedTokens.toLocaleString()} / ${breakdown.contextWindowTokens.toLocaleString()}`;
 
     const costDiv = doc.createElement("div");
-    costDiv.style.fontSize = "12px";
-    costDiv.style.color = "#10b981";
-    costDiv.style.fontWeight = "600";
+    costDiv.className = "kw-usage-evidence-cost";
     const cost = breakdown.estimatedCostUsd ?? 0;
     costDiv.textContent = `Est. Cost: $${cost.toFixed(5)} ${breakdown.isEstimated ? "(est.)" : ""}`;
 
     summaryInfo.append(modelName, usedTotal, costDiv);
-    header.append(svg, summaryInfo);
+    const facts = doc.createElement("div");
+    facts.className = "kw-usage-evidence-grid";
+    const routeLabel = formatTaskIntentLabel(estimate?.mode ?? decision?.executionMode ?? "unknown");
+    const contextMeta = `${String(usagePercent)}% window`;
+    const factItems = [
+      {
+        label: "Route",
+        value: routeLabel,
+        meta: estimate?.riskLevel ?? decision?.riskLevel ?? "risk unknown",
+        tone: estimate?.riskLevel === "high" ? "warn" : "safe",
+      },
+      {
+        label: "Model calls",
+        value: String(modelCalls),
+        meta: elapsedMs > 0 ? `${(elapsedMs / 1000).toFixed(1)}s model time` : "No provider calls recorded",
+        tone: modelCalls > 0 ? "safe" : "muted",
+      },
+      {
+        label: "Context",
+        value: `${formatContextWindowLabel(breakdown.usedTokens)} / ${formatContextWindowLabel(breakdown.contextWindowTokens)}`,
+        meta: contextMeta,
+        tone: usagePercent > 90 ? "blocked" : usagePercent > 75 ? "warn" : "safe",
+      },
+      {
+        label: "Artifacts",
+        value: artifactsCount > 0 ? `${String(artifactsCount)} staged` : "None",
+        meta: artifactsCount > 0 ? "Review before Apply" : "No staged output",
+        tone: artifactsCount > 0 ? "safe" : "muted",
+      },
+    ];
+    for (const item of factItems) {
+      const fact = doc.createElement("div");
+      fact.className = "kw-usage-evidence-fact";
+      fact.dataset["tone"] = item.tone;
+      const label = doc.createElement("span");
+      label.textContent = item.label;
+      const value = doc.createElement("strong");
+      value.textContent = item.value;
+      const meta = doc.createElement("small");
+      meta.textContent = item.meta;
+      fact.append(label, value, meta);
+      facts.append(fact);
+    }
+
+    header.append(svg, summaryInfo, facts);
     wrap.append(header);
 
     if (breakdown.usageRatio > 0.75) {
@@ -8994,7 +9037,7 @@ export function mountWorkspaceShell(
       wrap.append(agentSection);
     }
 
-    if (taskState?.decision !== undefined || taskState?.agentCoreEstimate !== undefined || (taskState?.providerDiagnostics?.length ?? 0) > 0) {
+    if (decision !== undefined || estimate !== undefined || diagnostics.length > 0) {
       const modeSection = doc.createElement("div");
       const modeTitle = doc.createElement("h4");
       modeTitle.textContent = "Mode and model calls";
@@ -9004,15 +9047,6 @@ export function mountWorkspaceShell(
       modeTitle.style.color = "var(--vscode-descriptionForeground, #8c8c8c)";
       modeSection.append(modeTitle);
 
-      const decision = taskState?.decision;
-      const estimate = taskState?.agentCoreEstimate;
-      const diagnostics = taskState?.providerDiagnostics ?? [];
-      const modelCalls = diagnostics.length;
-      const elapsedMs = diagnostics.reduce((sum: number, diagnostic: any) => sum + (diagnostic.elapsedMs ?? 0), 0);
-      const artifactsCount = options.transport !== undefined && taskId !== null
-        ? options.transport.getArtifacts(taskId).length
-        : 0;
-      const fallbackUsed = diagnostics.some((diagnostic: any) => /fallback/i.test(String(diagnostic.stageName ?? "")));
       const table = doc.createElement("table");
       table.style.width = "100%";
       table.style.borderCollapse = "collapse";

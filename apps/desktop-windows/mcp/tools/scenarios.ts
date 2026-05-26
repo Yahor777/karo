@@ -694,6 +694,10 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
     await waitShort(ctx);
     const usageText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
     bag.assertions.push(
+      await assertVisible(ctx, {
+        testId: TEST_IDS.usageEvidenceSummary,
+        name: "quick-edit-usage-evidence-summary-visible",
+      }),
       {
         name: "quick-edit-usage-shows-zero-model-call-contract",
         passed: /Expected model calls/i.test(usageText ?? "") && /0 max 0/i.test(usageText ?? ""),
@@ -710,6 +714,7 @@ export async function runScenarioAgentRouteGuardrails(ctx: KaroAutomationContext
         details: usageText ?? "",
       },
     );
+    bag.screenshots.push((await karoScreenshot(ctx, { name: "product-usage-evidence" })).path);
     bag.screenshots.push((await karoScreenshot(ctx, { name: "agent-route-guardrails" })).path);
   });
 }

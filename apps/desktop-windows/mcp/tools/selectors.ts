@@ -43,6 +43,7 @@ export const TEST_IDS = {
   rightTabUsage: "right-tab-usage",
   rightTabTerminal: "right-tab-terminal",
   usageReadiness: "usage-readiness",
+  usageEvidenceSummary: "usage-evidence-summary",
   usageChooseProject: "usage-choose-project",
   usagePlanNext: "usage-plan-next",
   usageStageAgent: "usage-stage-agent",

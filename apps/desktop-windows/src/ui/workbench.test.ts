@@ -397,6 +397,123 @@ describe("workbench ??? layout", () => {
     expect(root.querySelector<HTMLElement>(".kw-center")?.dataset["routeId"]).toBe("project");
   });
 
+  it("renders post-run usage as an evidence summary before raw metrics", async () => {
+    const opts = buildOptions();
+    mountWorkspaceShell(root, opts);
+
+    opts.transport.emitTaskState({
+      id: "usage-evidence",
+      status: "completed",
+      currentAgentId: null,
+      reviewCycles: 0,
+      maxReviewCycles: 0,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:00:18.000Z",
+      originalPrompt: "Create a polished local website",
+      modelId: SAMPLE_METADATA.modelId!,
+      provider: SAMPLE_METADATA.provider,
+      participants: ["planner", "coder"],
+      isExplainOnly: false,
+      currentContextUsage: {
+        modelId: SAMPLE_METADATA.modelId!,
+        contextWindowTokens: 128_000,
+        usedTokens: 24_000,
+        usageRatio: 24_000 / 128_000,
+        systemPromptTokens: 1_200,
+        userPromptTokens: 560,
+        conversationTokens: 1_400,
+        projectContextTokens: 2_200,
+        selectedFilesTokens: 3_300,
+        toolResultTokens: 0,
+        outputTokens: 1_200,
+        reservedOutputTokens: 4_000,
+        estimatedCostUsd: 0.01234,
+        isEstimated: true,
+        updatedAt: "2026-05-17T12:00:18.000Z",
+      },
+      contextSummary: {
+        scannedFilesCount: 42,
+        selectedFilesCount: 1,
+        selectedFiles: [
+          { relativePath: "src/karo-demo-site/index.html", score: 1, reason: ["website"], truncated: false },
+        ],
+        warnings: [],
+      },
+      agentCoreEstimate: {
+        mode: "agent",
+        routeReason: "website generation",
+        routeReasonUser: "This needs staged artifacts and validation.",
+        routeReasonInternal: "test",
+        expectedModelCalls: 2,
+        maxExpectedModelCalls: 4,
+        baselineSingleModelCalls: 4,
+        avoidedFullPipelineModelCalls: 2,
+        expectedContextTokens: 5_500,
+        contextTokensEstimate: 5_500,
+        selectedFilesEstimate: 1,
+        contextProfile: "website_creation",
+        requiresProjectContext: true,
+        allowsCommands: false,
+        riskLevel: "medium",
+        allowsArtifacts: true,
+        timeoutRisk: "medium",
+        timeoutPolicy: "Bounded model calls.",
+        recoveryPolicy: "Preserve staged artifacts and retry failed stage.",
+        fallbackCountsAsSuccess: false,
+        stages: [],
+        warnings: [],
+      },
+      providerDiagnostics: [
+        {
+          id: "diag-usage-1",
+          agentId: "coder",
+          stageName: "Coder",
+          provider: SAMPLE_METADATA.provider,
+          modelId: SAMPLE_METADATA.modelId!,
+          inputTokenEstimate: 5_500,
+          selectedFilesCount: 1,
+          contextTokens: 5_500,
+          timeoutMs: 120_000,
+          elapsedMs: 18_500,
+          partialOutputReceived: false,
+          artifactsCreated: true,
+          createdAt: "2026-05-17T12:00:16.000Z",
+        },
+      ],
+    });
+    opts.transport.emitArtifact(
+      {
+        id: "art-usage-index",
+        taskId: "usage-evidence",
+        fileName: "src/karo-demo-site/index.html",
+        latestVersion: 1,
+        latestContentHash: "hash",
+        authoredByAgentId: "coder",
+        updatedAt: "2026-05-17T12:00:18.000Z",
+      },
+      "<main><section class=\"hero\">Karo</section></main>",
+    );
+    const stateObj = (root as any)._karoState || (window as any)._karoState;
+    if (stateObj) {
+      stateObj.activeTaskId = "usage-evidence";
+    }
+
+    root.querySelector<HTMLButtonElement>('[data-testid="right-tab-usage"]')!.click();
+    await flush();
+
+    const summary = root.querySelector<HTMLElement>('[data-testid="usage-evidence-summary"]');
+    expect(summary).not.toBeNull();
+    const summaryText = summary?.textContent ?? "";
+    expect(summaryText).toContain("Llama V3.1 8B Instruct");
+    expect(summaryText).toContain("Model calls");
+    expect(summaryText).toContain("18.5s model time");
+    expect(summaryText).toContain("Context");
+    expect(summaryText).toContain("Artifacts");
+    expect(summaryText).toContain("1 staged");
+    expect(root.querySelector('[data-testid="usage-readiness"]')).toBeNull();
+    expect(root.querySelector<HTMLElement>(".kw-right-content")?.textContent).toContain("Token Breakdown");
+  });
+
   it("refreshes right inspector tabs after persisted project hydration", async () => {
     const built = buildShell();
     built.reads.set("recentProject", {

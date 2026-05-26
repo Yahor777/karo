@@ -1801,11 +1801,77 @@ export function mountWorkspaceShell(
         notice.append(noteText, continueBtn);
         body.append(notice);
       }
+    } else if (shouldCompactUserRequest(message.text)) {
+      body.append(buildCompactUserRequest(doc, message.text));
     } else {
       body.textContent = message.text;
     }
     wrap.append(author, body);
     return wrap;
+  }
+
+  function shouldCompactUserRequest(text: string): boolean {
+    const trimmed = text.trim();
+    if (trimmed.length <= 260) return false;
+    if (extractExactFileRequestPath(trimmed) !== null) return true;
+    if (/<(?:!doctype|html|head|body|main|section|script|style)\b/i.test(trimmed)) return true;
+    return trimmed.length > 800;
+  }
+
+  function extractExactFileRequestPath(text: string): string | null {
+    const englishMatch = text.match(
+      /\b(?:create|write|modify|edit|replace)\s+file\s+["']?([^"'\s]+)["']?\s+with\s+text\b/i,
+    );
+    if (englishMatch?.[1] !== undefined) return englishMatch[1];
+    const russianMatch = text.match(/\bфайл\s+["']?([^"'\s]+)["']?\s+(?:с|со)\s+текст/iu);
+    return russianMatch?.[1] ?? null;
+  }
+
+  function buildCompactUserRequest(doc: Document, text: string): HTMLElement {
+    const targetPath = extractExactFileRequestPath(text);
+    const card = doc.createElement("section");
+    card.className = "kw-user-request-compact";
+    card.dataset["testid"] = "compact-user-request";
+
+    const head = doc.createElement("div");
+    head.className = "kw-user-request-head";
+    const title = doc.createElement("strong");
+    title.textContent = targetPath !== null ? "Exact file request" : "Long request";
+    const badge = doc.createElement("span");
+    badge.textContent = "preserved";
+    head.append(title, badge);
+
+    const summary = doc.createElement("p");
+    summary.className = "kw-user-request-summary";
+    summary.textContent =
+      targetPath !== null
+        ? `Exact file request for ${targetPath}. Full request preserved below.`
+        : "Long source-heavy request collapsed for readability. Full request preserved below.";
+
+    const facts = doc.createElement("div");
+    facts.className = "kw-user-request-facts";
+    const payload = doc.createElement("span");
+    payload.textContent = /<!(?:doctype)|<(?:html|body|main|section|script|style)\b/i.test(text)
+      ? "HTML/source payload"
+      : `${String(text.length)} characters`;
+    facts.append(payload);
+    if (targetPath !== null) {
+      const target = doc.createElement("span");
+      target.textContent = targetPath;
+      facts.append(target);
+    }
+
+    const details = doc.createElement("details");
+    details.className = "kw-user-request-details";
+    details.dataset["testid"] = "compact-user-full-request";
+    const detailsSummary = doc.createElement("summary");
+    detailsSummary.textContent = "Show full request";
+    const pre = doc.createElement("pre");
+    pre.textContent = text;
+    details.append(detailsSummary, pre);
+
+    card.append(head, summary, facts, details);
+    return card;
   }
 
   function isPlanResultText(text: string): boolean {

@@ -1367,6 +1367,33 @@ describe("workbench ??? chat workbench", () => {
     expect(root.querySelector("[data-testid='changes-apply-button']")).toBeNull();
   });
 
+  it("collapses long exact user file requests in the chat transcript", async () => {
+    const opts = buildOptions();
+    mountWorkspaceShell(root, opts);
+    root.querySelector<HTMLButtonElement>('[data-testid="composer-mode-chat"]')!.click();
+    await flush();
+    const prompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")!;
+    prompt.value =
+      'create file src/karo-demo-site/index.html with text <!doctype html><html><body><main><section class="hero">Minecraft JJK Mod</section><section class="abilities">Abilities with cursed energy cards and Gojo infinity polish</section><section class="characters">Characters and energy</section><section class="features">Feature grid</section><section class="faq">FAQ</section></main></body></html>';
+    prompt.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>(".kw-composer-start")!.click();
+    await flush();
+    await flush();
+
+    const compact = root.querySelector<HTMLElement>('[data-testid="compact-user-request"]');
+    const summary = compact?.querySelector(".kw-user-request-summary")?.textContent ?? "";
+    const fullRequest = compact?.querySelector<HTMLDetailsElement>('[data-testid="compact-user-full-request"]');
+
+    expect(compact).not.toBeNull();
+    expect(summary).toContain("Exact file request for src/karo-demo-site/index.html");
+    expect(summary).not.toContain("<!doctype html>");
+    expect(fullRequest?.hasAttribute("open")).toBe(false);
+    expect(fullRequest?.textContent).toContain("<!doctype html>");
+    expect(root.querySelector(".kw-chat-final")).toBeNull();
+    expect(opts.transport.createCalls).toHaveLength(0);
+    expect(opts.chatModelClient.calls).toHaveLength(0);
+  });
+
   it("Chat Mode project question uses read-only Context Engine payload", async () => {
     const built = buildShell();
     built.reads.set("recentProject", {

@@ -18,6 +18,8 @@ export const TEST_IDS = {
   chatMessageSafety: "chat-message-safety",
   chatMessagePlan: "chat-message-plan",
   chatMessageAnalysis: "chat-message-analysis",
+  compactUserRequest: "compact-user-request",
+  compactUserFullRequest: "compact-user-full-request",
   composer: "composer",
   composerTextarea: "composer-textarea",
   composerSend: "composer-send",

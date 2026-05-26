@@ -735,6 +735,12 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
     await ctx.page.locator(".kw-modal-confirm").click();
     await ctx.page.waitForSelector(byTestId(TEST_IDS.agentCard), { timeout: 10_000 });
     const threadText = await ctx.page.locator(byTestId(TEST_IDS.chatThread)).textContent().catch(() => "");
+    const compactUserRequest = ctx.page.locator(byTestId(TEST_IDS.compactUserRequest)).first();
+    const compactUserSummary = await compactUserRequest.locator(".kw-user-request-summary").textContent().catch(() => "");
+    const fullRequestOpen = await compactUserRequest
+      .locator(byTestId(TEST_IDS.compactUserFullRequest))
+      .evaluate((el) => el.hasAttribute("open"))
+      .catch(() => true);
     const quickEditResult = ctx.page.locator(byTestId(TEST_IDS.quickEditResult)).first();
     const quickEditListText = await quickEditResult.locator(".kw-final-list").textContent().catch(() => "");
     const rawRequestOpen = await quickEditResult
@@ -756,6 +762,16 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
         name: "website-activity-no-visible-thoughts",
         passed: !/\bthought\b/i.test(threadText ?? "") && (await ctx.page.locator(`${byTestId(TEST_IDS.agentActivityDetails)}[open]`).count()) === 0,
         details: "Activity details should stay collapsed and should not expose thought labels.",
+      },
+      await assertVisible(ctx, { testId: TEST_IDS.compactUserRequest, name: "website-user-request-compact-visible" }),
+      {
+        name: "website-user-request-summary-hides-source",
+        passed:
+          /Exact file request/i.test(compactUserSummary ?? "") &&
+          /src\/karo-demo-site\/index\.html/i.test(compactUserSummary ?? "") &&
+          !/<!doctype html>/i.test(compactUserSummary ?? "") &&
+          fullRequestOpen === false,
+        details: `summary=${compactUserSummary ?? ""}; fullRequestOpen=${String(fullRequestOpen)}`,
       },
       await assertVisible(ctx, { testId: TEST_IDS.quickEditResult, name: "website-quick-edit-result-card-visible" }),
       {

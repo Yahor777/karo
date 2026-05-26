@@ -1493,6 +1493,105 @@ html, body {
   border-color: var(--karo-border-strong);
 }
 
+.kw-user-request-compact {
+  display: grid;
+  gap: 9px;
+  border: 1px solid rgba(56, 213, 232, 0.22);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(56, 213, 232, 0.11), transparent 38%),
+    linear-gradient(145deg, rgba(13, 18, 28, 0.96), rgba(16, 15, 24, 0.96));
+  padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.kw-user-request-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kw-user-request-head strong {
+  color: var(--karo-text);
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.kw-user-request-head span {
+  flex: 0 0 auto;
+  border: 1px solid rgba(52, 211, 153, 0.22);
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.09);
+  color: #b8f7d8;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.kw-user-request-summary {
+  margin: 0;
+  color: #f4f7fb;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.kw-user-request-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kw-user-request-facts span {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.17);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--karo-text-muted);
+  padding: 4px 7px;
+  font: 11px/1.3 var(--karo-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kw-user-request-details {
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.kw-user-request-details summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  color: var(--karo-text-muted);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.kw-user-request-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.kw-user-request-details summary:hover {
+  color: var(--karo-text);
+}
+
+.kw-user-request-details pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 0 10px 10px;
+  color: var(--karo-text-muted);
+  font: 11.5px/1.45 var(--karo-font-mono);
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
 .kw-chat-local[data-mode="chat"] {
   border-color: rgba(167, 139, 250, 0.36);
 }

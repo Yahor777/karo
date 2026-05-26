@@ -1013,7 +1013,12 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
     bag.assertions.push(
       {
         name: "right-panel-empty-state-has-limited-tabs",
-        passed: visibleRightTabs.length <= 4 && visibleRightTabs.includes("Preview") && visibleRightTabs.includes("Changes") && visibleRightTabs.includes("Usage"),
+        passed:
+          visibleRightTabs.length <= 4 &&
+          visibleRightTabs.includes("Preview") &&
+          visibleRightTabs.includes("Changes") &&
+          visibleRightTabs.includes("Logs") &&
+          visibleRightTabs.includes("Usage"),
         details: visibleRightTabs.join(", "),
       },
       {
@@ -1027,6 +1032,7 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
     for (const [tab, testId] of [
       ["preview", TEST_IDS.rightTabPreview],
       ["changes", TEST_IDS.rightTabChanges],
+      ["logs", TEST_IDS.rightTabLogs],
       ["usage", TEST_IDS.rightTabUsage],
     ] as const) {
       await karoClick(ctx, { testId });
@@ -1066,6 +1072,18 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
           passed: !/Open Composer/i.test(tabText ?? ""),
           details: tabText ?? "",
         });
+      }
+      if (tab === "logs") {
+        bag.assertions.push({
+          name: "logs-tab-has-honest-event-ledger-empty-state",
+          passed:
+            /Event ledger|No run events yet|Provider calls\s*0/i.test(tabText ?? "") &&
+            /Commands\s*None|Artifacts\s*None|Recovery\s*None/i.test(tabText ?? "") &&
+            !/Refresh Logs Status|developer traces|System Logs/i.test(tabText ?? ""),
+          details: tabText ?? "",
+        });
+        bag.assertions.push(await assertVisible(ctx, { testId: TEST_IDS.logsLedgerEmpty, name: "logs-ledger-empty-visible" }));
+        bag.screenshots.push((await karoScreenshot(ctx, { name: "product-logs-empty" })).path);
       }
       if (tab === "usage") {
         bag.assertions.push({

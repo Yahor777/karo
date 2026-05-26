@@ -1386,15 +1386,12 @@ export function mountWorkspaceShell(
   }
 
   function getVisibleRightPanelTabs(): ReadonlyArray<{ readonly id: RightPanelTab; readonly label: string }> {
-    const taskState =
-      state.activeTaskId !== null ? options.transport?.getTaskState(state.activeTaskId) ?? null : null;
     const hasArtifacts =
       state.activeTaskId !== null && (options.transport?.getArtifacts(state.activeTaskId).length ?? 0) > 0;
     return RIGHT_PANEL_TABS.filter((tab) => {
-      if (tab.id === "preview" || tab.id === "changes" || tab.id === "usage") return true;
+      if (tab.id === "preview" || tab.id === "changes" || tab.id === "logs" || tab.id === "usage") return true;
       if (tab.id === "diff") return state.activeArtifactId !== null || hasArtifacts;
       if (tab.id === "files") return state.project !== null;
-      if (tab.id === "logs") return state.logs.length > 0 || taskState !== null;
       return false;
     });
   }
@@ -7870,7 +7867,11 @@ export function mountWorkspaceShell(
         renderRightContent();
       }
     } catch (err) {
-      pushLog("warn", `Terminal profiles unavailable: ${describeError(err)}`);
+      const message = describeError(err);
+      if (/unknown command "shell_get_terminal_profiles"/i.test(message)) {
+        return;
+      }
+      pushLog("warn", `Terminal profile discovery unavailable: ${message}`);
     }
   }
 
@@ -8591,66 +8592,37 @@ export function mountWorkspaceShell(
     const wrap = doc.createElement("div");
     wrap.className = "kw-logs";
 
-    // Render staging directory and test-run.log details if available
     const taskId = state.activeTaskId;
     if (taskId !== null && options.transport !== undefined) {
       const taskState = options.transport.getTaskState(taskId);
       if (taskState !== null && (taskState.stagingDirectory || taskState.testRunLogContent)) {
         const stagingBox = doc.createElement("div");
         stagingBox.className = "kw-staging-box";
-        stagingBox.style.margin = "12px";
-        stagingBox.style.padding = "12px";
-        stagingBox.style.borderRadius = "6px";
-        stagingBox.style.background = "var(--vscode-editor-background, #1e1e1e)";
-        stagingBox.style.border = "1px solid var(--vscode-widget-border, #3c3c3c)";
 
-        const stTitle = doc.createElement("h4");
-        stTitle.style.margin = "0 0 8px 0";
-        stTitle.style.color = "var(--vscode-notifications-foreground, #cccccc)";
-        stTitle.style.fontSize = "12px";
-        stTitle.style.textTransform = "uppercase";
-        stTitle.style.letterSpacing = "0.5px";
-        stTitle.textContent = "📁 Staging Workspace";
-        stagingBox.append(stTitle);
+        const title = doc.createElement("h4");
+        title.textContent = "Staging workspace";
+        stagingBox.append(title);
 
         if (taskState.stagingDirectory) {
-          const stDir = doc.createElement("div");
-          stDir.style.fontSize = "11px";
-          stDir.style.fontFamily = "var(--vscode-editor-font-family, monospace)";
-          stDir.style.color = "var(--vscode-textLink-foreground, #3794ff)";
-          stDir.style.wordBreak = "break-all";
-          stDir.style.marginBottom = "8px";
-          stDir.textContent = `Path: ${taskState.stagingDirectory}`;
-          stagingBox.append(stDir);
+          const path = doc.createElement("div");
+          path.className = "kw-staging-path";
+          path.textContent = `Path: ${taskState.stagingDirectory}`;
+          stagingBox.append(path);
         }
 
         if (taskState.testRunLogContent) {
           const logTitle = doc.createElement("div");
-          logTitle.style.fontSize = "11px";
-          logTitle.style.color = "var(--vscode-descriptionForeground, #8c8c8c)";
-          logTitle.style.marginBottom = "4px";
+          logTitle.className = "kw-staging-log-title";
           logTitle.textContent = "Last test-run.log:";
-
           const logPre = doc.createElement("pre");
-          logPre.style.margin = "0";
-          logPre.style.padding = "8px";
-          logPre.style.background = "#111111";
-          logPre.style.borderRadius = "4px";
-          logPre.style.fontSize = "11px";
-          logPre.style.lineHeight = "1.4";
-          logPre.style.overflowX = "auto";
-          logPre.style.color = "#a8ff60"; // terminal green
-          logPre.style.fontFamily = "var(--vscode-editor-font-family, monospace)";
+          logPre.className = "kw-staging-log";
           logPre.textContent = taskState.testRunLogContent;
-
           stagingBox.append(logTitle, logPre);
         } else {
-          const noLog = doc.createElement("div");
-          noLog.style.fontSize = "11px";
-          noLog.style.fontStyle = "italic";
-          noLog.style.color = "var(--vscode-descriptionForeground, #8c8c8c)";
-          noLog.textContent = "No test runs executed yet.";
-          stagingBox.append(noLog);
+          const empty = doc.createElement("div");
+          empty.className = "kw-staging-empty";
+          empty.textContent = "No validation logs recorded yet.";
+          stagingBox.append(empty);
         }
 
         wrap.append(stagingBox);
@@ -8658,29 +8630,21 @@ export function mountWorkspaceShell(
     }
 
     if (state.logs.length === 0) {
-      const systemLogsEmpty = buildEmpty(
-        doc,
-        "No system logs yet",
-        "Detailed developer traces, test outputs, and API logs will appear here during execution.",
-        {
-          label: "Refresh Logs Status",
-          onClick: () => {
-            renderRightContent();
-            showToast("info", "Logs status refreshed");
-          },
-        },
-      );
-      wrap.append(systemLogsEmpty);
+      wrap.append(buildLogsLedgerEmptyState());
       return wrap;
     }
-    const systemLogsTitle = doc.createElement("h4");
-    systemLogsTitle.style.margin = "16px 12px 8px 12px";
-    systemLogsTitle.style.color = "var(--vscode-notifications-foreground, #cccccc)";
-    systemLogsTitle.style.fontSize = "12px";
-    systemLogsTitle.style.textTransform = "uppercase";
-    systemLogsTitle.style.letterSpacing = "0.5px";
-    systemLogsTitle.textContent = "⚙️ System Logs";
-    wrap.append(systemLogsTitle);
+
+    const head = doc.createElement("div");
+    head.className = "kw-logs-head";
+    const eyebrow = doc.createElement("p");
+    eyebrow.className = "kw-section-eyebrow";
+    eyebrow.textContent = "Event ledger";
+    const title = doc.createElement("h3");
+    title.textContent = "Run events";
+    const body = doc.createElement("p");
+    body.textContent = "Public execution events for the focused thread. Hidden reasoning is not displayed here.";
+    head.append(eyebrow, title, body);
+    wrap.append(head);
 
     const list = doc.createElement("ol");
     list.className = "kw-logs-list";
@@ -8688,11 +8652,76 @@ export function mountWorkspaceShell(
       const li = doc.createElement("li");
       li.className = "kw-logs-item";
       li.dataset["level"] = log.level;
-      li.textContent = `[${log.at}] ${log.level.toUpperCase()} — ${log.text}`;
+      li.dataset["testid"] = "logs-event";
+      const meta = doc.createElement("span");
+      meta.className = "kw-logs-item-meta";
+      meta.textContent = `${formatLogTimestamp(log.at)} / ${log.level.toUpperCase()}`;
+      const text = doc.createElement("span");
+      text.className = "kw-logs-item-text";
+      text.textContent = log.text;
+      li.append(meta, text);
       list.append(li);
     }
     wrap.append(list);
     return wrap;
+  }
+
+  function buildLogsLedgerEmptyState(): HTMLElement {
+    const section = doc.createElement("section");
+    section.className = "kw-logs-ledger-empty";
+    section.dataset["testid"] = "logs-ledger-empty";
+
+    const head = doc.createElement("div");
+    head.className = "kw-logs-head";
+    const eyebrow = doc.createElement("p");
+    eyebrow.className = "kw-section-eyebrow";
+    eyebrow.textContent = "Event ledger";
+    const title = doc.createElement("h3");
+    title.textContent = "No run events yet";
+    const body = doc.createElement("p");
+    body.textContent =
+      "Logs stay quiet until Karo starts a run, stages artifacts, runs validation, blocks a command, or records recovery. There is no fake refresh state.";
+    head.append(eyebrow, title, body);
+
+    const facts = doc.createElement("div");
+    facts.className = "kw-logs-ledger-grid";
+    const rows: ReadonlyArray<readonly [string, string, string]> = [
+      ["Provider calls", "0", "No model request has started in this thread."],
+      ["Commands", "None", "Terminal preflight writes command decisions here."],
+      ["Artifacts", "None", "Staged files appear after Agent produces them."],
+      ["Recovery", "None", "Timeout and fallback events will be explicit."],
+    ];
+    for (const [label, value, meta] of rows) {
+      const item = doc.createElement("div");
+      item.className = "kw-logs-ledger-fact";
+      const labelEl = doc.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = doc.createElement("strong");
+      valueEl.textContent = value;
+      const metaEl = doc.createElement("small");
+      metaEl.textContent = meta;
+      item.append(labelEl, valueEl, metaEl);
+      facts.append(item);
+    }
+
+    const actions = doc.createElement("div");
+    actions.className = "kw-logs-ledger-actions";
+    const usage = doc.createElement("button");
+    usage.type = "button";
+    usage.className = "kw-button kw-button-secondary";
+    usage.dataset["testid"] = "logs-open-usage";
+    usage.textContent = "Open Usage";
+    usage.addEventListener("click", () => setRightTab("usage"));
+    const changes = doc.createElement("button");
+    changes.type = "button";
+    changes.className = "kw-button kw-button-secondary";
+    changes.dataset["testid"] = "logs-open-changes";
+    changes.textContent = "Review Changes";
+    changes.addEventListener("click", () => setRightTab("changes"));
+    actions.append(usage, changes);
+
+    section.append(head, facts, actions);
+    return section;
   }
 
   function buildUsageView(): HTMLElement {
@@ -9312,6 +9341,12 @@ function formatFriendlyModelName(modelId: string | undefined): string {
       return `${lower[0]?.toUpperCase() ?? ""}${lower.slice(1)}`;
     })
     .join(" ");
+}
+
+function formatLogTimestamp(value: string): string {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return value;
+  return new Date(ms).toISOString().slice(11, 19);
 }
 
 function escapeHtml(value: string): string {

@@ -362,7 +362,7 @@ describe("workbench ??? layout", () => {
     mountWorkspaceShell(root, buildOptions());
     const tabs = root.querySelectorAll<HTMLButtonElement>(".kw-right-tab");
     const ids = Array.from(tabs).map((t) => t.dataset["tabId"]);
-    expect(ids).toEqual(["preview", "changes", "usage"]);
+    expect(ids).toEqual(["preview", "changes", "logs", "usage"]);
     expect(ids).not.toContain("terminal");
 
     const preview = root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!;
@@ -444,6 +444,30 @@ describe("workbench ??? layout", () => {
     expect(root.querySelector(".kw-right-tabs")?.textContent).toContain("Logs");
     logsTab!.click();
     expect(root.querySelector(".kw-right-content")?.textContent).toContain("Task task-log started");
+    expect(root.querySelector(".kw-right-content")?.textContent).toContain("Run events");
+    expect(root.querySelector(".kw-right-content")?.textContent).not.toContain("System Logs");
+  });
+
+  it("Logs empty state is an honest event ledger, not a fake refresh/debug panel", () => {
+    mountWorkspaceShell(root, buildOptions());
+    root.querySelector<HTMLButtonElement>('[data-testid="right-tab-logs"]')!.click();
+
+    const ledger = root.querySelector<HTMLElement>('[data-testid="logs-ledger-empty"]');
+    expect(ledger).not.toBeNull();
+    expect(ledger?.textContent).toContain("No run events yet");
+    expect(ledger?.textContent).toContain("Provider calls");
+    expect(ledger?.textContent).toContain("Commands");
+    expect(ledger?.textContent).toContain("Artifacts");
+    expect(ledger?.textContent).toContain("Recovery");
+    expect(ledger?.textContent).not.toContain("Refresh Logs Status");
+    expect(ledger?.textContent).not.toContain("developer traces");
+    expect(/[\p{Extended_Pictographic}]/u.test(ledger?.textContent ?? "")).toBe(false);
+
+    root.querySelector<HTMLButtonElement>('[data-testid="logs-open-usage"]')!.click();
+    expect(root.querySelector<HTMLElement>(".kw-right-content")?.dataset["tab"]).toBe("usage");
+    root.querySelector<HTMLButtonElement>('[data-testid="right-tab-logs"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-testid="logs-open-changes"]')!.click();
+    expect(root.querySelector<HTMLElement>(".kw-right-content")?.dataset["tab"]).toBe("changes");
   });
 
   it("limits context popover trigger to the usage ring button", () => {

@@ -3277,12 +3277,28 @@ export function mountWorkspaceShell(
         "Run is not completed. Partial staged artifacts remain reviewable; fallback is not counted as success.";
     } else if (options.isQuickEdit === true) {
       body.textContent =
-        "Literal Quick Edit staged exactly requested bytes. Path/content safety checks still apply; generated-site quality gates run only on Agent website generation.";
+        "Literal Quick Edit staged exactly requested bytes. Path/content safety checks still apply; use Agent Mode for a validated multi-file website pass.";
     } else {
       body.textContent =
-        "A static file is staged, but no deterministic website quality validation was recorded for this run. Apply Changes is still required before opening it.";
+        "A static file is staged, but no deterministic website quality validation was recorded for this run. Upgrade with Agent before applying if this should be a polished site.";
     }
     card.append(head, body);
+
+    if (validation === undefined && recovery === undefined && (options.isQuickEdit === true || options.hasStaticArtifact === true)) {
+      const actions = doc.createElement("div");
+      actions.className = "kw-validation-evidence-actions";
+      const hint = doc.createElement("span");
+      hint.textContent = "Nothing runs automatically; this only prepares a stronger Agent prompt.";
+      const upgrade = doc.createElement("button");
+      upgrade.type = "button";
+      upgrade.className = "kw-button kw-button-secondary";
+      upgrade.dataset["testid"] = "validation-upgrade-agent";
+      upgrade.textContent = "Upgrade with Agent";
+      upgrade.title = "Prefill Agent Mode for a validated website generation pass. Apply Changes remains explicit.";
+      upgrade.addEventListener("click", () => prefillComposerPrompt("agent", buildWebsiteQualityUpgradePrompt()));
+      actions.append(hint, upgrade);
+      card.append(actions);
+    }
 
     const chips = doc.createElement("div");
     chips.className = "kw-validation-chip-row";
@@ -3319,6 +3335,28 @@ export function mountWorkspaceShell(
     }
 
     return card;
+  }
+
+  function buildWebsiteQualityUpgradePrompt(): string {
+    return [
+      "Rebuild the staged static site as a validated Agent Mode website. Stage artifacts only; do not apply changes automatically.",
+      "",
+      "Create or replace these project files:",
+      "- src/karo-demo-site/index.html",
+      "- src/karo-demo-site/styles.css",
+      "- src/karo-demo-site/script.js",
+      "- src/karo-demo-site/README.md",
+      "",
+      "Quality bar:",
+      "- semantic landing page with hero, product proof, workflow, feature, FAQ, and final action sections",
+      "- first-viewport visual scene or product mockup that is inspectable, not a decorative gradient blob",
+      "- premium dark UI with balanced accent palette, depth, hover/focus states, and readable spacing",
+      "- responsive layout for mobile and desktop, with no overlapping text",
+      "- local/offline-safe assets only and no external tracking",
+      "- README includes how to preview after Apply Changes",
+      "",
+      "After staging, include the deterministic website quality evidence and keep Preview honest: no embedded iframe and no open-file preview until Apply Changes succeeds.",
+    ].join("\n");
   }
 
   function buildWebsiteQualityProofGrid(
@@ -5556,6 +5594,8 @@ export function mountWorkspaceShell(
     if (textarea !== null) {
       textarea.value = prompt;
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      textarea.setSelectionRange(0, 0);
+      textarea.scrollTop = 0;
       textarea.focus();
     }
   }

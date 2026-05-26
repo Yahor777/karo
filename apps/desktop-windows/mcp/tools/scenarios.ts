@@ -799,6 +799,10 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
         testId: TEST_IDS.previewChooseProject,
         name: "website-preview-project-action-visible-when-apply-blocked",
       }),
+      await assertVisible(ctx, {
+        testId: TEST_IDS.validationUpgradeAgent,
+        name: "website-preview-upgrade-agent-action-visible",
+      }),
       {
         name: "website-preview-no-fake-embedded-frame",
         passed: embeddedFrameCount === 0 && /Embedded preview is not implemented/i.test(previewText ?? ""),
@@ -811,6 +815,23 @@ export async function runScenarioOnePromptWebsiteCreationPreview(ctx: KaroAutoma
       },
     );
     bag.screenshots.push((await karoScreenshot(ctx, { name: "one-prompt-website-creation-preview" })).path);
+    await karoClick(ctx, { testId: TEST_IDS.validationUpgradeAgent });
+    await waitShort(ctx);
+    const upgradePrompt = await ctx.page.locator(byTestId(TEST_IDS.composerTextarea)).inputValue().catch(() => "");
+    const upgradeAgentSelected = await ctx.page
+      .locator(byTestId(TEST_IDS.composerModeAgent))
+      .getAttribute("aria-current")
+      .catch(() => "");
+    bag.assertions.push({
+      name: "website-preview-upgrade-agent-prefills-without-running",
+      passed:
+        upgradeAgentSelected === "true" &&
+        /Rebuild the staged static site as a validated Agent Mode website/i.test(upgradePrompt) &&
+        /Stage artifacts only/i.test(upgradePrompt) &&
+        /deterministic website quality evidence/i.test(upgradePrompt),
+      details: `agentSelected=${String(upgradeAgentSelected)} prompt=${upgradePrompt}`,
+    });
+    bag.screenshots.push((await karoScreenshot(ctx, { name: "website-quality-upgrade-agent-prefill" })).path);
   });
 }
 

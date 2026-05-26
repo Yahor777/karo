@@ -2828,6 +2828,8 @@ describe("workbench ??? right panel", () => {
     expect(text).toContain("Preview preflight");
     expect(text).toContain("no deterministic website quality validation was recorded");
     expect(text).toContain("No website quality record");
+    expect(text).toContain("Upgrade with Agent");
+    expect(text).toContain("Nothing runs automatically");
     expect(text).toContain("Apply Changes required first");
     expect(text).toContain("Apply changes before preview");
     expect(text).toContain("src/karo-demo-site/index.html");
@@ -2835,6 +2837,13 @@ describe("workbench ??? right panel", () => {
     expect(text).toContain("Choose project");
     expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-copy-static-path"]')?.disabled).toBe(false);
     expect(root.querySelector<HTMLButtonElement>('[data-testid="preview-open-static"]')?.disabled).toBe(true);
+    root.querySelector<HTMLButtonElement>('[data-testid="validation-upgrade-agent"]')!.click();
+    const agentPrompt = root.querySelector<HTMLTextAreaElement>(".kw-composer-input")?.value ?? "";
+    expect(root.querySelector<HTMLElement>('.kw-pill[data-value="agent"]')?.getAttribute("aria-current")).toBe("true");
+    expect(agentPrompt).toContain("Rebuild the staged static site as a validated Agent Mode website");
+    expect(agentPrompt).toContain("Stage artifacts only");
+    expect(agentPrompt).toContain("deterministic website quality evidence");
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="composer-send"]')?.disabled).toBe(false);
     root.querySelector<HTMLButtonElement>('[data-testid="preview-review-staged-changes"]')!.click();
     expect(root.querySelector<HTMLElement>('[data-testid="right-tab-changes"]')?.getAttribute("aria-current")).toBe(
       "page",

@@ -75,6 +75,7 @@ export const TEST_IDS = {
   previewRunButton: "preview-run-button",
   previewReviewStagedChanges: "preview-review-staged-changes",
   previewChooseProject: "preview-choose-project",
+  validationUpgradeAgent: "validation-upgrade-agent",
   terminalPanel: "terminal-panel",
 } as const;
 

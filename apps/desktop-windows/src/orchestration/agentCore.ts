@@ -351,8 +351,8 @@ export function buildAgentImplementationPlan(input: {
       filesToModify: [],
       filesToRead: input.contextProfile === "website_creation" ? [] : [],
       acceptanceCriteria: [
-        "index.html contains title/meta viewport, linked styles.css/script.js, hero, abilities, characters/energy, features, FAQ, and CTA sections.",
-        "styles.css contains responsive premium dark anime/card styling with a mobile layout.",
+        "index.html contains title/meta viewport, linked styles.css/script.js, hero, abilities, characters/energy, features, FAQ, and a visible CTA.",
+        "styles.css contains responsive premium dark anime/card styling, visual depth, stable spacing, and a mobile layout.",
         "script.js is present, non-empty, and limited to safe local progressive enhancement.",
         "README.md explains Apply Changes and preview/open flow.",
         "All generated files remain staged until Apply Changes.",
@@ -362,7 +362,9 @@ export function buildAgentImplementationPlan(input: {
         "artifact paths stay inside project",
         "required website files exist",
         "required visible sections exist",
+        "metadata and linked assets exist",
         "responsive styling signal exists",
+        "premium visual polish signal exists",
         "preview instructions exist",
         "no generated secrets",
       ],
@@ -460,28 +462,49 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
   const script = findArtifact(args.artifacts, /\.js$/i);
 
   if (index !== undefined) {
+    let nextIndex = index.content;
     const additions: string[] = [];
+    const addressedIssues: string[] = [];
     if (hasIssue(args.issues, "hero section") && !/\bhero\b/i.test(index.content)) {
       additions.push('<section class="hero"><h1>Minecraft JJK Mod</h1><p>Dark anime battles with cursed techniques.</p></section>');
+      addressedIssues.push("hero section");
     }
     if (hasIssue(args.issues, "abilities section") && !/\babilities\b/i.test(index.content)) {
       additions.push('<section class="abilities"><h2>Abilities</h2><p>Black Flash, Infinity, cursed tools, and domain pressure.</p></section>');
+      addressedIssues.push("abilities section");
     }
     if (hasIssue(args.issues, "characters/energy section") && !/\b(characters?|energy)\b/i.test(index.content)) {
       additions.push('<section class="energy"><h2>Characters / Energy</h2><p>Character roles and cursed energy progression.</p></section>');
+      addressedIssues.push("characters/energy section");
     }
     if (hasIssue(args.issues, "features section") && !/\bfeatures?\b/i.test(index.content)) {
       additions.push('<section class="features"><h2>Features</h2><p>Responsive cards, mod highlights, and preview-ready content.</p></section>');
+      addressedIssues.push("features section");
     }
     if (hasIssue(args.issues, "FAQ section") && !/\bfaq\b/i.test(index.content)) {
       additions.push('<section class="faq"><h2>FAQ</h2><p>Apply Changes first, then open index.html from Preview.</p></section>');
+      addressedIssues.push("FAQ section");
+    }
+    if (hasIssue(args.issues, "visible CTA") && !hasVisibleCta(index.content)) {
+      additions.push(
+        '<section class="cta"><h2>Ready to enter the domain?</h2><a class="cta-button" href="#abilities">Explore cursed techniques</a></section>',
+      );
+      addressedIssues.push("visible CTA");
     }
     if (additions.length > 0) {
+      nextIndex = insertHtmlSections(nextIndex, additions);
+    }
+    if (hasIssue(args.issues, "document metadata") || hasIssue(args.issues, "stylesheet/script wiring")) {
+      nextIndex = ensureStaticWebsiteHtmlShell(nextIndex);
+      if (hasIssue(args.issues, "document metadata")) addressedIssues.push("document metadata");
+      if (hasIssue(args.issues, "stylesheet/script wiring")) addressedIssues.push("stylesheet/script wiring");
+    }
+    if (nextIndex !== index.content) {
       repairs.push({
         fileName: index.fileName,
-        content: insertHtmlSections(index.content, additions),
-        addressedIssues: additions.map((addition) => addition.match(/class="([^"]+)"/i)?.[1] ?? "section"),
-        summary: `Added missing website section(s) in ${index.fileName}.`,
+        content: nextIndex,
+        addressedIssues,
+        summary: `Added missing website quality structure in ${index.fileName}.`,
       });
     }
   }
@@ -503,18 +526,24 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
     repairs.push({
       fileName: "src/karo-demo-site/styles.css",
       content:
-        ":root { color-scheme: dark; background: #07070b; color: #f6f1ff; }\n.card, section { border: 1px solid #30243f; border-radius: 16px; padding: 24px; }\n@media (min-width: 860px) { main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; } .hero { grid-column: 1 / -1; } }\n",
-      addressedIssues: ["CSS artifact", "responsive layout", "dark anime/card styling"],
+        ":root { color-scheme: dark; --jjk-bg: #07070b; --jjk-card: rgba(16, 14, 25, .84); --jjk-line: #34284a; --jjk-accent: #8b5cf6; background: var(--jjk-bg); color: #f6f1ff; }\nbody { margin: 0; background: radial-gradient(circle at top, rgba(139, 92, 246, .24), transparent 42%), var(--jjk-bg); }\nmain { padding: clamp(24px, 5vw, 72px); display: grid; gap: 24px; }\n.card, section { border: 1px solid var(--jjk-line); border-radius: 16px; padding: clamp(18px, 3vw, 28px); background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }\n.cta-button { display: inline-flex; padding: 12px 16px; border-radius: 999px; background: var(--jjk-accent); color: white; text-decoration: none; transition: transform .16s ease, box-shadow .16s ease; }\n@media (min-width: 860px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .cta { grid-column: 1 / -1; } }\n",
+      addressedIssues: ["CSS artifact", "responsive layout", "dark anime/card styling", "premium visual depth", "stable spacing system"],
       summary: "Created missing website stylesheet.",
     });
-  } else if (css !== undefined && (hasIssue(args.issues, "responsive layout") || hasIssue(args.issues, "dark anime/card styling"))) {
+  } else if (
+    css !== undefined &&
+    (hasIssue(args.issues, "responsive layout") ||
+      hasIssue(args.issues, "dark anime/card styling") ||
+      hasIssue(args.issues, "premium visual depth") ||
+      hasIssue(args.issues, "stable spacing system"))
+  ) {
     const extra =
-      "\n/* Karo targeted validation repair */\n.card, section { border: 1px solid #30243f; border-radius: 16px; background: rgba(14, 12, 24, .86); }\n@media (min-width: 860px) { main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; } .hero { grid-column: 1 / -1; } }\n";
+      "\n/* Karo targeted validation repair */\n:root { --jjk-card: rgba(14, 12, 24, .86); --jjk-line: #30243f; --jjk-accent: #8b5cf6; }\nbody { background: radial-gradient(circle at top, rgba(139, 92, 246, .2), transparent 42%), #07070b; }\nmain { padding: clamp(24px, 5vw, 72px); gap: 24px; }\n.card, section { border: 1px solid var(--jjk-line); border-radius: 16px; background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }\n.cta-button { display: inline-flex; padding: 12px 16px; border-radius: 999px; background: var(--jjk-accent); color: white; text-decoration: none; transition: transform .16s ease, box-shadow .16s ease; }\n@media (min-width: 860px) { main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; } .hero, .cta { grid-column: 1 / -1; } }\n";
     repairs.push({
       fileName: css.fileName,
       content: `${css.content.trim()}\n${extra}`,
-      addressedIssues: ["responsive layout", "dark anime/card styling"],
-      summary: `Added responsive dark card styling in ${css.fileName}.`,
+      addressedIssues: ["responsive layout", "dark anime/card styling", "premium visual depth", "stable spacing system"],
+      summary: `Added responsive premium card styling in ${css.fileName}.`,
     });
   }
 
@@ -670,6 +699,10 @@ function validateStaticWebsiteArtifacts(
 ): DeterministicValidationSummary {
   const content = artifacts.map((artifact) => artifact.content).join("\n").toLowerCase();
   const names = artifacts.map((artifact) => artifact.fileName.replace(/\\/g, "/").toLowerCase());
+  const index = findArtifact(artifacts, /index\.html$/i);
+  const css = findArtifact(artifacts, /\.css$/i);
+  const indexContent = index?.content ?? "";
+  const cssContent = css?.content ?? "";
   const checkedSignals: string[] = [];
   const issues: string[] = [];
 
@@ -703,6 +736,32 @@ function validateStaticWebsiteArtifacts(
   for (const [label, regex] of sectionSignals) {
     recordSignal(checkedSignals, issues, regex.test(content), label);
   }
+  recordSignal(
+    checkedSignals,
+    issues,
+    /<title\b/i.test(indexContent) && /<meta\b[^>]*name=["']viewport["']/i.test(indexContent),
+    "document metadata",
+  );
+  recordSignal(
+    checkedSignals,
+    issues,
+    /<link\b[^>]*href=["'][^"']*styles\.css["']/i.test(indexContent) &&
+      /<script\b[^>]*src=["'][^"']*script\.js["']/i.test(indexContent),
+    "stylesheet/script wiring",
+  );
+  recordSignal(checkedSignals, issues, hasVisibleCta(indexContent), "visible CTA");
+  recordSignal(
+    checkedSignals,
+    issues,
+    /linear-gradient|radial-gradient|box-shadow|backdrop-filter|rgba\(|transition|transform/iu.test(cssContent),
+    "premium visual depth",
+  );
+  recordSignal(
+    checkedSignals,
+    issues,
+    /:\s*root|--[a-z0-9-]+\s*:|gap\s*:|padding\s*:|max-width|minmax\(|clamp\(/iu.test(cssContent),
+    "stable spacing system",
+  );
 
   if (issues.length > 0) {
     return {
@@ -739,6 +798,38 @@ function insertHtmlSections(content: string, additions: readonly string[]): stri
   if (/<\/main>/i.test(content)) return content.replace(/<\/main>/i, `${block}</main>`);
   if (/<\/body>/i.test(content)) return content.replace(/<\/body>/i, `${block}</body>`);
   return `${content.trim()}\n${additions.join("\n")}\n`;
+}
+
+function hasVisibleCta(content: string): boolean {
+  return /class=["'][^"']*\bcta\b|<button\b|<a\b[^>]*href=|call to action|explore|start|download|join|apply changes|open preview/iu.test(
+    content,
+  );
+}
+
+function ensureStaticWebsiteHtmlShell(content: string): string {
+  const trimmed = content.trim();
+  const bodyOnly = /<body\b/i.test(trimmed)
+    ? trimmed.replace(/^[\s\S]*<body[^>]*>/i, "").replace(/<\/body>[\s\S]*$/i, "").trim()
+    : trimmed;
+  const mainContent = /<main\b/i.test(bodyOnly)
+    ? bodyOnly
+    : `<main class="jjk-page">\n    ${bodyOnly}\n  </main>`;
+  return [
+    "<!doctype html>",
+    '<html lang="en">',
+    "<head>",
+    '  <meta charset="utf-8">',
+    '  <meta name="viewport" content="width=device-width, initial-scale=1">',
+    "  <title>Minecraft JJK Mod</title>",
+    '  <link rel="stylesheet" href="./styles.css">',
+    '  <script defer src="./script.js"></script>',
+    "</head>",
+    "<body>",
+    `  ${mainContent.replace(/\n/g, "\n  ")}`,
+    "</body>",
+    "</html>",
+    "",
+  ].join("\n");
 }
 
 function stage(

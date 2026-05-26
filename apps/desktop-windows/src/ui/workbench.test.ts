@@ -1500,14 +1500,18 @@ describe("workbench ??? chat workbench", () => {
         command: "git",
         args: ["clean", "-fdx"],
         cwd: "D:\\проекты\\karo-exstention",
-        reason: "User requested command execution",
+        reason: "<img src=x onerror=alert(1)>",
       },
     });
 
     const cardText = root.querySelector(".kw-command-approval-card")?.textContent ?? "";
+    expect(cardText).toContain("Command approval required");
     expect(cardText).toContain("DESTRUCTIVE");
     expect(cardText).toContain("Safety system: command not executed automatically.");
     expect(cardText).toContain("git clean -ndx");
+    expect(cardText).toContain("<img src=x onerror=alert(1)>");
+    expect(cardText).not.toContain("Always allow similar");
+    expect(root.querySelector(".kw-command-meta img")).toBeNull();
   });
 
   it("bare git clean prompt is answered by safety policy without Auto Mode preamble", async () => {

@@ -1984,10 +1984,10 @@ export function mountWorkspaceShell(
     const optionsWrap = doc.createElement("div");
     optionsWrap.className = "kw-clarification-options";
     const optionsList = [
-      ["chat", "Просто обсудить", "Давай просто поговорим без изменения файлов."],
-      ["plan", "Сделать план", "Сделай план и не меняй файлы."],
-      ["explain", "Объяснить проект", "Объясни проект и не меняй файлы."],
-      ["agent", "Внести изменения", "Уточняю: нужно изменить файлы проекта."],
+      ["chat", "Chat only", "Let's discuss this without reading context or changing files."],
+      ["plan", "Make a plan", "Create an implementation plan only. Do not change files."],
+      ["explain", "Explain project", "Explain the project from selected context without changing files."],
+      ["agent", "Change files", "I want a file-changing task. Use Agent Mode and staged artifacts."],
     ] as const;
     let selected = "";
     for (const [id, label, value] of optionsList) {
@@ -2010,7 +2010,7 @@ export function mountWorkspaceShell(
     const custom = doc.createElement("textarea");
     custom.className = "kw-clarify-textarea";
     custom.dataset["testid"] = "clarification-custom-input";
-    custom.placeholder = "Напиши свой вариант...";
+    custom.placeholder = "Write your own answer...";
 
     const actions = doc.createElement("div");
     actions.className = "kw-clarify-actions";
@@ -2024,17 +2024,17 @@ export function mountWorkspaceShell(
       const answer = custom.value.trim() || selected;
       if (answer.length === 0) return;
       appendChatMessage({ role: "user", text: answer, intent: "assist_request", kind: "chat" });
-      if (/измен|файл|ui|bug|баг|исправ|улучш/i.test(answer)) {
+      if (/change|file|ui|bug|fix|improve|refactor|build|edit|create/i.test(answer)) {
         appendChatMessage({
           role: "assistant",
-          text: "Понял. Это уже задача на изменения проекта. Переключись в Agent Mode или уточни конкретную область, чтобы я не запускал file-change pipeline вслепую.",
+          text: "Understood. That is a file-changing task. Switch to Agent Mode or name the exact area to change so Karo does not start a write pipeline blindly.",
           mode: "chat",
           kind: "analysis",
         });
       } else {
         appendChatMessage({
           role: "assistant",
-          text: "Ок, давай просто обсудим. Я не буду запускать Context Engine, агентов или создавать файлы без явной задачи.",
+          text: "Ok, let's keep this as chat. I will not run Context Engine, start agents, or create files without an explicit task.",
           mode: "chat",
           kind: "chat",
         });
@@ -2267,36 +2267,22 @@ export function mountWorkspaceShell(
 
     if (taskState.status === "waiting_consent") {
       if (taskState.clarificationState && !taskState.clarificationState.resolved) {
-        // RENDERING CLARIFICATION CARD
         const clarBox = doc.createElement("div");
         clarBox.className = "kw-clarification-card";
         clarBox.dataset["testid"] = "clarification-card";
-        clarBox.style.cssText = `
-          background: rgba(30, 30, 40, 0.7);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 12px;
-          padding: 20px;
-          margin: 15px 0;
-          box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        `;
 
         const title = doc.createElement("h4");
         title.className = "kw-clarification-title";
-        title.innerHTML = "🤔 KARO Needs Clarification";
-        title.style.cssText = "margin: 0 0 10px 0; color: #fff; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;";
+        title.textContent = "KARO needs clarification";
         clarBox.append(title);
 
         const question = doc.createElement("p");
         question.className = "kw-clarification-question";
         question.textContent = taskState.clarificationState.question;
-        question.style.cssText = "margin: 0 0 15px 0; color: #cbd5e1; font-size: 14px; line-height: 1.5;";
         clarBox.append(question);
 
-        // Options
         const optionsContainer = doc.createElement("div");
         optionsContainer.className = "kw-clarification-options";
-        optionsContainer.style.cssText = "display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;";
 
         let selectedOptionId: string | undefined = undefined;
 
@@ -2306,19 +2292,15 @@ export function mountWorkspaceShell(
           optBtn.dataset["testid"] = "clarification-option";
           optBtn.textContent = opt.label;
           optBtn.dataset["optionId"] = opt.id;
-          optBtn.style.cssText = "transition: all 0.2s ease; border: 1px solid rgba(255, 255, 255, 0.05); font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer;";
           optBtn.addEventListener("click", () => {
-            // Снятие или установка выделения
             const isSelected = optBtn.classList.contains("selected");
             optionsContainer.querySelectorAll(".kw-clarify-option-btn").forEach(btn => {
               btn.classList.remove("selected");
-              (btn as HTMLElement).style.background = "";
-              (btn as HTMLElement).style.borderColor = "";
+              btn.removeAttribute("aria-current");
             });
             if (!isSelected) {
               optBtn.classList.add("selected");
-              optBtn.style.background = "rgba(99, 102, 241, 0.2)";
-              optBtn.style.borderColor = "rgb(99, 102, 241)";
+              optBtn.setAttribute("aria-current", "true");
               selectedOptionId = opt.id;
             } else {
               selectedOptionId = undefined;
@@ -2329,34 +2311,23 @@ export function mountWorkspaceShell(
         });
         clarBox.append(optionsContainer);
 
-        // Custom textarea
         const textarea = doc.createElement("textarea");
         textarea.className = "kw-clarify-textarea";
         textarea.dataset["testid"] = "clarification-custom-input";
-        textarea.placeholder = "Напиши свой вариант...";
-        textarea.style.cssText = "width: 100%; height: 80px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #fff; padding: 10px; font-size: 13px; resize: none; margin-bottom: 15px; outline: none; transition: border-color 0.2s;";
-        textarea.addEventListener("focus", () => {
-          textarea.style.borderColor = "rgb(99, 102, 241)";
-        });
-        textarea.addEventListener("blur", () => {
-          textarea.style.borderColor = "rgba(255, 255, 255, 0.1)";
-        });
+        textarea.placeholder = "Write your own answer...";
         textarea.addEventListener("input", () => {
           updateConfirmButton();
         });
         clarBox.append(textarea);
 
-        // Actions
         const actions = doc.createElement("div");
         actions.className = "kw-clarify-actions";
-        actions.style.cssText = "display: flex; gap: 10px; justify-content: flex-end;";
 
         const btnContinue = doc.createElement("button");
         btnContinue.className = "kw-btn kw-btn-success kw-btn-continue";
         btnContinue.dataset["testid"] = "clarification-continue";
         btnContinue.textContent = "Continue";
         btnContinue.disabled = true;
-        btnContinue.style.cssText = "font-size: 13px; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 500;";
         btnContinue.addEventListener("click", () => {
           btnContinue.disabled = true;
           btnCancel.disabled = true;
@@ -2375,7 +2346,6 @@ export function mountWorkspaceShell(
         const btnCancel = doc.createElement("button");
         btnCancel.className = "kw-btn kw-btn-secondary kw-btn-cancel";
         btnCancel.textContent = "Cancel";
-        btnCancel.style.cssText = "font-size: 13px; padding: 8px 16px; border-radius: 6px; cursor: pointer;";
         btnCancel.addEventListener("click", () => {
           btnContinue.disabled = true;
           btnCancel.disabled = true;
@@ -2392,33 +2362,12 @@ export function mountWorkspaceShell(
         clarBox.append(actions);
         wrap.append(clarBox);
       } else {
-        // RENDERING PREMIUM COMMAND APPROVAL CARD
-        const consentBox = doc.createElement("div");
-        consentBox.className = "kw-command-approval-card";
-        consentBox.dataset["testid"] = "safety-card";
-        consentBox.style.cssText = `
-          background: rgba(30, 30, 40, 0.7);
-          backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 12px;
-          padding: 20px;
-          margin: 15px 0;
-          box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        `;
-
-        const title = doc.createElement("h4");
-        title.className = "kw-consent-title";
-        title.textContent = "Command Execution Consent Required";
-        title.style.cssText = "margin: 0 0 12px 0; color: #fff; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px;";
-        consentBox.append(title);
-
         const cmd = taskState.consentRequest?.command ?? "pnpm test";
         const args = taskState.consentRequest?.args?.join(" ") ?? "";
         const reason = taskState.consentRequest?.reason ?? "Autodetected test runner command";
         const cwd = taskState.consentRequest?.cwd ?? "./staging";
         const fullCmd = `${cmd} ${args}`.trim();
 
-        // Run Command Policy
         const permissionMode = (localStorage.getItem("karo.permissionMode") as any) || "smart_approval";
         const projectRoot = state.project?.path || "";
         const cmdDecision = runCommandPolicy({
@@ -2428,7 +2377,6 @@ export function mountWorkspaceShell(
           permissionMode,
         });
 
-        // Save last command diagnostics
         localStorage.setItem("karo.lastCommand", fullCmd);
         localStorage.setItem("karo.lastCommandRiskLevel", cmdDecision.riskLevel);
         localStorage.setItem("karo.lastCommandDecision", cmdDecision.blocked ? "Blocked" : (cmdDecision.requiresApproval ? "Requires Approval" : "Auto"));
@@ -2436,109 +2384,95 @@ export function mountWorkspaceShell(
         localStorage.setItem("karo.lastCommandRollbackAvailable", String(cmdDecision.rollbackAvailable));
         localStorage.setItem("karo.lastCommandReason", cmdDecision.reason);
 
-        // Risk Badge
-        const riskBadge = doc.createElement("div");
-        riskBadge.className = "kw-command-risk-badge";
-        riskBadge.textContent = cmdDecision.riskLevel.toUpperCase();
+        const consentBox = doc.createElement("div");
+        consentBox.className = "kw-command-approval-card";
+        consentBox.dataset["testid"] = "safety-card";
+        consentBox.dataset["risk"] = cmdDecision.riskLevel;
 
-        let badgeStyle = "padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; width: fit-content; margin-bottom: 12px; text-transform: uppercase;";
-        if (cmdDecision.riskLevel === "safe") {
-          badgeStyle += " background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff;";
-        } else if (cmdDecision.riskLevel === "low") {
-          badgeStyle += " background: linear-gradient(135deg, #34d399 0%, #10b981 100%); color: #fff;";
-        } else if (cmdDecision.riskLevel === "medium") {
-          badgeStyle += " background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff;";
-        } else if (cmdDecision.riskLevel === "high") {
-          badgeStyle += " background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: #fff;";
-        } else if (cmdDecision.riskLevel === "destructive") {
-          badgeStyle += " background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #fff; animation: kw-pulse 2s infinite;";
-        } else {
-          badgeStyle += " background: linear-gradient(135deg, #9ca3af 0%, #4b5563 100%); color: #fff;";
-        }
-        riskBadge.style.cssText = badgeStyle;
-        consentBox.append(riskBadge);
+        const header = doc.createElement("div");
+        header.className = "kw-command-approval-head";
+        const title = doc.createElement("h4");
+        title.className = "kw-consent-title";
+        title.textContent = "Command approval required";
+        const riskBadge = doc.createElement("span");
+        riskBadge.className = "kw-command-risk-badge";
+        riskBadge.dataset["risk"] = cmdDecision.riskLevel;
+        riskBadge.textContent = cmdDecision.riskLevel.toUpperCase();
+        header.append(title, riskBadge);
+        consentBox.append(header);
 
         if (cmdDecision.requiresApproval || cmdDecision.riskLevel === "destructive") {
           const safetyBox = doc.createElement("div");
           safetyBox.className = "kw-command-safety-notification";
-          safetyBox.style.cssText = "margin: 0 0 12px 0; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(249, 115, 22, 0.35); background: rgba(249, 115, 22, 0.12); color: #fed7aa; font-size: 12px; line-height: 1.4;";
-          safetyBox.textContent = "Safety system: command not executed automatically.";
+          safetyBox.textContent = cmdDecision.blocked
+            ? "Safety system: command is blocked by policy and was not executed."
+            : "Safety system: command not executed automatically.";
           consentBox.append(safetyBox);
         }
 
-        // Description
         const descText = doc.createElement("p");
         descText.className = "kw-consent-desc";
-        descText.textContent = "An agent has requested execution of a local command in staging. Please review before proceeding:";
-        descText.style.cssText = "margin: 0 0 10px 0; color: #cbd5e1; font-size: 13px; line-height: 1.4;";
+        descText.textContent =
+          "An agent requested a local command. Review the exact command, working directory, and risk analysis before running it once.";
         consentBox.append(descText);
 
-        // Command details block
         const detailsContainer = doc.createElement("div");
-        detailsContainer.style.cssText = "margin-bottom: 15px; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.05);";
+        detailsContainer.className = "kw-command-details";
 
         const cmdBlock = doc.createElement("pre");
         cmdBlock.className = "kw-consent-cmd";
-        cmdBlock.style.cssText = "margin: 0; background: rgba(0, 0, 0, 0.3); color: #38bdf8; font-family: monospace; font-size: 12px; padding: 12px; overflow-x: auto; white-space: pre-wrap; border-bottom: 1px solid rgba(255, 255, 255, 0.05);";
         cmdBlock.textContent = `$ ${fullCmd}`;
         detailsContainer.append(cmdBlock);
 
-        const textMeta = doc.createElement("div");
-        textMeta.style.cssText = "background: rgba(0, 0, 0, 0.15); padding: 10px; font-size: 12px; color: #94a3b8;";
-        textMeta.innerHTML = `
-          <div style="margin-bottom: 4px;"><strong>Reason:</strong> ${reason}</div>
-          <div style="margin-bottom: 4px;"><strong>Directory (CWD):</strong> <span style="font-family: monospace; color: #e2e8f0;">${cwd}</span></div>
-          <div style="margin-bottom: 4px;"><strong>Risk Analysis:</strong> ${cmdDecision.reason}</div>
-          ${cmdDecision.rollbackPlan ? `<div><strong>Rollback Plan:</strong> <span style="color: #cbd5e1;">${cmdDecision.rollbackPlan}</span></div>` : ""}
-        `;
-        detailsContainer.append(textMeta);
+        const meta = doc.createElement("dl");
+        meta.className = "kw-command-meta";
+        appendKv(doc, meta, "Reason", reason);
+        appendKv(doc, meta, "Working directory", cwd);
+        appendKv(doc, meta, "Risk analysis", cmdDecision.reason);
+        if (cmdDecision.rollbackPlan !== undefined) {
+          appendKv(doc, meta, "Rollback plan", cmdDecision.rollbackPlan);
+        }
+        detailsContainer.append(meta);
         consentBox.append(detailsContainer);
 
-        // Suggested Safer Command
-        if (cmdDecision.suggestedSaferCommand) {
-          const saferBox = doc.createElement("div");
-          saferBox.style.cssText = "background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 10px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 15px; font-size: 12px; color: #34d399;";
-          saferBox.innerHTML = `
-            <span>Suggested safer alternative: <code style="font-family: monospace; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${cmdDecision.suggestedSaferCommand}</code></span>
-          `;
-          const btnUseSafer = doc.createElement("button");
-          btnUseSafer.className = "kw-btn kw-btn-success";
-          btnUseSafer.textContent = "Use Instead";
-          btnUseSafer.style.cssText = "font-size: 11px; padding: 4px 8px; border-radius: 4px; font-weight: 500; cursor: pointer; white-space: nowrap;";
-          btnUseSafer.addEventListener("click", () => {
-            cmdInput.value = cmdDecision.suggestedSaferCommand!;
-            cmdInput.dispatchEvent(new Event("input"));
-          });
-          saferBox.append(btnUseSafer);
-          consentBox.append(saferBox);
-        }
-
-        // Custom command editor
         const cmdInputContainer = doc.createElement("div");
-        cmdInputContainer.style.cssText = "margin-bottom: 15px;";
+        cmdInputContainer.className = "kw-command-editor";
         const cmdInputLabel = doc.createElement("label");
-        cmdInputLabel.textContent = "Review or edit the command:";
-        cmdInputLabel.style.cssText = "display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px; font-weight: 500;";
+        cmdInputLabel.textContent = "Review or edit the command";
         cmdInputContainer.append(cmdInputLabel);
 
         const cmdInput = doc.createElement("input");
         cmdInput.type = "text";
         cmdInput.value = fullCmd;
-        cmdInput.style.cssText = "width: 100%; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; color: #fff; padding: 8px 10px; font-family: monospace; font-size: 12px; outline: none; transition: border-color 0.2s;";
-        cmdInput.addEventListener("focus", () => { cmdInput.style.borderColor = "rgb(99, 102, 241)"; });
-        cmdInput.addEventListener("blur", () => { cmdInput.style.borderColor = "rgba(255, 255, 255, 0.1)"; });
         cmdInputContainer.append(cmdInput);
+
+        if (cmdDecision.suggestedSaferCommand !== undefined) {
+          const saferBox = doc.createElement("div");
+          saferBox.className = "kw-command-safer";
+          const saferText = doc.createElement("span");
+          saferText.textContent = "Suggested safer alternative:";
+          const saferCode = doc.createElement("code");
+          saferCode.textContent = cmdDecision.suggestedSaferCommand;
+          saferText.append(" ", saferCode);
+          const btnUseSafer = doc.createElement("button");
+          btnUseSafer.className = "kw-btn kw-btn-success";
+          btnUseSafer.textContent = "Use safer command";
+          btnUseSafer.addEventListener("click", () => {
+            cmdInput.value = cmdDecision.suggestedSaferCommand!;
+            cmdInput.dispatchEvent(new Event("input"));
+          });
+          saferBox.append(saferText, btnUseSafer);
+          consentBox.append(saferBox);
+        }
+
         consentBox.append(cmdInputContainer);
 
-        // Actions
         const actions = doc.createElement("div");
         actions.className = "kw-consent-actions";
-        actions.style.cssText = "display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;";
 
         const btnApprove = doc.createElement("button");
         btnApprove.className = "kw-btn kw-btn-success";
         btnApprove.textContent = "Run once";
-        btnApprove.style.cssText = "font-size: 12px; padding: 6px 12px; border-radius: 6px; font-weight: 500; cursor: pointer;";
         btnApprove.addEventListener("click", () => {
           disableAll();
           const finalVal = cmdInput.value.trim();
@@ -2549,26 +2483,9 @@ export function mountWorkspaceShell(
           }
         });
 
-        const btnAlways = doc.createElement("button");
-        btnAlways.className = "kw-btn kw-btn-secondary";
-        btnAlways.textContent = "Always allow similar";
-        btnAlways.style.cssText = "font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer;";
-        btnAlways.addEventListener("click", () => {
-          disableAll();
-          // Добавление в авто-разрешение
-          const toast = doc.createElement("div");
-          toast.className = "kw-toast kw-toast-success";
-          toast.textContent = "Command added to allowed patterns (approved once)";
-          doc.body.append(toast);
-          setTimeout(() => toast.remove(), 3000);
-
-          void transport.resumeTask(taskId, { kind: "approve" });
-        });
-
         const btnReject = doc.createElement("button");
         btnReject.className = "kw-btn kw-btn-danger";
         btnReject.textContent = "Deny";
-        btnReject.style.cssText = "font-size: 12px; padding: 6px 12px; border-radius: 6px; font-weight: 500; cursor: pointer;";
         btnReject.addEventListener("click", () => {
           disableAll();
           void transport.resumeTask(taskId, { kind: "reject" });
@@ -2577,7 +2494,6 @@ export function mountWorkspaceShell(
         const btnCancel = doc.createElement("button");
         btnCancel.className = "kw-btn kw-btn-secondary";
         btnCancel.textContent = "Cancel Task";
-        btnCancel.style.cssText = "font-size: 12px; padding: 6px 12px; border-radius: 6px; cursor: pointer;";
         btnCancel.addEventListener("click", () => {
           disableAll();
           void transport.resumeTask(taskId, { kind: "cancel" });
@@ -2585,13 +2501,12 @@ export function mountWorkspaceShell(
 
         function disableAll() {
           btnApprove.disabled = true;
-          btnAlways.disabled = true;
           btnReject.disabled = true;
           btnCancel.disabled = true;
           cmdInput.disabled = true;
         }
 
-        actions.append(btnCancel, btnReject, btnAlways, btnApprove);
+        actions.append(btnCancel, btnReject, btnApprove);
         consentBox.append(actions);
         wrap.append(consentBox);
       }

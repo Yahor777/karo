@@ -77,6 +77,8 @@ interface WebsiteRenderMetrics {
   readonly wordCount: number;
   readonly ctaVisible: boolean;
   readonly heroVisible: boolean;
+  readonly navVisible: boolean;
+  readonly faqDetailsVisible: boolean;
   readonly bodyHeight: number;
   readonly bodyBackground: string;
   readonly cardLikeCount: number;
@@ -424,8 +426,15 @@ async function runWebsiteCreationScenario(): Promise<RuntimeScenario> {
         /<meta\b[^>]*name=["']viewport["']/i.test(indexHtml) &&
         /styles\.css/i.test(indexHtml) &&
         /script\.js/i.test(indexHtml) &&
-        /cta-button|<a\b[^>]*href=/i.test(indexHtml),
+        /cta-button|<a\b[^>]*href=/i.test(indexHtml) &&
+        /<nav\b|\bsite-nav\b/i.test(indexHtml) &&
+        /<details\b[\s\S]*<summary\b/i.test(indexHtml),
       indexHtml.slice(0, 600),
+    ),
+    bool(
+      "website-quality-local-interactions",
+      /querySelector(All)?\s*\(|addEventListener\s*\(/i.test(scriptJs) && !/fetch\s*\(|XMLHttpRequest|sendBeacon|localStorage\.setItem/i.test(scriptJs),
+      scriptJs.slice(0, 600),
     ),
     bool(
       "website-quality-css-depth-spacing",
@@ -492,10 +501,15 @@ async function renderGeneratedWebsiteProof(args: {
       assertions: [
         bool(
           "website-render-desktop-visible-complete-page",
-          desktop.heroVisible && desktop.ctaVisible && desktop.sectionCount >= 5 && desktop.bodyHeight > 600,
+          desktop.heroVisible &&
+            desktop.ctaVisible &&
+            desktop.navVisible &&
+            desktop.faqDetailsVisible &&
+            desktop.sectionCount >= 5 &&
+            desktop.bodyHeight > 600,
           JSON.stringify(desktop),
         ),
-        bool("website-render-copy-density", desktop.wordCount >= 45, JSON.stringify(desktop)),
+        bool("website-render-copy-density", desktop.wordCount >= 75, JSON.stringify(desktop)),
         bool(
           "website-render-visual-density",
           desktop.cardLikeCount >= 3 && /gradient|rgba|rgb/i.test(desktop.bodyBackground),
@@ -503,7 +517,7 @@ async function renderGeneratedWebsiteProof(args: {
         ),
         bool(
           "website-render-mobile-no-horizontal-overflow",
-          mobile.overflow <= 2 && mobile.ctaVisible && mobile.sectionCount >= 5,
+          mobile.overflow <= 2 && mobile.ctaVisible && mobile.navVisible && mobile.faqDetailsVisible && mobile.sectionCount >= 5,
           JSON.stringify(mobile),
         ),
         bool("website-render-no-external-network", externalRequests.length === 0, externalRequests.join(", ")),
@@ -522,12 +536,16 @@ async function renderGeneratedWebsiteProof(args: {
           words: desktop.wordCount,
           overflow: desktop.overflow,
           cardLike: desktop.cardLikeCount,
+          nav: desktop.navVisible,
+          faq: desktop.faqDetailsVisible,
         })}`,
         `renderMobileMetrics=${JSON.stringify({
           sections: mobile.sectionCount,
           words: mobile.wordCount,
           overflow: mobile.overflow,
           cardLike: mobile.cardLikeCount,
+          nav: mobile.navVisible,
+          faq: mobile.faqDetailsVisible,
         })}`,
       ],
     };
@@ -580,6 +598,8 @@ async function renderGeneratedWebsiteViewport(args: {
       wordCount: words.length,
       ctaVisible: visible(document.querySelector(".cta-button, a[href], button")),
       heroVisible: visible(document.querySelector(".hero, h1")),
+      navVisible: visible(document.querySelector("nav, .site-nav")),
+      faqDetailsVisible: visible(document.querySelector("details summary, .faq")),
       bodyHeight: Math.max(body.scrollHeight, root.scrollHeight),
       bodyBackground: bodyStyle.backgroundImage + " " + bodyStyle.backgroundColor,
       cardLikeCount,
@@ -884,11 +904,72 @@ class ProbeModelClient {
         const fileName = targetFile ?? "src/karo-demo-site/index.html";
         const contentByFile: Record<string, string> = {
           "src/karo-demo-site/index.html":
-            '<!doctype html>\n<html lang="ru">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>Minecraft JJK Mod</title>\n  <link rel="stylesheet" href="./styles.css">\n  <script defer src="./script.js"></script>\n</head>\n<body>\n  <main class="jjk-page">\n    <section class="hero">\n      <p class="eyebrow">Minecraft JJK Mod</p>\n      <h1>Dark anime combat for cursed-technique battles</h1>\n      <p class="lead">Hero, features, abilities, characters, energy, and FAQ sections are ready for a responsive preview.</p>\n      <a class="cta-button" href="#abilities">Explore cursed techniques</a>\n    </section>\n    <section class="features"><h2>Features</h2><ul><li>Domain expansion inspired encounters</li><li>Ability loadouts</li><li>Responsive landing layout</li></ul></section>\n    <section id="abilities" class="abilities"><h2>Abilities</h2><p>Black Flash, Infinity, cursed tools, and team roles.</p></section>\n    <section class="energy"><h2>Characters / Energy</h2><p>Build around cursed energy roles and anime-style progression.</p></section>\n    <section class="faq"><h2>FAQ</h2><p>Works as a static demo page and can be opened after Apply Changes.</p></section>\n  </main>\n</body>\n</html>\n',
+            `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minecraft JJK Mod</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./script.js"></script>
+</head>
+<body>
+  <nav class="site-nav" aria-label="Primary">
+    <a class="brand-mark" href="#top">Minecraft JJK Mod</a>
+    <div class="nav-links">
+      <a href="#abilities">Abilities</a>
+      <a href="#characters">Characters</a>
+      <a href="#features">Features</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </nav>
+  <main id="top" class="jjk-page">
+    <section class="hero">
+      <p class="eyebrow">Domain-ready combat hub</p>
+      <h1>Dark anime battles with readable cursed-technique mastery</h1>
+      <p class="lead">Preview a focused Minecraft JJK mod landing page with ability roles, energy flow, install guidance, and reviewable staged files before anything touches disk.</p>
+      <a class="cta-button" href="#abilities">Explore cursed techniques</a>
+    </section>
+    <section id="abilities" class="ability-grid" aria-labelledby="abilities-title">
+      <h2 id="abilities-title">Technique loadouts</h2>
+      <article class="feature-card"><h3>Infinity control</h3><p>Spatial defense, pressure windows, and cooldown discipline are presented as clear player choices.</p></article>
+      <article class="feature-card"><h3>Black Flash timing</h3><p>High-impact strikes get framed as a readable timing loop instead of a vague power spike.</p></article>
+      <article class="feature-card"><h3>Cursed tool roles</h3><p>Weapons, characters, and cursed energy routing combine into an encounter plan for teams.</p></article>
+    </section>
+    <section id="characters" class="energy"><h2>Characters and energy</h2><p>Character roles, energy management, and progression hooks connect the page to the actual mod fantasy players expect to test.</p></section>
+    <section id="features" class="features"><h2>Features</h2><p>Responsive cards, offline-safe local assets, preview instructions, and dark liquid styling make the static demo feel like a complete product surface.</p></section>
+    <section id="faq" class="faq"><h2>FAQ</h2><details open><summary>Can I preview this safely?</summary><p>Yes. Apply Changes first, then open index.html through Preview or a browser. Karo does not auto-run commands.</p></details><details><summary>What does this proof cover?</summary><p>It verifies semantic sections, responsive styling, local JS enhancement, and staged artifacts before Apply Changes.</p></details></section>
+  </main>
+</body>
+</html>
+`,
           "src/karo-demo-site/styles.css":
-            ':root { color-scheme: dark; --card: rgba(17, 17, 26, .82); --line: #2a2438; --accent: #8b5cf6; font-family: Inter, system-ui, sans-serif; background: #07070b; color: #f5f3ff; }\nbody { margin: 0; background: radial-gradient(circle at top, #211334, #07070b 52%); }\n.jjk-page { min-height: 100vh; padding: clamp(24px, 5vw, 72px); display: grid; gap: 28px; }\n.hero { max-width: 920px; }\n.eyebrow { color: #a78bfa; text-transform: uppercase; letter-spacing: 0; }\nh1 { font-size: 56px; line-height: .96; margin: 0; }\n.lead { color: #c9c3d9; font-size: 20px; max-width: 760px; }\n.cta-button { display: inline-flex; margin-top: 18px; padding: 12px 16px; border-radius: 999px; background: var(--accent); color: white; text-decoration: none; box-shadow: 0 18px 60px rgba(139, 92, 246, .32); transition: transform .16s ease, box-shadow .16s ease; }\n.card, section:not(.hero) { border: 1px solid var(--line); border-radius: 18px; padding: 24px; background: var(--card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }\n@media (min-width: 860px) { .jjk-page { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero { grid-column: 1 / -1; } }\n',
+            `:root { color-scheme: dark; --bg: #07070b; --card: rgba(17, 17, 26, .84); --line: #30243f; --accent: #8b5cf6; --cyan: #22d3ee; --rose: #fb7185; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #f5f3ff; background: var(--bg); }
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(circle at 12% 8%, rgba(34, 211, 238, .16), transparent 30%), radial-gradient(circle at 72% 4%, rgba(251, 113, 133, .14), transparent 32%), radial-gradient(circle at top, rgba(139, 92, 246, .22), transparent 48%), var(--bg); }
+.site-nav { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px clamp(18px, 4vw, 52px); border-bottom: 1px solid rgba(255, 255, 255, .08); background: rgba(7, 7, 11, .76); backdrop-filter: blur(16px); }
+.site-nav a { color: #e7ddff; text-decoration: none; }
+.brand-mark { font-weight: 800; }
+.nav-links { display: flex; flex-wrap: wrap; gap: 12px; }
+.jjk-page { min-height: 100vh; padding: clamp(24px, 5vw, 72px); display: grid; gap: 24px; }
+.hero { min-height: min(72vh, 720px); align-content: center; padding: clamp(28px, 5vw, 64px); border: 1px solid rgba(139, 92, 246, .25); border-radius: 24px; background: linear-gradient(135deg, rgba(139, 92, 246, .14), rgba(34, 211, 238, .06)); box-shadow: 0 28px 90px rgba(0, 0, 0, .36); }
+.eyebrow { color: var(--cyan); text-transform: uppercase; letter-spacing: 0; font-weight: 800; }
+h1 { max-width: 900px; font-size: clamp(48px, 8vw, 92px); line-height: .92; margin: 0; }
+h2 { margin: 0 0 10px; }
+.lead { color: #d8d1ea; font-size: clamp(18px, 2vw, 24px); max-width: 820px; }
+.cta-button { display: inline-flex; margin-top: 20px; padding: 13px 18px; border-radius: 999px; background: linear-gradient(135deg, var(--accent), var(--cyan)); color: white; text-decoration: none; box-shadow: 0 18px 60px rgba(139, 92, 246, .34); transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+section:not(.hero), .feature-card, details { border: 1px solid var(--line); border-radius: 18px; padding: clamp(20px, 3vw, 30px); background: var(--card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }
+.ability-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.ability-grid > h2 { grid-column: 1 / -1; }
+details + details { margin-top: 12px; }
+summary { cursor: pointer; color: #f8f6ff; }
+.cta-button:hover, .site-nav a:hover, summary:hover { transform: translateY(-1px); color: white; }
+.cta-button:focus-visible, .site-nav a:focus-visible, summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+@media (min-width: 860px) { .jjk-page { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .ability-grid, .faq { grid-column: 1 / -1; } }
+@media (max-width: 680px) { .site-nav { align-items: flex-start; flex-direction: column; } }
+`,
           "src/karo-demo-site/script.js":
-            "document.querySelectorAll('a[href^=\"#\"]').forEach((link) => {\n  link.addEventListener('click', (event) => {\n    const target = document.querySelector(link.getAttribute('href'));\n    if (target) { event.preventDefault(); target.scrollIntoView({ behavior: 'smooth' }); }\n  });\n});\n",
+            "document.documentElement.dataset.karoPreviewReady = 'true';\nfor (const detail of document.querySelectorAll('details')) {\n  detail.addEventListener('toggle', () => {\n    detail.dataset.state = detail.open ? 'open' : 'closed';\n  });\n}\nfor (const link of document.querySelectorAll('a[href^=\"#\"]')) {\n  link.addEventListener('click', () => {\n    document.documentElement.dataset.lastNavigation = link.getAttribute('href') ?? '';\n  });\n}\n",
           "src/karo-demo-site/README.md":
             "# Minecraft JJK landing page\n\nStatic demo created by the Karo Agent workflow. Apply Changes first, then open `src/karo-demo-site/index.html` from Preview.\n",
         };

@@ -196,14 +196,14 @@ describe("Agent Core v1", () => {
         {
           fileName: "src/karo-demo-site/index.html",
           content:
-            '<!doctype html><html><head><title>Minecraft JJK Mod</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><main><section class="hero"><h1>Minecraft JJK Mod</h1><p>Preview cursed technique combat with focused ability cards, character energy roles, and clear player guidance before installing the build.</p><a class="cta-button" href="#abilities">Explore abilities</a></section><section id="abilities" class="abilities"><h2>Abilities</h2><p>Black Flash timing, Infinity pressure, and cursed tools are explained as readable player choices.</p></section><section class="energy"><h2>Characters and energy</h2><p>Energy flow, character roles, and progression hooks connect the landing page to the actual mod fantasy.</p></section><section class="features"><h2>Features</h2><p>Responsive cards, preview-safe content, and dark anime presentation make the page feel like a real product surface.</p></section><section class="faq"><h2>FAQ</h2><p>Apply Changes first, then open index.html from Preview to inspect the static site locally.</p></section></main></body></html>',
+            '<!doctype html><html><head><title>Minecraft JJK Mod</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><nav class="site-nav"><a href="#abilities">Abilities</a><a href="#characters">Characters</a><a href="#faq">FAQ</a></nav><main><section class="hero"><h1>Minecraft JJK Mod</h1><p>Preview cursed technique combat with focused ability cards, character energy roles, install guidance, and clear player guidance before installing the build.</p><a class="cta-button" href="#abilities">Explore abilities</a></section><section id="abilities" class="ability-grid"><h2>Abilities</h2><article class="feature-card"><h3>Black Flash</h3><p>Timing windows turn combat into a readable high-skill loop.</p></article><article class="feature-card"><h3>Infinity</h3><p>Spatial defense creates pressure and counterplay for players.</p></article><article class="feature-card"><h3>Cursed tools</h3><p>Loadout choices connect weapons, roles, and energy routing.</p></article></section><section id="characters" class="energy"><h2>Characters and energy</h2><p>Energy flow, character roles, and progression hooks connect the landing page to the actual mod fantasy.</p></section><section class="features"><h2>Features</h2><p>Responsive cards, preview-safe content, and dark anime presentation make the page feel like a real product surface.</p></section><section id="faq" class="faq"><h2>FAQ</h2><details open><summary>Can I preview this safely?</summary><p>Apply Changes first, then open index.html from Preview to inspect the static site locally.</p></details></section></main></body></html>',
         },
         {
           fileName: "src/karo-demo-site/styles.css",
           content:
-            ":root{--card:rgba(17,17,26,.86)}body{background:radial-gradient(circle at top,#211334,#07070b)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.card,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible{outline:2px solid #8b5cf6}@media (min-width: 800px){.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}",
+            ":root{--card:rgba(17,17,26,.86);--accent:#8b5cf6}body{background:radial-gradient(circle at top,#211334,#07070b)}.site-nav{display:flex;gap:12px}.feature-card,.faq details,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.ability-grid{display:grid}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible,summary:focus-visible{outline:2px solid var(--accent)}@media (min-width: 800px){main{grid-template-columns:repeat(2,minmax(0,1fr))}.hero,.ability-grid,.faq{grid-column:1/-1}}",
         },
-        { fileName: "src/karo-demo-site/script.js", content: "document.documentElement.dataset.ready='true';" },
+        { fileName: "src/karo-demo-site/script.js", content: "document.querySelectorAll('details').forEach((detail)=>detail.addEventListener('toggle',()=>{detail.dataset.state=detail.open?'open':'closed'}));" },
         { fileName: "src/karo-demo-site/README.md", content: "Apply Changes first, then open index.html in preview." },
       ],
     });
@@ -242,14 +242,14 @@ describe("Agent Core v1", () => {
       {
         fileName: "src/karo-demo-site/index.html",
         content:
-          '<!doctype html><html><head><title>Minecraft JJK Mod</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><main><section class="hero"><h1>Minecraft JJK Mod</h1><p>Preview cursed technique combat with focused ability cards, character energy roles, and clear player guidance before installing the build.</p><a class="cta-button" href="#abilities">Explore abilities</a></section><section id="abilities" class="abilities"><h2>Abilities</h2><p>Black Flash timing, Infinity pressure, and cursed tools are explained as readable player choices.</p></section><section class="energy"><h2>Characters and energy</h2><p>Energy flow, character roles, and progression hooks connect the landing page to the actual mod fantasy.</p></section><section class="features"><h2>Features</h2><p>Responsive cards, preview-safe content, and dark anime presentation make the page feel like a real product surface.</p></section></main></body></html>',
+          '<!doctype html><html><head><title>Minecraft JJK Mod</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><nav class="site-nav"><a href="#abilities">Abilities</a><a href="#features">Features</a></nav><main><section class="hero"><h1>Minecraft JJK Mod</h1><p>Preview cursed technique combat with focused ability cards, character energy roles, and clear player guidance before installing the build.</p><a class="cta-button" href="#abilities">Explore abilities</a></section><section id="abilities" class="ability-grid"><h2>Abilities</h2><article class="feature-card"><h3>Black Flash</h3><p>Timing windows turn combat into a readable high-skill loop.</p></article><article class="feature-card"><h3>Infinity</h3><p>Spatial defense creates pressure and counterplay for players.</p></article><article class="feature-card"><h3>Cursed tools</h3><p>Loadout choices connect weapons, roles, and energy routing.</p></article></section><section class="energy"><h2>Characters and energy</h2><p>Energy flow, character roles, and progression hooks connect the landing page to the actual mod fantasy.</p></section><section class="features"><h2>Features</h2><p>Responsive cards, preview-safe content, and dark anime presentation make the page feel like a real product surface.</p></section></main></body></html>',
       },
       {
         fileName: "src/karo-demo-site/styles.css",
         content:
-          ":root{--card:rgba(17,17,26,.86)}body{background:radial-gradient(circle at top,#211334,#07070b)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.card,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible{outline:2px solid #8b5cf6}@media (min-width: 800px){.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}",
+          ":root{--card:rgba(17,17,26,.86)}body{background:radial-gradient(circle at top,#211334,#07070b)}.site-nav{display:flex;gap:12px}.feature-card,.faq details,section{background:var(--card);box-shadow:0 20px 70px rgba(0,0,0,.35)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}.ability-grid{display:grid}.cta-button{transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}.cta-button:focus-visible{outline:2px solid #8b5cf6}@media (min-width: 800px){.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}",
       },
-      { fileName: "src/karo-demo-site/script.js", content: "document.documentElement.dataset.ready='true';" },
+      { fileName: "src/karo-demo-site/script.js", content: "document.querySelectorAll('a').forEach((link)=>link.addEventListener('click',()=>{document.documentElement.dataset.clicked='true'}));" },
       { fileName: "src/karo-demo-site/README.md", content: "Apply Changes first, then open index.html in preview." },
     ];
     const validation = validateStagedArtifactsDeterministically({
@@ -289,17 +289,24 @@ describe("Agent Core v1", () => {
 
     expect(validation.status).toBe("needs_model_review");
     expect(validation.issues.join("\n")).toContain("document metadata");
+    expect(validation.issues.join("\n")).toContain("site navigation");
     expect(validation.issues.join("\n")).toContain("visible CTA");
     expect(validation.issues.join("\n")).toContain("substantive section copy");
+    expect(validation.issues.join("\n")).toContain("FAQ details");
     expect(validation.issues.join("\n")).toContain("premium visual depth");
     expect(repairs.map((repair) => repair.fileName).sort()).toEqual([
       "src/karo-demo-site/index.html",
+      "src/karo-demo-site/script.js",
       "src/karo-demo-site/styles.css",
     ]);
     expect(repairs.find((repair) => repair.fileName.endsWith("index.html"))?.content).toContain("<title>Minecraft JJK Mod</title>");
+    expect(repairs.find((repair) => repair.fileName.endsWith("index.html"))?.content).toContain("site-nav");
+    expect(repairs.find((repair) => repair.fileName.endsWith("index.html"))?.content).toContain("<details");
     expect(repairs.find((repair) => repair.fileName.endsWith("index.html"))?.content).toContain("cta-button");
     expect(repairs.find((repair) => repair.fileName.endsWith("index.html"))?.content).toContain("Cursed technique showcase");
+    expect(repairs.find((repair) => repair.fileName.endsWith("script.js"))?.content).toContain("addEventListener");
     expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain("box-shadow");
+    expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain(".site-nav");
     expect(repairs.find((repair) => repair.fileName.endsWith("styles.css"))?.content).toContain(":focus-visible");
   });
 

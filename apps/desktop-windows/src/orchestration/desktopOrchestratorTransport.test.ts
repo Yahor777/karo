@@ -1558,15 +1558,19 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     const indexPrompt = calls.find((call) => call.which === "coder")?.messages.at(-1)?.content ?? "";
     expect(indexPrompt).toContain("linked styles.css");
     expect(indexPrompt).toContain("visible CTA");
+    expect(indexPrompt).toContain("top navigation");
+    expect(indexPrompt).toContain("multi-card composition");
+    expect(indexPrompt).toContain("FAQ details");
     expect(indexPrompt).toContain("premium dark/liquid UI");
     expect(indexPrompt).toContain("no placeholder copy");
     expect(indexPrompt).toContain("substantive body copy");
     expect(indexPrompt).toContain("visual depth");
     expect(indexPrompt).toContain("hover/focus polish");
+    expect(indexPrompt).toContain("safe progressive enhancement");
     expect(t.getTaskState(taskId)?.agentCoreEstimate?.expectedModelCalls).toBe(5);
     expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
     expect(t.getTaskState(taskId)?.deterministicValidation?.skipModelReview).toBe(true);
-    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "planner", "coder", "validator", "finalizer"]);
+    expect(t.getFinalReport(taskId)?.participants).toEqual(["researcher", "planner", "coder", "validator", "fixer", "finalizer"]);
     expect(t.getFinalReport(taskId)?.bossSummary).toContain("Apply Changes is still required");
     expect(t.getFinalReport(taskId)?.bossSummary).toContain("Fallback used: no");
     expect(t.getFinalReport(taskId)?.outstandingIssues ?? []).not.toContain(

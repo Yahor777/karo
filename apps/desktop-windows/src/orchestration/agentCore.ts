@@ -351,11 +351,12 @@ export function buildAgentImplementationPlan(input: {
       filesToModify: [],
       filesToRead: input.contextProfile === "website_creation" ? [] : [],
       acceptanceCriteria: [
-        "index.html contains title/meta viewport, linked styles.css/script.js, hero, abilities, characters/energy, features, FAQ, and a visible CTA.",
+        "index.html contains title/meta viewport, linked styles.css/script.js, navigation, hero, abilities, characters/energy, features, FAQ, and a visible CTA.",
         "index.html contains substantive subject-specific copy, not just section labels or placeholder cards.",
+        "index.html uses a multi-card product composition with FAQ details or equivalent expandable/readable answers.",
         "styles.css contains responsive premium dark anime/card styling, visual depth, stable spacing, and a mobile layout.",
         "styles.css includes interactive polish for links/cards without layout shift.",
-        "script.js is present, non-empty, and limited to safe local progressive enhancement.",
+        "script.js is present, non-empty, user-visible, and limited to safe local progressive enhancement.",
         "README.md explains Apply Changes and preview/open flow.",
         "All generated files remain staged until Apply Changes.",
         "Emergency fallback is not counted as benchmark success.",
@@ -364,12 +365,16 @@ export function buildAgentImplementationPlan(input: {
         "artifact paths stay inside project",
         "required website files exist",
         "required visible sections exist",
+        "site navigation exists",
+        "multi-card product composition exists",
+        "FAQ details exist",
         "metadata and linked assets exist",
         "substantive section copy exists",
         "offline-safe local assets only",
         "responsive styling signal exists",
         "premium visual polish signal exists",
         "interactive polish signal exists",
+        "safe progressive enhancement exists",
         "preview instructions exist",
         "no generated secrets",
       ],
@@ -496,6 +501,31 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
       );
       addressedIssues.push("visible CTA");
     }
+    if (hasIssue(args.issues, "multi-card product composition") && !hasMultiCardComposition(index.content)) {
+      additions.push(
+        [
+          '<section class="ability-grid" aria-labelledby="ability-grid-title">',
+          '<h2 id="ability-grid-title">Technique loadouts</h2>',
+          '<article class="feature-card"><h3>Infinity control</h3><p>Frame the mod around spatial defense, pressure windows, and disciplined cooldown choices.</p></article>',
+          '<article class="feature-card"><h3>Black Flash timing</h3><p>Explain the high-impact combat moment as a readable player skill loop instead of a vague power list.</p></article>',
+          '<article class="feature-card"><h3>Cursed tool roles</h3><p>Show how weapons, characters, and energy routing combine into a team-ready encounter plan.</p></article>',
+          "</section>",
+        ].join(""),
+      );
+      addressedIssues.push("multi-card product composition");
+    }
+    if (hasIssue(args.issues, "FAQ details") && !hasFaqDetails(index.content)) {
+      additions.push(
+        [
+          '<section class="faq" aria-labelledby="faq-title">',
+          '<h2 id="faq-title">FAQ</h2>',
+          '<details open><summary>Can I preview this safely?</summary><p>Yes. Apply Changes first, then open the staged index.html from Preview or the browser. Karo does not auto-run commands.</p></details>',
+          '<details><summary>What does the demo prove?</summary><p>It proves the generated site has semantic sections, responsive styling, local assets, and reviewable staged files.</p></details>',
+          "</section>",
+        ].join(""),
+      );
+      addressedIssues.push("FAQ details");
+    }
     if (hasIssue(args.issues, "substantive section copy") && !hasSubstantiveWebsiteCopy(index.content)) {
       additions.push(
         [
@@ -516,6 +546,10 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
       nextIndex = ensureStaticWebsiteHtmlShell(nextIndex);
       if (hasIssue(args.issues, "document metadata")) addressedIssues.push("document metadata");
       if (hasIssue(args.issues, "stylesheet/script wiring")) addressedIssues.push("stylesheet/script wiring");
+    }
+    if (hasIssue(args.issues, "site navigation") && !hasSiteNavigation(nextIndex)) {
+      nextIndex = insertSiteNavigation(nextIndex);
+      addressedIssues.push("site navigation");
     }
     if (nextIndex !== index.content) {
       repairs.push({
@@ -543,8 +577,7 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
   if (hasIssue(args.issues, "CSS artifact") && css === undefined) {
     repairs.push({
       fileName: "src/karo-demo-site/styles.css",
-      content:
-        ":root { color-scheme: dark; --jjk-bg: #07070b; --jjk-card: rgba(16, 14, 25, .84); --jjk-line: #34284a; --jjk-accent: #8b5cf6; background: var(--jjk-bg); color: #f6f1ff; }\nbody { margin: 0; background: radial-gradient(circle at top, rgba(139, 92, 246, .24), transparent 42%), var(--jjk-bg); }\nmain { padding: clamp(24px, 5vw, 72px); display: grid; gap: 24px; }\n.card, .feature-card, section { border: 1px solid var(--jjk-line); border-radius: 16px; padding: clamp(18px, 3vw, 28px); background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }\n.cta-button, a, button { transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }\n.cta-button { display: inline-flex; padding: 12px 16px; border-radius: 999px; background: var(--jjk-accent); color: white; text-decoration: none; }\n.cta-button:hover, a:hover, button:hover { transform: translateY(-1px); }\n.cta-button:focus-visible, a:focus-visible, button:focus-visible { outline: 2px solid var(--jjk-accent); outline-offset: 3px; }\n@media (min-width: 860px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .cta, .experience-grid { grid-column: 1 / -1; } }\n",
+      content: buildWebsiteQualityCssRepairSnippet(),
       addressedIssues: [
         "CSS artifact",
         "responsive layout",
@@ -555,36 +588,49 @@ export function repairStaticWebsiteArtifactsTargeted(args: {
       ],
       summary: "Created missing website stylesheet.",
     });
-  } else if (
-    css !== undefined &&
-    (hasIssue(args.issues, "responsive layout") ||
+  } else if (css !== undefined) {
+    const needsCssQualityRepair =
+      hasIssue(args.issues, "responsive layout") ||
       hasIssue(args.issues, "dark anime/card styling") ||
       hasIssue(args.issues, "premium visual depth") ||
       hasIssue(args.issues, "stable spacing system") ||
-      hasIssue(args.issues, "interactive polish"))
-  ) {
-    const extra =
-      "\n/* Karo targeted validation repair */\n:root { --jjk-card: rgba(14, 12, 24, .86); --jjk-line: #30243f; --jjk-accent: #8b5cf6; }\nbody { background: radial-gradient(circle at top, rgba(139, 92, 246, .2), transparent 42%), #07070b; }\nmain { padding: clamp(24px, 5vw, 72px); gap: 24px; }\n.card, .feature-card, section { border: 1px solid var(--jjk-line); border-radius: 16px; background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }\n.cta-button, a, button { transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }\n.cta-button { display: inline-flex; padding: 12px 16px; border-radius: 999px; background: var(--jjk-accent); color: white; text-decoration: none; }\n.cta-button:hover, a:hover, button:hover { transform: translateY(-1px); }\n.cta-button:focus-visible, a:focus-visible, button:focus-visible { outline: 2px solid var(--jjk-accent); outline-offset: 3px; }\n@media (min-width: 860px) { main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; } .hero, .cta, .experience-grid { grid-column: 1 / -1; } }\n";
-    repairs.push({
-      fileName: css.fileName,
-      content: `${css.content.trim()}\n${extra}`,
-      addressedIssues: [
-        "responsive layout",
-        "dark anime/card styling",
-        "premium visual depth",
-        "stable spacing system",
-        "interactive polish",
-      ],
-      summary: `Added responsive premium card styling in ${css.fileName}.`,
-    });
+      hasIssue(args.issues, "interactive polish");
+    const needsCssStructureRepair =
+      (hasIssue(args.issues, "site navigation") && !/\.site-nav|\bnav-links\b/iu.test(css.content)) ||
+      (hasIssue(args.issues, "multi-card product composition") && !/\.ability-grid|\.feature-card|article\b/iu.test(css.content)) ||
+      (hasIssue(args.issues, "FAQ details") && !/details|summary|\.faq\b/iu.test(css.content));
+    if (needsCssQualityRepair || needsCssStructureRepair) {
+      repairs.push({
+        fileName: css.fileName,
+        content: `${css.content.trim()}\n\n${buildWebsiteQualityCssRepairSnippet()}`,
+        addressedIssues: [
+          "responsive layout",
+          "dark anime/card styling",
+          "premium visual depth",
+          "stable spacing system",
+          "interactive polish",
+          "site navigation",
+          "multi-card product composition",
+          "FAQ details",
+        ],
+        summary: `Added responsive premium card styling in ${css.fileName}.`,
+      });
+    }
   }
 
   if (hasIssue(args.issues, "script artifact") && script === undefined) {
     repairs.push({
       fileName: "src/karo-demo-site/script.js",
-      content: "document.documentElement.dataset.karoPreviewReady = 'true';\n",
+      content: buildSafeWebsiteInteractionScript(),
       addressedIssues: ["script artifact"],
       summary: "Created missing website script.",
+    });
+  } else if (script !== undefined && hasIssue(args.issues, "safe progressive enhancement script")) {
+    repairs.push({
+      fileName: script.fileName,
+      content: buildSafeWebsiteInteractionScript(),
+      addressedIssues: ["safe progressive enhancement script"],
+      summary: `Added safe local website interactions in ${script.fileName}.`,
     });
   }
 
@@ -733,8 +779,10 @@ function validateStaticWebsiteArtifacts(
   const names = artifacts.map((artifact) => artifact.fileName.replace(/\\/g, "/").toLowerCase());
   const index = findArtifact(artifacts, /index\.html$/i);
   const css = findArtifact(artifacts, /\.css$/i);
+  const script = findArtifact(artifacts, /\.js$/i);
   const indexContent = index?.content ?? "";
   const cssContent = css?.content ?? "";
+  const scriptContent = script?.content ?? "";
   const checkedSignals: string[] = [];
   const issues: string[] = [];
 
@@ -760,6 +808,7 @@ function validateStaticWebsiteArtifacts(
     ["characters/energy section", /\b(characters?|energy)\b|персонаж|энерг/iu],
     ["features section", /\bfeatures?\b|преимущ|возможност/iu],
     ["FAQ section", /\bfaq\b|question|вопрос/iu],
+    ["site navigation", /<nav\b|\bsite-nav\b|\bnav-links\b/iu],
     ["responsive layout", /@media|\bresponsive\b|viewport|clamp\(|flex-wrap|grid-template/iu],
     ["dark anime/card styling", /\b(card|cards|anime|dark|curse|violet|purple|background)\b|#[0-1][0-9a-f]{2,6}|карточ|аниме|тёмн|темн/iu],
     ["preview/apply instruction", /apply changes|open [`"']?index\.html|preview|открыть|примен/iu],
@@ -769,6 +818,8 @@ function validateStaticWebsiteArtifacts(
     recordSignal(checkedSignals, issues, regex.test(content), label);
   }
   recordSignal(checkedSignals, issues, hasSubstantiveWebsiteCopy(indexContent), "substantive section copy");
+  recordSignal(checkedSignals, issues, hasMultiCardComposition(indexContent), "multi-card product composition");
+  recordSignal(checkedSignals, issues, hasFaqDetails(indexContent), "FAQ details");
   recordSignal(checkedSignals, issues, !hasExternalNetworkDependency(artifacts), "offline-safe local assets");
   recordSignal(
     checkedSignals,
@@ -801,6 +852,12 @@ function validateStaticWebsiteArtifacts(
     issues,
     /:hover|:focus-visible|transition\s*:|transform\s*:/iu.test(cssContent),
     "interactive polish",
+  );
+  recordSignal(
+    checkedSignals,
+    issues,
+    hasScript && hasSafeWebsiteInteractionScript(scriptContent),
+    "safe progressive enhancement script",
   );
 
   if (issues.length > 0) {
@@ -850,6 +907,91 @@ function hasSubstantiveWebsiteCopy(content: string): boolean {
   const text = extractVisibleText(content);
   const words = text.match(/[\p{L}\p{N}][\p{L}\p{N}'-]{2,}/gu) ?? [];
   return words.length >= 45 && /[.!?]/u.test(text);
+}
+
+function hasSiteNavigation(content: string): boolean {
+  return /<nav\b|\bsite-nav\b|\bnav-links\b/iu.test(content);
+}
+
+function insertSiteNavigation(content: string): string {
+  const nav = [
+    '<nav class="site-nav" aria-label="Primary">',
+    '<a class="brand-mark" href="#top">Minecraft JJK Mod</a>',
+    '<div class="nav-links">',
+    '<a href="#abilities">Abilities</a>',
+    '<a href="#characters">Characters</a>',
+    '<a href="#features">Features</a>',
+    '<a href="#faq">FAQ</a>',
+    "</div>",
+    "</nav>",
+  ].join("");
+  if (/<body\b[^>]*>/i.test(content)) {
+    return content.replace(/<body\b([^>]*)>/i, `<body$1>\n  ${nav}`);
+  }
+  if (/<main\b/i.test(content)) {
+    return content.replace(/<main\b/i, `${nav}\n<main`);
+  }
+  return `${nav}\n${content.trim()}\n`;
+}
+
+function hasMultiCardComposition(content: string): boolean {
+  const cardLikeCount =
+    (content.match(/\b(?:feature-card|ability-card|stat-card|card)\b/giu) ?? []).length +
+    (content.match(/<article\b/giu) ?? []).length;
+  const sectionCount = (content.match(/<section\b/giu) ?? []).length;
+  return cardLikeCount >= 3 || (sectionCount >= 5 && /<h[23]\b/iu.test(content) && /<p\b/iu.test(content));
+}
+
+function hasFaqDetails(content: string): boolean {
+  return /<details\b[\s\S]*<summary\b/iu.test(content) || /<section\b[^>]*(?:id|class)=["'][^"']*\bfaq\b[\s\S]*\?/iu.test(content);
+}
+
+function hasSafeWebsiteInteractionScript(content: string): boolean {
+  return /querySelector(All)?\s*\(|addEventListener\s*\(|classList\./iu.test(content) &&
+    !/\b(?:fetch|XMLHttpRequest|sendBeacon|importScripts|eval|new Function|localStorage\.setItem)\s*\(/iu.test(content);
+}
+
+function buildSafeWebsiteInteractionScript(): string {
+  return [
+    "document.documentElement.dataset.karoPreviewReady = 'true';",
+    "",
+    "for (const detail of document.querySelectorAll('details')) {",
+    "  detail.addEventListener('toggle', () => {",
+    "    detail.dataset.state = detail.open ? 'open' : 'closed';",
+    "  });",
+    "}",
+    "",
+    "for (const link of document.querySelectorAll('a[href^=\"#\"]')) {",
+    "  link.addEventListener('click', () => {",
+    "    document.documentElement.dataset.lastNavigation = link.getAttribute('href') ?? '';",
+    "  });",
+    "}",
+    "",
+  ].join("\n");
+}
+
+function buildWebsiteQualityCssRepairSnippet(): string {
+  return [
+    "/* Karo targeted validation repair */",
+    ":root { color-scheme: dark; --jjk-bg: #07070b; --jjk-card: rgba(14, 12, 24, .86); --jjk-line: #30243f; --jjk-accent: #8b5cf6; --jjk-cyan: #22d3ee; --jjk-rose: #fb7185; background: var(--jjk-bg); color: #f6f1ff; }",
+    "body { margin: 0; background: radial-gradient(circle at 12% 8%, rgba(34, 211, 238, .16), transparent 30%), radial-gradient(circle at 72% 4%, rgba(251, 113, 133, .14), transparent 32%), radial-gradient(circle at top, rgba(139, 92, 246, .2), transparent 44%), #07070b; }",
+    "main { padding: clamp(24px, 5vw, 72px); display: grid; gap: 24px; }",
+    ".site-nav { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px clamp(18px, 4vw, 52px); border-bottom: 1px solid rgba(255, 255, 255, .08); background: rgba(7, 7, 11, .76); backdrop-filter: blur(16px); }",
+    ".site-nav a { color: #e7ddff; text-decoration: none; }",
+    ".nav-links { display: flex; flex-wrap: wrap; gap: 12px; }",
+    ".hero { min-height: min(72vh, 720px); align-content: center; background: linear-gradient(135deg, rgba(139, 92, 246, .12), rgba(34, 211, 238, .05)); }",
+    ".card, .feature-card, section, details { border: 1px solid var(--jjk-line); border-radius: 16px; background: var(--jjk-card); box-shadow: 0 24px 80px rgba(0, 0, 0, .32); }",
+    "section, .feature-card, details { padding: clamp(18px, 3vw, 28px); }",
+    ".ability-grid, .experience-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }",
+    ".ability-grid > h2, .experience-grid > h2 { grid-column: 1 / -1; }",
+    ".cta-button, a, button, summary { transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, color .16s ease; }",
+    ".cta-button { display: inline-flex; padding: 12px 16px; border-radius: 999px; background: linear-gradient(135deg, var(--jjk-accent), var(--jjk-cyan)); color: white; text-decoration: none; box-shadow: 0 18px 60px rgba(139, 92, 246, .32); }",
+    ".cta-button:hover, a:hover, button:hover, summary:hover { transform: translateY(-1px); }",
+    ".cta-button:focus-visible, a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--jjk-cyan); outline-offset: 3px; }",
+    "@media (min-width: 860px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero, .cta, .experience-grid, .ability-grid, .faq { grid-column: 1 / -1; } }",
+    "@media (max-width: 680px) { .site-nav { align-items: flex-start; flex-direction: column; } h1 { font-size: clamp(2.5rem, 16vw, 4rem); } }",
+    "",
+  ].join("\n");
 }
 
 function extractVisibleText(content: string): string {

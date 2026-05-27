@@ -454,6 +454,7 @@ interface InternalState {
   runs: RunView[];
   chatScrollTop: number;
   composerMode: ComposerMode;
+  chatDockMaximized: boolean;
   demoPipelineMode: boolean;
   lastTaskId: string | null;
   lastApplyCommandCalled: boolean;
@@ -550,6 +551,7 @@ export function mountWorkspaceShell(
     runs: [...(persistedConversation?.runs ?? [])],
     chatScrollTop: 0,
     composerMode: readStoredComposerMode(),
+    chatDockMaximized: localStorage.getItem("karo.chatDockMaximized") === "true",
     demoPipelineMode: options.desktopShell.isNativeBridgeWired ? !options.desktopShell.isNativeBridgeWired() : true,
     lastTaskId: null,
     lastApplyCommandCalled: false,
@@ -684,6 +686,18 @@ export function mountWorkspaceShell(
   brandSub.textContent = "Native AI IDE";
   brandWrap.append(brandLogo, brand, brandSub);
 
+  const menuBar = doc.createElement("nav");
+  menuBar.className = "kw-menubar";
+  menuBar.setAttribute("aria-label", "Application menu");
+  for (const item of ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"]) {
+    const menuItem = doc.createElement("button");
+    menuItem.type = "button";
+    menuItem.className = "kw-menubar-item";
+    menuItem.textContent = item;
+    menuItem.title = `${item} menu`;
+    menuBar.append(menuItem);
+  }
+
   const projectField = doc.createElement("button");
   projectField.type = "button";
   projectField.className = "kw-project-field";
@@ -713,6 +727,7 @@ export function mountWorkspaceShell(
   settingsBtn.type = "button";
   settingsBtn.className = "kw-topbar-button kw-topbar-settings";
   settingsBtn.textContent = "Settings";
+  headerWidgets.append(settingsBtn);
 
   const signOutBtn = doc.createElement("button");
   signOutBtn.type = "button";
@@ -720,17 +735,51 @@ export function mountWorkspaceShell(
   signOutBtn.textContent = "Sign out";
 
   topbarRight.append(providerInfo, headerWidgets);
-  topbar.append(brandWrap, projectField, topbarRight);
+  topbar.append(brandWrap, menuBar, projectField, topbarRight);
 
-  // ----- Body grid (sidebar | center | right) -----
+  // ----- Body grid (activity bar | explorer | evidence editor | agent chat) -----
   const body = doc.createElement("div");
   body.className = "kw-body";
+
+  // Activity bar
+  const activitybar = doc.createElement("nav");
+  activitybar.className = "kw-activitybar";
+  activitybar.dataset["testid"] = "activitybar";
+  activitybar.setAttribute("aria-label", "Primary workspace navigation");
+
+  const activityLogo = doc.createElement("img");
+  activityLogo.className = "kw-activity-logo";
+  activityLogo.src = KARO_LOGO_URL;
+  activityLogo.alt = "KARO";
+  activitybar.append(activityLogo);
+
+  const activityList = doc.createElement("div");
+  activityList.className = "kw-activity-list";
+  activitybar.append(activityList);
+
+  const navButtons = new Map<WorkspaceRouteId, HTMLButtonElement>();
+  for (const route of SIDEBAR_ROUTES) {
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.className = "kw-activity-button";
+    btn.dataset["routeId"] = route.id;
+    btn.dataset["testid"] = `nav-${route.id}`;
+    btn.title = route.label;
+    btn.setAttribute("aria-label", route.label);
+    const initials = doc.createElement("span");
+    initials.className = "kw-activity-initials";
+    initials.textContent = route.initials;
+    btn.append(initials);
+    btn.addEventListener("click", () => navigate(route.id));
+    activityList.append(btn);
+    navButtons.set(route.id, btn);
+  }
 
   // Sidebar
   const sidebar = doc.createElement("nav");
   sidebar.className = "kw-sidebar";
   sidebar.dataset["testid"] = "sidebar";
-  sidebar.setAttribute("aria-label", "Workspace navigation");
+  sidebar.setAttribute("aria-label", "Explorer and conversations");
 
   const collapseBtn = doc.createElement("button");
   collapseBtn.type = "button";
@@ -738,17 +787,33 @@ export function mountWorkspaceShell(
   collapseBtn.textContent = "Collapse";
   collapseBtn.title = "Collapse sidebar";
 
+  const explorerHeader = doc.createElement("header");
+  explorerHeader.className = "kw-explorer-head";
+  const explorerTitle = doc.createElement("span");
+  explorerTitle.className = "kw-explorer-title";
+  explorerTitle.textContent = "Explorer";
+  explorerHeader.append(explorerTitle, collapseBtn);
+
+  const sidebarProject = doc.createElement("button");
+  sidebarProject.type = "button";
+  sidebarProject.className = "kw-sidebar-project";
+  sidebarProject.dataset["testid"] = "sidebar-project";
+  sidebarProject.title = "Choose project folder";
+  const sidebarProjectLabel = doc.createElement("span");
+  sidebarProjectLabel.className = "kw-sidebar-project-label";
+  const sidebarProjectPath = doc.createElement("strong");
+  sidebarProjectPath.className = "kw-sidebar-project-path";
+  sidebarProject.append(sidebarProjectLabel, sidebarProjectPath);
+
   const newChatBtn = doc.createElement("button");
   newChatBtn.type = "button";
   newChatBtn.className = "kw-sidebar-new-chat";
   newChatBtn.dataset["testid"] = "sidebar-new-chat";
-  newChatBtn.textContent = "+ New chat";
-  newChatBtn.title = "Start a new conversation in this project.";
+  newChatBtn.textContent = "New Agent";
+  newChatBtn.title = "Start a new Agent chat for this project.";
 
   const sidebarList = doc.createElement("ul");
   sidebarList.className = "kw-sidebar-list";
-
-  const navButtons = new Map<WorkspaceRouteId, HTMLButtonElement>();
   for (const route of SIDEBAR_ROUTES) {
     const li = doc.createElement("li");
     li.className = "kw-sidebar-item";
@@ -756,7 +821,6 @@ export function mountWorkspaceShell(
     btn.type = "button";
     btn.className = "kw-sidebar-button";
     btn.dataset["routeId"] = route.id;
-    btn.dataset["testid"] = `nav-${route.id}`;
     const initials = doc.createElement("span");
     initials.className = "kw-sidebar-initials";
     initials.textContent = route.initials;
@@ -767,15 +831,15 @@ export function mountWorkspaceShell(
     btn.addEventListener("click", () => navigate(route.id));
     li.append(btn);
     sidebarList.append(li);
-    navButtons.set(route.id, btn);
   }
+
   const conversationsWrap = doc.createElement("section");
   conversationsWrap.className = "kw-sidebar-conversations";
   conversationsWrap.dataset["testid"] = "sidebar-conversation-list";
   const sidebarFooter = doc.createElement("div");
   sidebarFooter.className = "kw-sidebar-footer";
   sidebarFooter.append(signOutBtn);
-  sidebar.append(collapseBtn, newChatBtn, sidebarList, conversationsWrap, sidebarFooter);
+  sidebar.append(explorerHeader, sidebarProject, newChatBtn, sidebarList, conversationsWrap, sidebarFooter);
 
   // Center pane
   const center = doc.createElement("section");
@@ -800,7 +864,7 @@ export function mountWorkspaceShell(
   let terminalPollTimer: number | null = null;
   renderBottomTools();
 
-  body.append(sidebar, center, right);
+  body.append(activitybar, sidebar, right, center);
   layout.append(topbar, body, bottomTools);
   root.append(layout);
 
@@ -816,6 +880,7 @@ export function mountWorkspaceShell(
 
   const onProjectClick = (): void => navigate("project");
   projectField.addEventListener("click", onProjectClick);
+  sidebarProject.addEventListener("click", onProjectClick);
 
   const onCollapseClick = (): void => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
@@ -952,6 +1017,7 @@ export function mountWorkspaceShell(
 
   renderHeader();
   applySidebarMode();
+  applyChatDockMode();
   renderConversationList();
   // Hydrate persisted state asynchronously, but don't block the first
   // render — the chat thread happily renders with an empty state.
@@ -1014,7 +1080,14 @@ export function mountWorkspaceShell(
         : "Choose a project folder to unlock context, validation, terminal, and Apply.";
 
     // Наполнение headerWidgets
+    sidebarProjectLabel.textContent =
+      state.project !== null && state.project.path.length > 0 ? "Workspace" : "No folder opened";
+    sidebarProjectPath.textContent =
+      state.project !== null && state.project.path.length > 0 ? toDisplayPath(state.project.path) : "Open project folder";
+    sidebarProject.title = projectField.title;
+
     headerWidgets.innerHTML = "";
+    headerWidgets.append(settingsBtn);
 
     const modelId = state.metadata.modelId ?? "";
     const activePreset = getActivePromptPreset(modelId);
@@ -1418,15 +1491,21 @@ export function mountWorkspaceShell(
 
   function applySidebarMode(): void {
     sidebar.dataset["collapsed"] = state.sidebarCollapsed ? "true" : "false";
+    body.dataset["sidebarCollapsed"] = state.sidebarCollapsed ? "true" : "false";
     collapseBtn.textContent = state.sidebarCollapsed ? "Expand" : "Collapse";
     collapseBtn.title = state.sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar";
+  }
+
+  function applyChatDockMode(): void {
+    body.dataset["chatMaximized"] = state.chatDockMaximized ? "true" : "false";
+    layout.dataset["chatMaximized"] = state.chatDockMaximized ? "true" : "false";
   }
 
   function renderConversationList(): void {
     conversationsWrap.innerHTML = "";
     const title = doc.createElement("div");
     title.className = "kw-sidebar-section-title";
-    title.textContent = "Chats";
+    title.textContent = "Agent Sessions";
     conversationsWrap.append(title);
     const list = doc.createElement("div");
     list.className = "kw-conversation-list";
@@ -1567,6 +1646,9 @@ export function mountWorkspaceShell(
     for (const [id, btn] of navButtons.entries()) {
       btn.setAttribute("aria-current", id === routeId ? "page" : "false");
     }
+    for (const btn of sidebar.querySelectorAll<HTMLButtonElement>(".kw-sidebar-button[data-route-id]")) {
+      btn.setAttribute("aria-current", btn.dataset["routeId"] === routeId ? "page" : "false");
+    }
   }
 
   function getVisibleRightPanelTabs(): ReadonlyArray<{ readonly id: RightPanelTab; readonly label: string }> {
@@ -1657,12 +1739,57 @@ export function mountWorkspaceShell(
   }
 
   // ------ Chat (default) ------
+  function buildChatDockHeader(): HTMLElement {
+    const head = doc.createElement("header");
+    head.className = "kw-chat-dock-head";
+    head.dataset["testid"] = "chat-dock-head";
+
+    const titleWrap = doc.createElement("div");
+    titleWrap.className = "kw-chat-dock-title";
+    const title = doc.createElement("strong");
+    title.textContent = state.activeTaskId === null ? "New Agent" : "Agent Run";
+    const subtitle = doc.createElement("span");
+    subtitle.textContent =
+      state.activeTaskId === null
+        ? "Plan, build, and inspect staged work"
+        : state.activeTaskId;
+    titleWrap.append(title, subtitle);
+
+    const actions = doc.createElement("div");
+    actions.className = "kw-chat-dock-actions";
+    const newBtn = doc.createElement("button");
+    newBtn.type = "button";
+    newBtn.className = "kw-chat-dock-button";
+    newBtn.textContent = "New";
+    newBtn.title = "Start a new Agent chat";
+    newBtn.addEventListener("click", () => startNewConversation());
+
+    const maximizeBtn = doc.createElement("button");
+    maximizeBtn.type = "button";
+    maximizeBtn.className = "kw-chat-dock-button kw-chat-dock-maximize";
+    maximizeBtn.dataset["testid"] = "chat-dock-maximize";
+    maximizeBtn.textContent = state.chatDockMaximized ? "Restore" : "Maximize";
+    maximizeBtn.title = state.chatDockMaximized ? "Restore IDE layout" : "Maximize Agent chat";
+    maximizeBtn.addEventListener("click", () => {
+      state.chatDockMaximized = !state.chatDockMaximized;
+      localStorage.setItem("karo.chatDockMaximized", state.chatDockMaximized ? "true" : "false");
+      applyChatDockMode();
+      renderCenter();
+    });
+
+    actions.append(newBtn, maximizeBtn);
+    head.append(titleWrap, actions);
+    return head;
+  }
+
   function renderCenter(): void {
     const previousThread = center.querySelector<HTMLElement>(".kw-chat-thread");
     const wasNearBottom = previousThread === null || isNearBottom(previousThread);
     const previousScrollTop = previousThread?.scrollTop ?? state.chatScrollTop;
     center.innerHTML = "";
     center.dataset["routeId"] = "chat";
+
+    center.append(buildChatDockHeader());
 
     const thread = doc.createElement("div");
     thread.className = "kw-chat-thread";
@@ -4093,6 +4220,7 @@ export function mountWorkspaceShell(
     textarea.dataset["testid"] = "composer-textarea";
     textarea.placeholder = "Ask KARO to build, fix, explain, refactor…";
     textarea.rows = 3;
+    textarea.placeholder = "Plan, build, / for commands, @ for context";
     const activeTaskState = state.activeTaskId !== null ? options.transport?.getTaskState(state.activeTaskId) : null;
     const waitingForClarification =
       activeTaskState?.status === "waiting_consent" &&
@@ -4153,6 +4281,7 @@ export function mountWorkspaceShell(
         remove.type = "button";
         remove.textContent = "×";
         remove.title = "Remove attachment";
+        remove.textContent = "x";
         remove.addEventListener("click", () => {
           const index = attachments.findIndex((item) => item.id === attachment.id);
           if (index >= 0) attachments.splice(index, 1);
@@ -4366,6 +4495,7 @@ export function mountWorkspaceShell(
     startBtn.dataset["testid"] = "composer-send";
     startBtn.textContent = "↑";
     startBtn.title = "Send";
+    startBtn.textContent = "\u2191";
     if (activeTaskState?.status === "waiting_consent") {
       startBtn.disabled = true;
       startBtn.title = waitingForClarification

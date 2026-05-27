@@ -49,7 +49,19 @@
 
 import type { AgentId, BuiltinAgentRole, TaskId } from "@ai-agent-orchestrator/shared-core";
 
-import type { DesktopShell, EncryptedBlob, ApplyResult, TaskInternalPersistent, BuildTaskContextOptions } from "../shell/types.js";
+import type {
+  DesktopShell,
+  EncryptedBlob,
+  ApplyResult,
+  TaskInternalPersistent,
+  BuildTaskContextOptions,
+  RuntimeArtifactRecord,
+  RuntimeEvent,
+  RuntimeEventKind,
+  RuntimeProjectProfile,
+  RuntimeTaskRun,
+  RuntimeValidationRecord,
+} from "../shell/types.js";
 import { API_KEY_SECRET_PREFIX, type ApiKeyMetadata } from "../ui/desktopApiKeySink.js";
 
 import { ChatModelClient, type ChatMessage } from "./modelClient.js";
@@ -368,6 +380,7 @@ interface TaskInternal {
   recoveryRuntime?: WebsiteRecoveryRuntime | undefined;
   reducedContextForRecovery?: boolean | undefined;
   lastInput?: StartTaskInput | undefined;
+  runtimeProfile?: RuntimeProjectProfile | undefined;
 }
 
 interface WebsiteRecoveryRuntime {
@@ -863,10 +876,106 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
     };
   }
 
+  private async detectRuntimeProjectProfile(projectPath?: string): Promise<RuntimeProjectProfile | undefined> {
+    if (projectPath === undefined || projectPath.trim().length === 0) return undefined;
+    if (this.desktopShell.runtime_detect_project_kind === undefined) return undefined;
+    try {
+      return await this.desktopShell.runtime_detect_project_kind(projectPath);
+    } catch (err) {
+      console.warn(`Runtime v2 project profiling failed: ${describeError(err)}`);
+      return undefined;
+    }
+  }
+
+  private toRuntimeTaskRun(internal: TaskInternal): RuntimeTaskRun {
+    const state = internal.state;
+    const artifacts = Array.from(internal.artifactMeta.values()).map((meta): RuntimeArtifactRecord => ({
+      id: meta.id,
+      runId: state.id,
+      fileName: meta.fileName,
+      latestVersion: meta.latestVersion,
+      contentHash: meta.latestContentHash,
+      authoredBy: String(meta.authoredByAgentId),
+      diffStatus: meta.latestVersion > 1 || looksLikeDiffFile(meta.fileName) ? "available" : "pending",
+      validationStatus: runtimeValidationStatus(state.deterministicValidation?.status),
+      applyStatus: internal.applyResult?.success === true ? "applied" : "staged",
+      updatedAt: meta.updatedAt,
+    }));
+    const validations =
+      state.deterministicValidation === undefined
+        ? []
+        : [
+            {
+              id: `${state.id}-deterministic-validation`,
+              runId: state.id,
+              command: validationCommandForProjectKind(state.projectKind ?? "generic"),
+              projectKind: state.projectKind ?? "generic",
+              status: runtimeValidationStatus(state.deterministicValidation.status),
+              exitCode: null,
+              outputExcerpt: state.deterministicValidation.reason,
+              canRetry: state.deterministicValidation.status !== "passed",
+              recoveryHint:
+                state.deterministicValidation.status === "passed"
+                  ? "No recovery needed."
+                  : "Inspect staged artifacts, retry with reduced context, or run the suggested validation command.",
+              createdAt: state.updatedAt,
+            } satisfies RuntimeValidationRecord,
+          ];
+    return {
+      id: state.id,
+      prompt: state.originalPrompt,
+      mode: runtimeModeForState(state),
+      projectRoot: internal.projectPath ?? internal.runtimeProfile?.projectRoot ?? "",
+      projectKind: state.projectKind ?? internal.runtimeProfile?.projectKind ?? "generic",
+      status: runtimeStatusForTaskStatus(state.status, internal.applyResult?.success === true),
+      activeStage: runtimeActiveStageForState(state),
+      permissionProfile: state.commandPermissionMode ?? "smart_approval",
+      createdAt: state.createdAt,
+      updatedAt: state.updatedAt,
+      stagedArtifacts: artifacts,
+      validations,
+      recoveryState:
+        state.recoveryState === undefined
+          ? null
+          : {
+              runId: state.id,
+              failedStage: state.recoveryState.failedStage,
+              status: "needs_recovery",
+              userMessage: state.recoveryState.recoveryReasonUser,
+              preservedArtifacts: state.recoveryState.partialArtifacts.map((artifact) => artifact.fileName),
+              actions: runtimeRecoveryActions(state.recoveryState),
+              updatedAt: state.updatedAt,
+            },
+      terminalSessions: [],
+      usageSummary: state.tokenUsage ?? state.currentContextUsage ?? null,
+      events: internal.trace.map((event) => this.toRuntimeEvent(event)),
+    };
+  }
+
+  private toRuntimeEvent(event: TraceEvent): RuntimeEvent {
+    return {
+      id: `${event.taskId}-${String(event.sequence)}`,
+      runId: event.taskId,
+      sequence: event.sequence,
+      kind: runtimeEventKindForAgent(event.agentId),
+      stage: runtimeStageForAgent(event.agentId),
+      title: runtimeTitleForRecord(event.agentId, event.record),
+      summary: runtimeSummaryForRecord(event.record),
+      status: runtimeStatusForRecord(event.record),
+      at: event.at,
+      evidence: runtimeEvidenceForRecord(event.record),
+    };
+  }
+
   private persistTaskRun(taskId: TaskId): void {
     const internal = this.tasks.get(taskId);
     if (internal === undefined) return;
     if (this.desktopShell.isNativeBridgeWired && this.desktopShell.isNativeBridgeWired()) {
+      if (this.desktopShell.runtime_update_run !== undefined) {
+        this.desktopShell.runtime_update_run(this.toRuntimeTaskRun(internal)).catch((e: unknown) => {
+          console.error("Failed to update Runtime v2 run:", e);
+        });
+      }
       this.desktopShell.shell_update_task_run!(this.toPersistent(internal)).catch((e: unknown) => {
         console.error("Failed to update persistent task run:", e);
       });
@@ -881,7 +990,10 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
     const projectPath = internal.projectPath ?? "";
     if (this.desktopShell.isNativeBridgeWired && this.desktopShell.isNativeBridgeWired()) {
       try {
-        const res = await this.desktopShell.shell_apply_staged_changes!(projectPath, taskId, approval);
+        const res =
+          this.desktopShell.runtime_apply_run_artifacts !== undefined
+            ? await this.desktopShell.runtime_apply_run_artifacts(projectPath, taskId, approval)
+            : await this.desktopShell.shell_apply_staged_changes!(projectPath, taskId, approval);
         internal.applyResult = res;
 
         if (res.success) {
@@ -958,6 +1070,8 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
 
     const modelId = input.metadata.modelId ?? "";
     const hasActiveProject = !!input.projectPath;
+    const runtimeProfile = await this.detectRuntimeProjectProfile(input.projectPath);
+    const projectKind = runtimeProfile?.projectKind ?? "generic";
 
     // Запуск Decision Engine
     const decision = await runDecisionEngine({
@@ -966,6 +1080,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       selectedMode: input.mode === "manual" ? "agent" : "auto",
       selectedModelId: modelId,
       hasActiveProject,
+      projectKind,
     });
     const quickEditPlan =
       decision.allowFileChanges === true || input.mode === "manual"
@@ -1007,6 +1122,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       quickEditAvailable: quickEditPlan !== null,
       contextTokensEstimate: breakdown.selectedFilesTokens,
       selectedFilesEstimate: 0,
+      projectKind,
     });
 
     const initialState: TaskStateSnapshot = {
@@ -1030,6 +1146,8 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       clarificationState,
       currentContextUsage: breakdown,
       commandPermissionMode: "smart_approval",
+      projectKind,
+      runtimeRunId: taskId,
     };
 
     const internal: TaskInternal = {
@@ -1044,11 +1162,17 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       projectPath: input.projectPath,
       metadata: input.metadata,
       lastInput: input,
+      ...(runtimeProfile !== undefined ? { runtimeProfile } : {}),
     };
     this.tasks.set(taskId, internal);
     this.notifyState(taskId);
 
     if (this.desktopShell.isNativeBridgeWired && this.desktopShell.isNativeBridgeWired()) {
+      if (this.desktopShell.runtime_create_run !== undefined) {
+        void this.desktopShell.runtime_create_run(this.toRuntimeTaskRun(internal)).catch((e: unknown) => {
+          console.error("Failed to create Runtime v2 run:", e);
+        });
+      }
       void this.desktopShell.shell_create_task_run!(this.toPersistent(internal)).catch((e: unknown) => {
         console.error("Failed to persist created task run:", e);
       });
@@ -1123,6 +1247,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         selectedMode: internal.state.decision ? (internal.state.decision.executionMode === "clarify" ? "auto" : internal.state.decision.executionMode) : "auto",
         selectedModelId: modelId,
         hasActiveProject,
+        projectKind: internal.state.projectKind,
       });
 
       if (newDecision.needsClarification) {
@@ -1164,6 +1289,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         quickEditAvailable: quickEditPlan !== null,
         contextTokensEstimate: breakdown.selectedFilesTokens,
         selectedFilesEstimate: 0,
+        projectKind: internal.state.projectKind,
       });
 
       internal.state = {
@@ -2181,6 +2307,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
                   quickEditAvailable: false,
                   contextTokensEstimate: contextUsage.selectedFilesTokens,
                   selectedFilesEstimate: contextPackage.selectedFilesCount,
+                  projectKind: internal.state.projectKind,
                 })
               : internal.state.agentCoreEstimate;
 
@@ -2397,6 +2524,7 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
           decision,
           quickEditAvailable: false,
           contextProfile: internal.state.agentCoreEstimate?.contextProfile,
+          projectKind: internal.state.projectKind,
         });
         this.publishTrace(taskId, "planner", { kind: "status", status: "started" });
         this.publishTrace(taskId, "planner", {
@@ -3690,6 +3818,20 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       try {
         const projectPath = internal.projectPath ?? "";
         await this.desktopShell.shell_write_staged_file!(projectPath, taskId, fileName, content);
+        if (this.desktopShell.runtime_record_artifact !== undefined) {
+          await this.desktopShell.runtime_record_artifact(taskId, {
+            id: meta.id,
+            runId: taskId,
+            fileName: meta.fileName,
+            latestVersion: meta.latestVersion,
+            contentHash: meta.latestContentHash,
+            authoredBy: String(meta.authoredByAgentId),
+            diffStatus: meta.latestVersion > 1 || looksLikeDiffFile(meta.fileName) ? "available" : "pending",
+            validationStatus: runtimeValidationStatus(internal.state.deterministicValidation?.status),
+            applyStatus: "staged",
+            updatedAt: meta.updatedAt,
+          });
+        }
         await this.desktopShell.shell_add_artifact!(taskId, record, meta);
       } catch (e: unknown) {
         console.error("Failed to write staged file or add artifact native:", e);
@@ -3780,6 +3922,30 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       updatedAt: this.clock().toISOString(),
     };
     this.notifyState(taskId);
+    if (
+      this.desktopShell.isNativeBridgeWired?.() === true &&
+      this.desktopShell.runtime_record_validation !== undefined
+    ) {
+      void this.desktopShell
+        .runtime_record_validation(taskId, {
+          id: `${taskId}-deterministic-validation`,
+          runId: taskId,
+          command: validationCommandForProjectKind(internal.state.projectKind ?? "generic"),
+          projectKind: internal.state.projectKind ?? "generic",
+          status: runtimeValidationStatus(validation.status),
+          exitCode: null,
+          outputExcerpt: validation.reason,
+          canRetry: validation.status !== "passed",
+          recoveryHint:
+            validation.status === "passed"
+              ? "Validation passed."
+              : "Inspect staged artifacts, retry with reduced context, or run the suggested validation command.",
+          createdAt: internal.state.updatedAt,
+        })
+        .catch((e: unknown) => {
+          console.error("Failed to record Runtime v2 validation:", e);
+        });
+    }
     this.publishTrace(taskId, "validator", {
       kind: "thought",
       text:
@@ -4196,6 +4362,12 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
     internal.trace.push(event);
 
     if (this.desktopShell.isNativeBridgeWired && this.desktopShell.isNativeBridgeWired()) {
+      if (this.desktopShell.runtime_append_event !== undefined) {
+        const runtimeEvent = this.toRuntimeEvent(event);
+        this.desktopShell.runtime_append_event(taskId, runtimeEvent).catch((e: unknown) => {
+          console.error("Failed to append Runtime v2 event:", e);
+        });
+      }
       this.desktopShell.shell_add_agent_run!(taskId, event).catch((e: unknown) => {
         console.error("Failed to persist agent run trace event:", e);
       });
@@ -4281,6 +4453,149 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Runtime v2 projection helpers
+// ---------------------------------------------------------------------------
+
+function runtimeModeForState(state: TaskStateSnapshot): RuntimeTaskRun["mode"] {
+  if (state.participants.includes("quick_edit")) return "quick_edit";
+  const mode = state.decision?.executionMode;
+  if (mode === "chat" || mode === "plan" || mode === "agent" || mode === "assist") return mode;
+  if (state.agentCoreEstimate?.mode === "safety") return "safety";
+  return "auto";
+}
+
+function runtimeStatusForTaskStatus(
+  status: TaskStatus,
+  applied: boolean,
+): RuntimeTaskRun["status"] {
+  if (applied) return "applied";
+  if (status === "completed") return "completed";
+  if (status === "stopped_limit") return "stopped_limit";
+  if (status === "error") return "error";
+  if (status === "waiting_consent") return "waiting_input";
+  if (status === "created") return "created";
+  return "running";
+}
+
+function runtimeActiveStageForState(state: TaskStateSnapshot): string {
+  if (state.status === "waiting_consent") return "user_input";
+  if (state.currentAgentId !== null) return runtimeStageForAgent(state.currentAgentId);
+  if (state.status === "completed") return "final_report";
+  if (state.status === "error") return "recovery";
+  return state.agentCoreEstimate?.stages[0]?.id ?? "router";
+}
+
+function runtimeEventKindForAgent(agentId: AgentId): RuntimeEventKind {
+  if (agentId === "orchestrator") return "router";
+  if (agentId === "researcher" || agentId === "context_analyst" || agentId === "context_curator") return "context";
+  if (agentId === "planner") return "plan";
+  if (agentId === "coder" || agentId === "quick_edit") return "implement";
+  if (agentId === "validator") return "validate";
+  if (agentId === "fixer") return "recover";
+  if (agentId === "terminal") return "terminal";
+  if (agentId === "preview") return "preview";
+  return "review";
+}
+
+function runtimeStageForAgent(agentId: AgentId): string {
+  if (agentId === "orchestrator") return "router";
+  if (agentId === "researcher") return "context";
+  if (agentId === "planner") return "plan";
+  if (agentId === "coder") return "implement";
+  if (agentId === "quick_edit") return "quick_edit";
+  if (agentId === "validator") return "validate";
+  if (agentId === "reviewer") return "review";
+  if (agentId === "fixer") return "recover";
+  if (agentId === "boss" || agentId === "finalizer") return "final_report";
+  return String(agentId);
+}
+
+function runtimeTitleForRecord(agentId: AgentId, record: TraceRecord): string {
+  const stage = runtimeStageForAgent(agentId);
+  if (record.kind === "status") {
+    if (record.status === "started") return `${titleCase(stage)} started`;
+    if (record.status === "finished") return `${titleCase(stage)} finished`;
+    return `${titleCase(stage)} stopped`;
+  }
+  if (record.kind === "artifact_change") return "Artifact staged";
+  if (record.kind === "tool_call") return "Evidence recorded";
+  return `${titleCase(stage)} note`;
+}
+
+function runtimeSummaryForRecord(record: TraceRecord): string {
+  if (record.kind === "thought") return cleanPublicTraceText(record.text);
+  if (record.kind === "artifact_change") {
+    return `Staged artifact ${record.artifactId.slice(0, 8)} at version ${String(record.version)}.`;
+  }
+  if (record.kind === "tool_call") return `Tool evidence: ${record.tool}.`;
+  if (record.kind === "status") return `Stage ${record.status}.`;
+  return "Runtime event recorded.";
+}
+
+function runtimeStatusForRecord(record: TraceRecord): RuntimeEvent["status"] {
+  if (record.kind === "status") {
+    return record.status === "started" || record.status === "finished" || record.status === "error"
+      ? record.status
+      : "finished";
+  }
+  return "finished";
+}
+
+function runtimeEvidenceForRecord(record: TraceRecord): readonly string[] {
+  if (record.kind === "artifact_change") return [`artifact:${record.artifactId}@${String(record.version)}`];
+  if (record.kind === "tool_call") return [`tool:${record.tool}`];
+  return [];
+}
+
+function runtimeValidationStatus(
+  status?: DeterministicValidationSummary["status"],
+): Exclude<RuntimeValidationRecord["status"], "skipped"> {
+  if (status === "passed") return "passed";
+  if (status === "failed") return "failed";
+  if (status === "needs_model_review") return "needs_review";
+  return "pending";
+}
+
+function validationCommandForProjectKind(projectKind: TaskStateSnapshot["projectKind"]): string {
+  switch (projectKind) {
+    case "minecraft_mod_gradle":
+      return "./gradlew test && ./gradlew build";
+    case "node_web":
+    case "tauri_desktop":
+      return "pnpm test && pnpm typecheck";
+    case "rust":
+      return "cargo test && cargo check";
+    case "static_site":
+      return "Preview applied index.html";
+    default:
+      return "git status";
+  }
+}
+
+function runtimeRecoveryActions(recovery: TaskRecoveryState): readonly string[] {
+  const actions: string[] = [];
+  if (recovery.canRetryFailedStage) actions.push("Retry failed stage");
+  if (recovery.canRetryReducedContext) actions.push("Retry with reduced context");
+  if (recovery.canContinueFromPartial) actions.push("Continue from preserved artifacts");
+  if (recovery.canSwitchModel) actions.push("Switch model");
+  return actions.length > 0 ? actions : ["Inspect Logs"];
+}
+
+function cleanPublicTraceText(text: string): string {
+  const withoutPrefix = text.replace(/^\[[^\]]+\]\s*/u, "").replace(/\s+/gu, " ").trim();
+  if (withoutPrefix.length <= 260) return withoutPrefix;
+  return `${withoutPrefix.slice(0, 257)}...`;
+}
+
+function titleCase(value: string): string {
+  return value
+    .split(/[_\s-]+/u)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }
 
 // ---------------------------------------------------------------------------

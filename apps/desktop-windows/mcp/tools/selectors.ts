@@ -28,6 +28,7 @@ export const TEST_IDS = {
   composerModeAuto: "composer-mode-auto",
   composerModeChat: "composer-mode-chat",
   composerModePlan: "composer-mode-plan",
+  composerModeQuickEdit: "composer-mode-quick_edit",
   composerModeAgent: "composer-mode-agent",
   composerModelChip: "composer-model-chip",
   composerCommandMode: "composer-command-mode",
@@ -45,6 +46,7 @@ export const TEST_IDS = {
   rightTabLogs: "right-tab-logs",
   rightTabUsage: "right-tab-usage",
   rightTabTerminal: "right-tab-terminal",
+  rightTabRecovery: "right-tab-recovery",
   usageReadiness: "usage-readiness",
   usageEvidenceSummary: "usage-evidence-summary",
   usageChooseProject: "usage-choose-project",
@@ -82,6 +84,7 @@ export const TEST_IDS = {
   previewChooseProject: "preview-choose-project",
   validationUpgradeAgent: "validation-upgrade-agent",
   terminalPanel: "terminal-panel",
+  recoveryPanel: "recovery-panel",
 } as const;
 
 export type TestId = (typeof TEST_IDS)[keyof typeof TEST_IDS];

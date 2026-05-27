@@ -319,7 +319,7 @@ describe("workbench ??? layout", () => {
     mountWorkspaceShell(root, buildOptions());
     expect(root.querySelector<HTMLImageElement>(".kw-brand-logo")?.alt).toBe("KARO");
     expect(root.querySelector(".kw-brand-name")?.textContent).toBe("KARO");
-    expect(root.querySelector(".kw-brand-tagline")?.textContent).toContain("AI Agent Orchestrator");
+    expect(root.querySelector(".kw-brand-tagline")?.textContent).toContain("Native AI IDE");
     expect(root.querySelector(".kw-project-field")?.textContent).toBe("No project selected");
     expect(root.querySelector(".kw-provider-line")?.textContent).toContain("Fireworks AI");
     const modelLine = root.querySelector<HTMLElement>(".kw-model-line");
@@ -362,8 +362,9 @@ describe("workbench ??? layout", () => {
     mountWorkspaceShell(root, buildOptions());
     const tabs = root.querySelectorAll<HTMLButtonElement>(".kw-right-tab");
     const ids = Array.from(tabs).map((t) => t.dataset["tabId"]);
-    expect(ids).toEqual(["preview", "changes", "logs", "usage"]);
-    expect(ids).not.toContain("terminal");
+    expect(ids).toEqual(["preview", "changes", "terminal", "recovery", "logs", "usage"]);
+    expect(ids).toContain("terminal");
+    expect(ids).toContain("recovery");
 
     const preview = root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!;
     preview.click();
@@ -2853,7 +2854,7 @@ describe("workbench ??? right panel", () => {
     expect(text).toContain("Preview status");
     expect(text).toContain("Run preview");
     expect(text).toContain("Copy command");
-    expect(text).toContain("Terminal status");
+    expect(text).toContain("Open terminal");
     expect(text).toContain("No fake iframe preview");
     expect(text).toContain("Embedded preview is unavailable");
     expect(text).toContain("Preview preflight");
@@ -2912,6 +2913,43 @@ describe("workbench ??? right panel", () => {
     root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!.click();
     expect(root.querySelector<HTMLInputElement>(".kw-preview-command input")?.value).toBe("pnpm dev");
     expect(root.querySelector(".kw-preview-meta")?.textContent).toContain("package.json");
+  });
+
+  it("Preview switches Minecraft projects to validation evidence instead of fake browser preview", async () => {
+    const built = buildShell();
+    built.reads.set("recentProject", {
+      path: "D:\\mods\\gojo",
+      savedAt: "2026-05-17T12:00:00.000Z",
+    });
+    Object.assign(built.shell, {
+      runtime_detect_project_kind: vi.fn(async () => ({
+        projectRoot: "D:\\mods\\gojo",
+        projectKind: "minecraft_mod_gradle" as const,
+        signals: ["gradlew.bat", "build.gradle", "src/main/java"],
+        validationCommands: [".\\gradlew.bat build", ".\\gradlew.bat test"],
+        previewKind: "validation_evidence" as const,
+      })),
+    });
+    mountWorkspaceShell(root, {
+      session: SAMPLE_SESSION,
+      metadata: SAMPLE_METADATA,
+      desktopShell: built.shell,
+      transport: new FakeTransport(),
+      chatModelClient: new FakeChatModelClient(),
+      onSignOut: vi.fn(),
+    });
+    await flush();
+
+    root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!.click();
+    const text = root.querySelector(".kw-right-content")?.textContent ?? "";
+    expect(text).toContain("Minecraft Gradle mod output is validated");
+    expect(text).toContain("Preview status: validation-command");
+    expect(text).toContain("Browser preview is not expected");
+    expect(root.querySelector<HTMLInputElement>(".kw-preview-command input")?.value).toBe(".\\gradlew.bat build");
+    expect(text).toContain("Run validation");
+
+    root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="terminal"]')!.click();
+    expect(root.querySelector<HTMLInputElement>(".kw-terminal-command")?.value).toBe(".\\gradlew.bat build");
   });
 
   it("Preview tab explains the open-file flow for staged static website artifacts", async () => {
@@ -3124,9 +3162,13 @@ describe("workbench ??? right panel", () => {
     expect(root.querySelector(".kw-right-content")?.textContent).toContain("Opened in browser/default app");
   });
 
-  it("Terminal lives in the bottom tools panel until backend command execution is wired", () => {
+  it("Terminal is available in the right cockpit and stays honest when backend execution is not wired", () => {
     mountWorkspaceShell(root, buildOptions());
-    expect(root.querySelector('.kw-right-tab[data-tab-id="terminal"]')).toBeNull();
+    const terminalTab = root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="terminal"]')!;
+    expect(terminalTab).not.toBeNull();
+    terminalTab.click();
+    expect(root.querySelector(".kw-right-content")?.textContent).toContain("Terminal backend is not connected");
+    expect(root.querySelector(".kw-right-content")?.textContent).toContain("Command execution is disabled");
     const bottomTools = root.querySelector<HTMLElement>(".kw-bottom-tools")!;
     expect(bottomTools).not.toBeNull();
     expect(bottomTools.dataset["open"]).toBe("false");
@@ -3138,6 +3180,58 @@ describe("workbench ??? right panel", () => {
     expect(text).toContain("No project selected");
     expect(text).toContain("Project required");
     expect(text).not.toContain("Run command");
+  });
+
+  it("Recovery tab surfaces failed stage state and explicit retry actions", async () => {
+    const transport = new FakeTransport();
+    mountWorkspaceShell(root, buildOptions({ transport }));
+    (root as any)._karoState.activeTaskId = "recover-task";
+    transport.emitTaskState({
+      id: "recover-task",
+      status: "error",
+      currentAgentId: "coder",
+      reviewCycles: 0,
+      maxReviewCycles: 2,
+      createdAt: "2026-05-17T12:00:00.000Z",
+      updatedAt: "2026-05-17T12:00:01.000Z",
+      originalPrompt: "Implement feature",
+      modelId: SAMPLE_METADATA.modelId!,
+      provider: SAMPLE_METADATA.provider,
+      participants: ["researcher", "coder"],
+      errorReason: "Coder timed out",
+      recoveryState: {
+        failedStage: "implement",
+        failedAgent: "coder",
+        failedFile: "src/App.tsx",
+        provider: "fireworks",
+        model: SAMPLE_METADATA.modelId!,
+        elapsedMs: 45000,
+        timeoutMs: 45000,
+        selectedFiles: ["src/App.tsx"],
+        contextTokens: 12000,
+        partialArtifacts: [{ artifactId: "a1", version: 1, fileName: "src/App.tsx" }],
+        retryCount: 1,
+        recommendedAction: "retry_reduced_context",
+        fallbackUsed: false,
+        canRetryFailedStage: true,
+        canRetryReducedContext: true,
+        canContinueFromPartial: true,
+        canSwitchModel: true,
+        recoveryReasonUser: "Coder timed out. The staged draft is preserved; this is not success yet.",
+        recoveryReasonInternal: "provider_timeout",
+      },
+    });
+    await flush();
+
+    root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="recovery"]')!.click();
+    const text = root.querySelector(".kw-right-content")?.textContent ?? "";
+    expect(text).toContain("Recovery: implement");
+    expect(text).toContain("Not success yet");
+    expect(text).toContain("src/App.tsx");
+    expect(text).toContain("Retry reduced context");
+    root.querySelector<HTMLButtonElement>(".kw-recovery-actions button")!.click();
+    await flush();
+    expect(transport.resumeCalls[0]).toEqual({ taskId: "recover-task", decision: { kind: "retryFailedStage" } });
   });
 
   it("Preview runs through the connected terminal backend and streams terminal output", async () => {
@@ -3244,7 +3338,7 @@ describe("workbench ??? right panel", () => {
 
     root.querySelector<HTMLButtonElement>('.kw-right-tab[data-tab-id="preview"]')!.click();
     const input = root.querySelector<HTMLInputElement>(".kw-preview-command input")!;
-    input.value = "pnpm build";
+    input.value = "pnpm deploy";
     input.dispatchEvent(new Event("input", { bubbles: true }));
 
     expect(root.querySelector('[data-testid="preview-status"]')?.textContent).toContain("Preview status: dev-command-gated");
@@ -3290,7 +3384,7 @@ describe("workbench ??? right panel", () => {
 
     root.querySelector<HTMLButtonElement>(".kw-bottom-tools-head")!.click();
     const command = root.querySelector<HTMLInputElement>(".kw-terminal-command")!;
-    command.value = "pnpm build";
+    command.value = "pnpm deploy";
     command.dispatchEvent(new Event("input", { bubbles: true }));
     const run = root.querySelector<HTMLButtonElement>(".kw-terminal-actions .kw-button-primary")!;
     expect(run.disabled).toBe(true);
@@ -3382,7 +3476,7 @@ describe("workbench ??? right panel", () => {
 
     root.querySelector<HTMLButtonElement>(".kw-bottom-tools-head")!.click();
     const command = root.querySelector<HTMLInputElement>(".kw-terminal-command")!;
-    command.value = "pnpm build";
+    command.value = "pnpm deploy";
     command.dispatchEvent(new Event("input", { bubbles: true }));
 
     const cockpitText = root.querySelector(".kw-terminal-safety-cockpit")?.textContent ?? "";

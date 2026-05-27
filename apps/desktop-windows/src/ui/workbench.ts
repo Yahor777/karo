@@ -35,6 +35,8 @@ import type {
   ApplyResult,
   BuildTaskContextOptions,
   DesktopShell,
+  ProjectKind,
+  RuntimeProjectProfile,
   TaskContextPackage,
   TerminalProfile,
 } from "../shell/types.js";
@@ -44,6 +46,7 @@ import type {
   ChatMessage,
   CommandDecision,
   CommandPermissionMode,
+  ConsentDecision,
   FinalReportSummary,
   OrchestratorTransport,
   StartTaskInput,
@@ -97,7 +100,15 @@ export type WorkspaceRouteId =
   | "agents"
   | "settings";
 
-export type RightPanelTab = "preview" | "changes" | "diff" | "files" | "logs" | "usage" | "terminal";
+export type RightPanelTab =
+  | "preview"
+  | "changes"
+  | "diff"
+  | "files"
+  | "terminal"
+  | "recovery"
+  | "logs"
+  | "usage";
 
 export interface WorkspaceShellHandle {
   unmount(): void;
@@ -139,6 +150,8 @@ const RIGHT_PANEL_TABS: ReadonlyArray<{
   { id: "changes", label: "Changes" },
   { id: "diff", label: "Diff" },
   { id: "files", label: "Files" },
+  { id: "terminal", label: "Terminal" },
+  { id: "recovery", label: "Recovery" },
   { id: "logs", label: "Logs" },
   { id: "usage", label: "Usage" },
 ];
@@ -206,9 +219,19 @@ const SAFE_TERMINAL_COMMANDS: ReadonlyArray<string> = [
   "npm run preview",
   "yarn dev",
   "pnpm test",
+  "pnpm typecheck",
+  "pnpm build",
   "pnpm --filter @ai-agent-orchestrator/desktop-windows exec tsc --noEmit",
   "cargo check",
   "cargo test",
+  "gradlew.bat test",
+  "gradlew.bat build",
+  ".\\gradlew.bat test",
+  ".\\gradlew.bat build",
+  ".\\gradlew test",
+  ".\\gradlew build",
+  "./gradlew test",
+  "./gradlew build",
   "pwd",
   "dir",
   "ls",
@@ -230,6 +253,21 @@ const TERMINAL_COMMAND_SUGGESTIONS: ReadonlyArray<{
     label: "Run tests",
     command: "pnpm test",
     detail: "Execute the repository test suite.",
+  },
+  {
+    label: "Typecheck",
+    command: "pnpm typecheck",
+    detail: "Run the project type checker when available.",
+  },
+  {
+    label: "Gradle build",
+    command: ".\\gradlew.bat build",
+    detail: "Validate a Minecraft/Gradle project without browser Preview.",
+  },
+  {
+    label: "Cargo check",
+    command: "cargo check",
+    detail: "Compile-check Rust code without writing project files.",
   },
   {
     label: "Check status",
@@ -275,6 +313,15 @@ const COMPOSER_MODE_CONTRACTS: Readonly<Record<ComposerMode, {
       ["Next", "Prepare Agent manually"],
     ],
   },
+  quick_edit: {
+    title: "Quick Edit",
+    tone: "agent",
+    facts: [
+      ["Intent", "Deterministic edit"],
+      ["Files", "Staged artifact"],
+      ["Apply", "Required"],
+    ],
+  },
   agent: {
     title: "Agent Mode",
     tone: "agent",
@@ -286,7 +333,7 @@ const COMPOSER_MODE_CONTRACTS: Readonly<Record<ComposerMode, {
   },
 };
 
-type ComposerMode = "auto" | "chat" | "plan" | "agent";
+type ComposerMode = "auto" | "chat" | "plan" | "quick_edit" | "agent";
 type IntentKind = "casual_message" | "question" | "assist_request" | "coding_task" | "unclear_task";
 type ResolvedWorkMode = "chat" | "plan" | "assist" | "agent";
 type ReadOnlyContextProfile = "project_explain" | "apply_changes_explain" | "security_review" | "ui_work";
@@ -396,6 +443,8 @@ interface InternalState {
   modelsStatus: "idle" | "loading" | "ready" | "error";
   modelsErrorMessage?: string;
   project: ProjectInfo | null;
+  runtimeProjectProfile: RuntimeProjectProfile | null;
+  runtimeProjectProfileStatus: "idle" | "detecting" | "ready" | "error";
   logs: Array<{ at: string; level: "info" | "warn" | "error"; text: string }>;
   conversationId: string;
   conversationTitle?: string;
@@ -490,6 +539,8 @@ export function mountWorkspaceShell(
     cachedModels: null,
     modelsStatus: "idle",
     project: null,
+    runtimeProjectProfile: null,
+    runtimeProjectProfileStatus: "idle",
     logs: [],
     conversationId,
     ...(persistedConversation?.title !== undefined ? { conversationTitle: persistedConversation.title } : {}),
@@ -630,7 +681,7 @@ export function mountWorkspaceShell(
   brand.textContent = "KARO";
   const brandSub = doc.createElement("span");
   brandSub.className = "kw-brand-tagline";
-  brandSub.textContent = "AI Agent Orchestrator";
+  brandSub.textContent = "Native AI IDE";
   brandWrap.append(brandLogo, brand, brandSub);
 
   const projectField = doc.createElement("button");
@@ -922,6 +973,7 @@ export function mountWorkspaceShell(
     .then((p) => {
       state.project = p;
       if (p !== null) {
+        void refreshRuntimeProjectProfile(p.path);
         void refreshDetectedPreviewCommand(p.path);
       }
       persistConversation();
@@ -954,6 +1006,12 @@ export function mountWorkspaceShell(
       state.project !== null && state.project.path.length > 0
         ? toDisplayPath(state.project.path)
         : "No project selected";
+    projectField.title =
+      state.project !== null && state.project.path.length > 0
+        ? state.runtimeProjectProfile !== null
+          ? `${formatProjectKind(state.runtimeProjectProfile.projectKind)} · ${state.runtimeProjectProfile.previewKind === "browser" ? "browser preview capable" : "validation evidence project"}`
+          : "Runtime v2 project profile will be detected after the project loads."
+        : "Choose a project folder to unlock context, validation, terminal, and Apply.";
 
     // Наполнение headerWidgets
     headerWidgets.innerHTML = "";
@@ -1512,7 +1570,16 @@ export function mountWorkspaceShell(
     const hasArtifacts =
       state.activeTaskId !== null && (options.transport?.getArtifacts(state.activeTaskId).length ?? 0) > 0;
     return RIGHT_PANEL_TABS.filter((tab) => {
-      if (tab.id === "preview" || tab.id === "changes" || tab.id === "logs" || tab.id === "usage") return true;
+      if (
+        tab.id === "preview" ||
+        tab.id === "changes" ||
+        tab.id === "terminal" ||
+        tab.id === "recovery" ||
+        tab.id === "logs" ||
+        tab.id === "usage"
+      ) {
+        return true;
+      }
       if (tab.id === "diff") return state.activeArtifactId !== null || hasArtifacts;
       if (tab.id === "files") return state.project !== null;
       return false;
@@ -1541,11 +1608,6 @@ export function mountWorkspaceShell(
   }
 
   function setRightTab(tabId: RightPanelTab): void {
-    if (tabId === "terminal") {
-      bottomTools.dataset["open"] = "true";
-      renderBottomTools();
-      return;
-    }
     state.rightTab = tabId;
     renderRightTabs();
     renderRightContent();
@@ -4131,13 +4193,13 @@ export function mountWorkspaceShell(
     controls.className = "kw-composer-controls";
     controls.append(attachBtn, attachmentInput, attachmentChips);
 
-    // Mode pills (Auto / Chat / Plan / Agent)
+    // Mode pills (Auto / Chat / Plan / Quick Edit / Agent)
     let mode: ComposerMode = state.composerMode;
     const modeWrap = doc.createElement("div");
     modeWrap.className = "kw-pill-group kw-mode-group";
     modeWrap.setAttribute("role", "group");
     const modeButtons = new Map<ComposerMode, HTMLButtonElement>();
-    for (const value of ["auto", "chat", "plan", "agent"] as const) {
+    for (const value of ["auto", "chat", "plan", "quick_edit", "agent"] as const) {
       const pill = doc.createElement("button");
       pill.type = "button";
       pill.className = "kw-pill";
@@ -4404,7 +4466,7 @@ export function mountWorkspaceShell(
         button.setAttribute("aria-current", mode === value ? "true" : "false");
       }
       renderModeContract();
-      const pipelineEditable = mode === "agent";
+      const pipelineEditable = mode === "agent" || mode === "quick_edit";
       bossToggle.disabled = !pipelineEditable;
       for (const [id, cb] of agentChecks.entries()) {
         cb.disabled = !pipelineEditable;
@@ -4449,7 +4511,7 @@ export function mountWorkspaceShell(
       void draftStore
         .write(state.metadata.provider, {
           prompt: textarea.value,
-          mode: mode === "agent" ? "manual" : "auto",
+          mode: mode === "agent" || mode === "quick_edit" ? "manual" : "auto",
           participants: Array.from(participants),
           reviewCycles,
           ...(state.metadata.modelId !== undefined ? { modelId: state.metadata.modelId } : {}),
@@ -4528,11 +4590,13 @@ export function mountWorkspaceShell(
       const conversationContext = buildConversationContextSummary(promptText);
       const intentResult = classifyPromptIntent(promptText);
       const intent = intentResult.kind;
-      const classifierMode = mode === "plan" ? "assist" : mode;
+      const classifierMode = mode === "plan" ? "assist" : mode === "quick_edit" ? "agent" : mode;
       const classifierResolvedMode = classifyTaskIntent(promptText, classifierMode);
       const resolvedMode: ResolvedWorkMode | null =
         mode === "plan"
           ? "plan"
+          : mode === "quick_edit"
+            ? "agent"
           : mode === "auto" && shouldRouteToPlan(promptText)
             ? "plan"
             : classifierResolvedMode;
@@ -5680,6 +5744,7 @@ export function mountWorkspaceShell(
         .write(projectPath)
         .then((next) => {
           state.project = next;
+          void refreshRuntimeProjectProfile(next.path);
           void refreshDetectedPreviewCommand(next.path);
           input.value = toDisplayPath(next.path);
           persistConversation();
@@ -5699,6 +5764,8 @@ export function mountWorkspaceShell(
     clearBtn.addEventListener("click", () => {
       void projectStore.clear().then(() => {
         state.project = null;
+        state.runtimeProjectProfile = null;
+        state.runtimeProjectProfileStatus = "idle";
         state.detectedPreviewCommand = detectPreviewCommand();
         state.detectedPreviewCommandSource = "default";
         input.value = "";
@@ -5735,6 +5802,21 @@ export function mountWorkspaceShell(
     readiness.className = "kw-project-readiness-grid";
     const projectPath = state.project?.path ?? "";
     const bridgeLive = options.desktopShell.isNativeBridgeWired?.() ?? false;
+    const runtimeProfile = state.runtimeProjectProfile;
+    const runtimeKindLabel =
+      state.runtimeProjectProfileStatus === "detecting"
+        ? "Detecting..."
+        : runtimeProfile !== null
+          ? formatProjectKind(runtimeProfile.projectKind)
+          : "Not detected";
+    const runtimePreviewLabel =
+      runtimeProfile?.previewKind === "browser"
+        ? "Browser preview target"
+        : runtimeProfile?.previewKind === "validation_evidence"
+          ? "Validation evidence only"
+          : "Detect after project selection";
+    const validationCommand =
+      runtimeProfile?.validationCommands[0] ?? suggestedValidationCommandForProjectKind(runtimeProfile?.projectKind);
     const previewSource =
       state.detectedPreviewCommandSource === "package_json"
         ? "package.json"
@@ -5755,8 +5837,26 @@ export function mountWorkspaceShell(
         state.lastContextError === null ? "bounded" : "needs review",
       ],
       [
+        "Project type",
+        runtimeKindLabel,
+        runtimePreviewLabel,
+      ],
+      [
+        "Validation",
+        validationCommand,
+        runtimeProfile?.signals.length
+          ? `${String(runtimeProfile.signals.length)} project signals`
+          : state.runtimeProjectProfileStatus === "error"
+            ? "fallback profile"
+            : "safe default",
+      ],
+      [
         "Preview",
-        state.detectedPreviewCommand.length > 0 ? state.detectedPreviewCommand : "Static files after Apply",
+        runtimeProfile?.previewKind === "validation_evidence"
+          ? "Build/test evidence instead of browser"
+          : state.detectedPreviewCommand.length > 0
+            ? state.detectedPreviewCommand
+            : "Static files after Apply",
         previewSource,
       ],
       [
@@ -7183,6 +7283,12 @@ export function mountWorkspaceShell(
           void renderProjectFiles(state.project.path);
         }
         break;
+      case "terminal":
+        rightContent.append(buildTerminalView());
+        break;
+      case "recovery":
+        rightContent.append(buildRecoveryView());
+        break;
       case "logs":
         rightContent.append(buildLogsView());
         break;
@@ -7199,18 +7305,41 @@ export function mountWorkspaceShell(
     title.textContent = "Preview";
     const subtitle = doc.createElement("p");
     subtitle.className = "kw-preview-subtitle";
-    subtitle.textContent =
-      "Preview is explicit: staged files must be applied first, and dev commands run only through the safe terminal allowlist.";
     const taskState = state.activeTaskId !== null ? options.transport?.getTaskState(state.activeTaskId) ?? null : null;
+    const staticPreviewArtifact =
+      state.activeTaskId !== null
+        ? options.transport
+            ?.getArtifacts(state.activeTaskId)
+            .find((artifact) => /(^|\/)index\.html$/i.test(artifact.fileName))
+        : undefined;
+    const projectKind = taskState?.projectKind ?? state.runtimeProjectProfile?.projectKind ?? "generic";
+    const runtimeProfileForView =
+      state.runtimeProjectProfile !== null && state.runtimeProjectProfile.projectKind === projectKind
+        ? state.runtimeProjectProfile
+        : null;
+    const previewKind =
+      taskState?.projectKind !== undefined
+        ? previewKindForProjectKind(taskState.projectKind)
+        : runtimeProfileForView?.previewKind ?? "browser";
+    const browserPreviewExpected = previewKind === "browser" || staticPreviewArtifact !== undefined;
+    const validationCommand =
+      runtimeProfileForView?.validationCommands[0] ?? suggestedValidationCommandForProjectKind(projectKind);
+    subtitle.textContent = browserPreviewExpected
+      ? "Preview is explicit: staged files must be applied first, and dev commands run only through the safe terminal allowlist."
+      : `${formatProjectKind(projectKind)} output is validated through build/test evidence. Karo will not invent a browser preview for this project type.`;
     const storedPreviewCommand = localStorage.getItem("karo.previewCommand");
     const storedPreviewSource = localStorage.getItem("karo.previewCommandSource");
     const suggested =
       storedPreviewSource === "user_custom" && storedPreviewCommand !== null
         ? storedPreviewCommand
-        : state.detectedPreviewCommand;
+        : browserPreviewExpected
+          ? state.detectedPreviewCommand
+          : validationCommand;
     const source =
       storedPreviewSource === "user_custom"
         ? "user_custom"
+        : !browserPreviewExpected
+          ? "runtime validation profile"
         : state.detectedPreviewCommandSource === "package_json"
           ? "package.json"
           : suggested !== ""
@@ -7226,7 +7355,7 @@ export function mountWorkspaceShell(
     commandLabel.append(commandText, commandInput);
     const meta = doc.createElement("p");
     meta.className = "kw-preview-meta";
-    meta.textContent = `Working directory: ${toDisplayPath(state.project?.path ?? "project root not selected")} · Source: ${source}`;
+    meta.textContent = `Working directory: ${toDisplayPath(state.project?.path ?? "project root not selected")}; project: ${formatProjectKind(projectKind)}; source: ${source}`;
     const detectedUrl = state.previewUrl ?? detectPreviewUrlFromLines(state.terminalLines);
     if (detectedUrl !== null) {
       state.previewUrl = detectedUrl;
@@ -7249,12 +7378,6 @@ export function mountWorkspaceShell(
     const terminalAvailable = hasTerminalBackend();
     const projectRoot = state.project?.path ?? "";
     let previewCommandPreflight = evaluateTerminalCommandPreflight(commandInput.value, terminalAvailable);
-    const staticPreviewArtifact =
-      state.activeTaskId !== null
-        ? options.transport
-            ?.getArtifacts(state.activeTaskId)
-            .find((artifact) => /(^|\/)index\.html$/i.test(artifact.fileName))
-        : undefined;
     const staticPreviewApplied =
       staticPreviewArtifact !== undefined &&
       state.activeTaskId !== null &&
@@ -7266,6 +7389,7 @@ export function mountWorkspaceShell(
         detectedUrl,
         command: commandInput.value,
         commandPreflight: previewCommandPreflight,
+        previewKind,
       });
     const statusCard = doc.createElement("div");
     statusCard.className = "kw-preview-status";
@@ -7275,6 +7399,12 @@ export function mountWorkspaceShell(
     const previewContract = doc.createElement("div");
     previewContract.className = "kw-preview-contract-grid";
     for (const [label, value] of [
+      [
+        "Project profile",
+        staticPreviewArtifact !== undefined && projectKind === "generic"
+          ? "Static preview artifact · browser output"
+          : `${formatProjectKind(projectKind)} · ${browserPreviewExpected ? "browser output" : "validation evidence"}`,
+      ],
       [
         "Static file",
         staticPreviewArtifact === undefined
@@ -7338,10 +7468,13 @@ export function mountWorkspaceShell(
     }
     let previewPreflight = buildPreviewPreflightChecklist(doc, {
       taskState,
+      projectKind,
+      previewKind,
       hasStaticArtifact: staticPreviewArtifact !== undefined,
       staticPreviewApplied,
       terminalAvailable,
       suggestedCommand: suggested,
+      validationCommand,
       commandPreflight: previewCommandPreflight,
       detectedUrl,
     });
@@ -7391,8 +7524,9 @@ export function mountWorkspaceShell(
         staticPreview.append(error);
       }
     } else {
-      staticPreview.textContent =
-        "Static preview: if this run stages an index.html file, Apply Changes first, then open it in a browser.";
+      staticPreview.textContent = browserPreviewExpected
+        ? "Static preview: if this run stages an index.html file, Apply Changes first, then open it in a browser."
+        : `Browser preview is not expected for ${formatProjectKind(projectKind)} work. Use Terminal to run ${validationCommand}; successful build/test output is the preview evidence.`;
     }
     const embeddedNote = doc.createElement("p");
     embeddedNote.className = "kw-preview-meta";
@@ -7402,6 +7536,8 @@ export function mountWorkspaceShell(
     notice.textContent =
       taskState?.isExplainOnly === true
         ? "This was a read-only run. Preview is available only after an implementation task suggests runnable changes."
+        : !browserPreviewExpected
+          ? "This project type uses build/test validation evidence instead of browser Preview. Karo will keep failures visible and recoverable."
         : terminalAvailable
           ? "Preview runs through the safe command allowlist. Destructive commands are blocked."
           : "Preview command execution is unavailable because the terminal backend is not connected in this runtime.";
@@ -7411,7 +7547,14 @@ export function mountWorkspaceShell(
     start.type = "button";
     start.className = "kw-button kw-button-primary";
     start.dataset["testid"] = "preview-run-button";
-    start.textContent = state.terminalStatus === "running" ? "Preview running" : "Run preview";
+    start.textContent =
+      state.terminalStatus === "running"
+        ? browserPreviewExpected
+          ? "Preview running"
+          : "Validation running"
+        : browserPreviewExpected
+          ? "Run preview"
+          : "Run validation";
     start.disabled = !previewCommandPreflight.canStart || state.terminalStatus === "running";
     start.title = previewCommandPreflight.blockReason ?? "Run this command through the safe terminal backend.";
     start.addEventListener("click", () => {
@@ -7444,7 +7587,7 @@ export function mountWorkspaceShell(
     const openTerminal = doc.createElement("button");
     openTerminal.type = "button";
     openTerminal.className = "kw-button kw-button-secondary";
-    openTerminal.textContent = "Terminal status";
+    openTerminal.textContent = "Open terminal";
     openTerminal.addEventListener("click", () => setRightTab("terminal"));
     function updatePreviewCommandControls(): void {
       const nextStatus = describePreviewStatus({
@@ -7453,6 +7596,7 @@ export function mountWorkspaceShell(
         detectedUrl,
         command: commandInput.value,
         commandPreflight: previewCommandPreflight,
+        previewKind,
       });
       statusCard.dataset["state"] = nextStatus;
       statusCard.textContent = `Preview status: ${nextStatus}`;
@@ -7468,10 +7612,13 @@ export function mountWorkspaceShell(
       previewCommandPreflight = evaluateTerminalCommandPreflight(commandInput.value, terminalAvailable);
       const nextPreflight = buildPreviewPreflightChecklist(doc, {
         taskState,
+        projectKind,
+        previewKind,
         hasStaticArtifact: staticPreviewArtifact !== undefined,
         staticPreviewApplied,
         terminalAvailable,
         suggestedCommand: commandInput.value,
+        validationCommand,
         commandPreflight: previewCommandPreflight,
         detectedUrl,
       });
@@ -7501,10 +7648,13 @@ export function mountWorkspaceShell(
     doc: Document,
     args: {
       readonly taskState: TaskStateSnapshot | null;
+      readonly projectKind: ProjectKind;
+      readonly previewKind: RuntimeProjectProfile["previewKind"];
       readonly hasStaticArtifact: boolean;
       readonly staticPreviewApplied: boolean;
       readonly terminalAvailable: boolean;
       readonly suggestedCommand: string;
+      readonly validationCommand: string;
       readonly commandPreflight: TerminalCommandPreflight;
       readonly detectedUrl: string | null;
     },
@@ -7521,32 +7671,43 @@ export function mountWorkspaceShell(
     const items = doc.createElement("div");
     items.className = "kw-preview-preflight-grid";
     const validation = args.taskState?.deterministicValidation;
+    const browserPreviewExpected = args.previewKind === "browser";
     const checklist: ReadonlyArray<{
       readonly label: string;
       readonly value: string;
       readonly state: "ready" | "blocked" | "warn" | "idle";
     }> = [
-      args.hasStaticArtifact
-        ? args.staticPreviewApplied
-          ? { label: "Static file", value: "Applied index.html is openable", state: "ready" }
-          : { label: "Static file", value: "Staged index.html waits for Apply", state: "blocked" }
-        : { label: "Static file", value: "No index.html staged", state: "idle" },
+      browserPreviewExpected
+        ? args.hasStaticArtifact
+          ? args.staticPreviewApplied
+            ? { label: "Project output", value: "Applied index.html is openable", state: "ready" }
+            : { label: "Project output", value: "Staged index.html waits for Apply", state: "blocked" }
+          : { label: "Project output", value: "No browser/static target yet", state: "idle" }
+        : {
+            label: "Project output",
+            value: `${formatProjectKind(args.projectKind)} uses validation evidence`,
+            state: "ready",
+          },
       validation !== undefined
         ? validation.status === "passed"
           ? { label: "Quality", value: describePreviewQualityValue(validation), state: "ready" }
           : validation.status === "failed"
             ? { label: "Quality", value: "Deterministic checks failed", state: "blocked" }
             : { label: "Quality", value: "Needs model review", state: "warn" }
+        : !browserPreviewExpected
+          ? { label: "Validation", value: `Run ${args.validationCommand} for evidence`, state: "idle" }
         : args.hasStaticArtifact
           ? { label: "Quality", value: "No website quality record", state: "warn" }
           : { label: "Quality", value: "Waiting for website artifacts", state: "idle" },
-      args.hasStaticArtifact
-        ? args.staticPreviewApplied
-          ? { label: "Open gate", value: "Apply completed for this file", state: "ready" }
-          : { label: "Open gate", value: "Apply Changes required first", state: "blocked" }
-        : args.detectedUrl !== null
-          ? { label: "Open gate", value: "Dev server URL detected", state: "ready" }
-          : { label: "Open gate", value: "No preview target yet", state: "idle" },
+      browserPreviewExpected
+        ? args.hasStaticArtifact
+          ? args.staticPreviewApplied
+            ? { label: "Open gate", value: "Apply completed for this file", state: "ready" }
+            : { label: "Open gate", value: "Apply Changes required first", state: "blocked" }
+          : args.detectedUrl !== null
+            ? { label: "Open gate", value: "Dev server URL detected", state: "ready" }
+            : { label: "Open gate", value: "No preview target yet", state: "idle" }
+        : { label: "Open gate", value: "Browser opening intentionally unavailable", state: "idle" },
       describePreviewCommandPreflight(args.commandPreflight, args.terminalAvailable, args.suggestedCommand),
     ];
     for (const check of checklist) {
@@ -7571,9 +7732,14 @@ export function mountWorkspaceShell(
     readonly detectedUrl: string | null;
     readonly command: string;
     readonly commandPreflight: TerminalCommandPreflight;
+    readonly previewKind: RuntimeProjectProfile["previewKind"];
   }): string {
     if (args.hasStaticArtifact) {
       return args.staticPreviewApplied ? "static-file-ready" : "staged-only/apply-required";
+    }
+    if (args.previewKind === "validation_evidence") {
+      if (args.command.trim().length === 0) return "validation-evidence-only";
+      return args.commandPreflight.canStart ? "validation-command-available" : "validation-command-gated";
     }
     if (args.detectedUrl !== null) {
       return "running";
@@ -7923,6 +8089,164 @@ export function mountWorkspaceShell(
     return card;
   }
 
+  function buildRecoveryView(): HTMLElement {
+    const panel = doc.createElement("div");
+    panel.className = "kw-recovery-panel";
+    panel.dataset["testid"] = "recovery-panel";
+
+    const title = doc.createElement("h3");
+    title.textContent = "Recovery";
+    const subtitle = doc.createElement("p");
+    subtitle.className = "kw-preview-subtitle";
+    subtitle.textContent =
+      "Recovery is explicit: failed stages stay failed, partial artifacts stay staged, and retry choices are shown as user actions.";
+    panel.append(title, subtitle);
+
+    const taskId = state.activeTaskId;
+    const taskState = taskId !== null ? options.transport?.getTaskState(taskId) ?? null : null;
+    if (taskState === null) {
+      panel.append(
+        buildEmpty(
+          doc,
+          "No active run",
+          "Start a task to see validation failures, provider timeouts, preserved artifacts, and recovery actions here.",
+        ),
+      );
+      return panel;
+    }
+
+    const recovery = taskState.recoveryState;
+    if (recovery === undefined) {
+      if (taskState.status === "error" || taskState.errorReason !== undefined) {
+        const card = doc.createElement("section");
+        card.className = "kw-recovery-card";
+        const head = buildRecoveryHead(doc, "Run stopped with an error", "Not success yet");
+        const body = doc.createElement("p");
+        body.textContent = taskState.errorReason ?? "The run failed before a structured recovery state was recorded.";
+        const facts = buildRecoveryFacts(doc, [
+          { label: "Run", value: taskState.id.slice(0, 8) },
+          { label: "Stage", value: taskState.currentAgentId ?? "unknown", tone: "warn" },
+          { label: "Artifacts", value: String(options.transport?.getArtifacts(taskState.id).length ?? 0) },
+          { label: "Status", value: describeStatus(taskState.status).label, tone: "blocked" },
+          { label: "Apply", value: "not applied", tone: "blocked" },
+          { label: "Next", value: "inspect logs" },
+        ]);
+        const actions = doc.createElement("div");
+        actions.className = "kw-recovery-actions";
+        const logs = doc.createElement("button");
+        logs.type = "button";
+        logs.className = "kw-button kw-button-secondary";
+        logs.textContent = "Open logs";
+        logs.addEventListener("click", () => setRightTab("logs"));
+        const terminal = doc.createElement("button");
+        terminal.type = "button";
+        terminal.className = "kw-button kw-button-secondary";
+        terminal.textContent = "Open terminal evidence";
+        terminal.addEventListener("click", () => setRightTab("terminal"));
+        actions.append(logs, terminal);
+        card.append(head, body, facts, actions);
+        panel.append(card);
+        return panel;
+      }
+      panel.append(
+        buildEmpty(
+          doc,
+          "No recovery needed",
+          "This run has no failure recovery state. If validation or provider calls fail, Karo will keep that state visible instead of marking success.",
+        ),
+      );
+      return panel;
+    }
+
+    const card = doc.createElement("section");
+    card.className = "kw-recovery-card";
+    const head = buildRecoveryHead(doc, `Recovery: ${recovery.failedStage}`, "Not success yet");
+    const body = doc.createElement("p");
+    body.textContent = recovery.recoveryReasonUser;
+    const preserved = recovery.partialArtifacts.map((artifact) => artifact.fileName);
+    const facts = buildRecoveryFacts(doc, [
+      { label: "Failed stage", value: recovery.failedStage, tone: "warn" },
+      { label: "Agent", value: readableAgentName(recovery.failedAgent) },
+      { label: "Provider", value: recovery.provider },
+      { label: "Model", value: formatFriendlyModelName(recovery.model) },
+      { label: "Preserved", value: `${String(preserved.length)} staged`, tone: preserved.length > 0 ? "safe" : "warn" },
+      { label: "Next", value: formatRecommendedRecoveryAction(recovery.recommendedAction) },
+    ]);
+    card.append(head, body, facts);
+
+    if (preserved.length > 0) {
+      const preservedWrap = doc.createElement("div");
+      preservedWrap.className = "kw-recovery-preserved";
+      const preservedTitle = doc.createElement("strong");
+      preservedTitle.textContent = "Preserved staged artifacts";
+      const chips = doc.createElement("div");
+      chips.className = "kw-agent-file-chips";
+      for (const fileName of preserved) {
+        const chip = doc.createElement("span");
+        chip.className = "kw-agent-file-chip";
+        chip.title = fileName;
+        chip.textContent = fileName;
+        chips.append(chip);
+      }
+      preservedWrap.append(preservedTitle, chips);
+      card.append(preservedWrap);
+    }
+
+    const actions = doc.createElement("div");
+    actions.className = "kw-recovery-actions";
+    const retry = doc.createElement("button");
+    retry.type = "button";
+    retry.className = "kw-button kw-button-secondary";
+    retry.textContent = "Retry failed stage";
+    retry.disabled = !recovery.canRetryFailedStage;
+    retry.addEventListener("click", () => void resumeRecoveryAction(taskState.id, { kind: "retryFailedStage" }));
+
+    const reduce = doc.createElement("button");
+    reduce.type = "button";
+    reduce.className = "kw-button kw-button-secondary";
+    reduce.textContent = "Retry reduced context";
+    reduce.disabled = !recovery.canRetryReducedContext;
+    reduce.addEventListener("click", () => void resumeRecoveryAction(taskState.id, { kind: "retryReducedContext" }));
+
+    const partial = doc.createElement("button");
+    partial.type = "button";
+    partial.className = "kw-button kw-button-secondary";
+    partial.textContent = "Continue partial";
+    partial.disabled = !recovery.canContinueFromPartial;
+    partial.addEventListener("click", () => void resumeRecoveryAction(taskState.id, { kind: "continuePartial" }));
+
+    const changes = doc.createElement("button");
+    changes.type = "button";
+    changes.className = "kw-button kw-button-secondary";
+    changes.textContent = "Inspect staged files";
+    changes.disabled = (options.transport?.getArtifacts(taskState.id).length ?? 0) === 0;
+    changes.addEventListener("click", () => setRightTab("changes"));
+
+    const logs = doc.createElement("button");
+    logs.type = "button";
+    logs.className = "kw-button kw-button-secondary";
+    logs.textContent = "Open logs";
+    logs.addEventListener("click", () => setRightTab("logs"));
+    actions.append(retry, reduce, partial, changes, logs);
+    card.append(actions);
+    panel.append(card);
+    return panel;
+  }
+
+  async function resumeRecoveryAction(taskId: string, decision: ConsentDecision): Promise<void> {
+    if (options.transport === undefined) return;
+    try {
+      await options.transport.resumeTask(taskId, decision);
+      pushLog("info", `Recovery action requested: ${decision.kind}`);
+      renderRoute();
+      renderRightContent();
+    } catch (err: unknown) {
+      pushLog("error", `Recovery action failed: ${describeError(err)}`);
+      showToast("error", describeError(err));
+      renderRightContent();
+    }
+  }
+
   function buildTerminalView(): HTMLElement {
     const wrap = doc.createElement("div");
     wrap.className = "kw-terminal-panel";
@@ -7934,14 +8258,19 @@ export function mountWorkspaceShell(
     body.textContent = terminalAvailable
       ? `Safe command runner connected. Status: ${getTerminalDisplayStatus()}. This panel runs approved commands only; it is not a full interactive PTY.`
       : "Terminal backend is not connected in this runtime. Command execution is disabled.";
+    const runtimeTerminalCommand =
+      state.runtimeProjectProfile?.previewKind === "validation_evidence"
+        ? state.runtimeProjectProfile.validationCommands[0] ??
+          suggestedValidationCommandForProjectKind(state.runtimeProjectProfile.projectKind)
+        : state.detectedPreviewCommand;
     const command = doc.createElement("input");
     command.className = "kw-terminal-command";
     command.value =
       state.terminalCommandText.length > 0
         ? state.terminalCommandText
         : (localStorage.getItem("karo.previewCommandSource") === "user_custom"
-          ? localStorage.getItem("karo.previewCommand") ?? state.detectedPreviewCommand
-          : state.detectedPreviewCommand);
+          ? localStorage.getItem("karo.previewCommand") ?? runtimeTerminalCommand
+          : runtimeTerminalCommand);
     command.placeholder = terminalAvailable ? "pnpm test" : "Command execution unavailable in this runtime";
     command.disabled = !terminalAvailable;
     let terminalPreflight = evaluateTerminalCommandPreflight(command.value, terminalAvailable);
@@ -8319,10 +8648,50 @@ export function mountWorkspaceShell(
     }
   }
 
+  async function refreshRuntimeProjectProfile(projectPath: string): Promise<void> {
+    state.runtimeProjectProfileStatus = "detecting";
+    renderHeader();
+    if (options.desktopShell.runtime_detect_project_kind === undefined) {
+      if (state.project?.path !== projectPath) return;
+      state.runtimeProjectProfile = null;
+      state.runtimeProjectProfileStatus = "idle";
+      renderHeader();
+      return;
+    }
+    try {
+      const profile = await options.desktopShell.runtime_detect_project_kind(projectPath);
+      if (state.project?.path !== projectPath) return;
+      state.runtimeProjectProfile = profile;
+      state.runtimeProjectProfileStatus = "ready";
+      if (profile.previewKind === "validation_evidence" && localStorage.getItem("karo.previewCommandSource") !== "user_custom") {
+        state.detectedPreviewCommand = profile.validationCommands[0] ?? suggestedValidationCommandForProjectKind(profile.projectKind);
+        state.detectedPreviewCommandSource = "none";
+      }
+      renderHeader();
+      renderRightContent();
+      if (state.routeId === "project") renderRoute();
+    } catch (err: unknown) {
+      if (state.project?.path !== projectPath) return;
+      state.runtimeProjectProfile = fallbackRuntimeProjectProfile(projectPath);
+      state.runtimeProjectProfileStatus = "error";
+      pushLog("warn", `Runtime project detection unavailable: ${describeError(err)}`);
+      renderHeader();
+      renderRightContent();
+      if (state.routeId === "project") renderRoute();
+    }
+  }
+
   async function refreshDetectedPreviewCommand(projectPath: string): Promise<void> {
     if (options.desktopShell.readProjectSummary === undefined) return;
     const userSource = localStorage.getItem("karo.previewCommandSource");
     if (userSource === "user_custom") return;
+    const runtimeProfile = state.runtimeProjectProfile;
+    if (runtimeProfile?.previewKind === "validation_evidence") {
+      state.detectedPreviewCommand =
+        runtimeProfile.validationCommands[0] ?? suggestedValidationCommandForProjectKind(runtimeProfile.projectKind);
+      state.detectedPreviewCommandSource = "none";
+      return;
+    }
     try {
       const summary = await options.desktopShell.readProjectSummary(projectPath);
       if (state.project?.path !== projectPath) return;
@@ -8424,7 +8793,7 @@ export function mountWorkspaceShell(
         stopTerminalPollingIfTerminal();
       }
       renderBottomTools();
-      if (state.rightTab === "preview") renderRightContent();
+      if (state.rightTab === "preview" || state.rightTab === "terminal") renderRightContent();
     } catch (err) {
       state.terminalError = describeError(err);
       state.terminalStatus = "error";
@@ -8443,6 +8812,7 @@ export function mountWorkspaceShell(
     state.terminalLines = [];
     state.terminalExitCode = null;
     renderBottomTools();
+    if (state.rightTab === "terminal") renderRightContent();
   }
 
   function startTerminalPolling(): void {
@@ -10004,14 +10374,68 @@ function readStoredComposerMode(): ComposerMode {
     localStorage.setItem("karo.composerMode", "plan");
     return "plan";
   }
-  return value === "chat" || value === "plan" || value === "agent" || value === "auto" ? value : "auto";
+  return value === "chat" || value === "plan" || value === "quick_edit" || value === "agent" || value === "auto"
+    ? value
+    : "auto";
 }
 
 function formatComposerModeLabel(mode: ComposerMode): string {
   if (mode === "auto") return "Auto";
   if (mode === "plan") return "Plan";
   if (mode === "chat") return "Chat";
+  if (mode === "quick_edit") return "Quick Edit";
   return "Agent";
+}
+
+function formatProjectKind(kind: ProjectKind | undefined): string {
+  switch (kind) {
+    case "static_site":
+      return "Static site";
+    case "node_web":
+      return "Node web app";
+    case "tauri_desktop":
+      return "Tauri desktop app";
+    case "minecraft_mod_gradle":
+      return "Minecraft Gradle mod";
+    case "rust":
+      return "Rust project";
+    case "generic":
+    default:
+      return "Generic project";
+  }
+}
+
+function fallbackRuntimeProjectProfile(projectRoot: string): RuntimeProjectProfile {
+  return {
+    projectRoot,
+    projectKind: "generic",
+    signals: [],
+    validationCommands: ["git status"],
+    previewKind: "validation_evidence",
+  };
+}
+
+function previewKindForProjectKind(kind: ProjectKind | undefined): RuntimeProjectProfile["previewKind"] {
+  return kind === "static_site" || kind === "node_web" || kind === "tauri_desktop"
+    ? "browser"
+    : "validation_evidence";
+}
+
+function suggestedValidationCommandForProjectKind(kind: ProjectKind | undefined): string {
+  switch (kind) {
+    case "minecraft_mod_gradle":
+      return ".\\gradlew.bat build";
+    case "rust":
+      return "cargo check";
+    case "node_web":
+    case "tauri_desktop":
+      return "pnpm test";
+    case "static_site":
+      return "git status";
+    case "generic":
+    default:
+      return "git status";
+  }
 }
 
 function formatTaskIntentLabel(intent: string | undefined): string {

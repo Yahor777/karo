@@ -66,6 +66,7 @@ export {
   type TaskIntent,
   type TaskExecutionMode,
   type TaskRiskLevel,
+  type ProjectKind,
   type ClarificationOption,
   type TaskDecision,
   type DecisionEngineInput,

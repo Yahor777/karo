@@ -154,6 +154,8 @@ export interface TaskStateSnapshot {
   readonly decision?: TaskDecision | undefined;
   readonly clarificationState?: ClarificationState | undefined;
   readonly commandPermissionMode?: CommandPermissionMode | undefined;
+  readonly projectKind?: ProjectKind | undefined;
+  readonly runtimeRunId?: string | undefined;
 }
 
 export interface ProviderCallDiagnostic {
@@ -399,6 +401,14 @@ export type TaskExecutionMode = "chat" | "plan" | "assist" | "agent" | "clarify"
 
 export type TaskRiskLevel = "low" | "medium" | "high" | "destructive" | "unknown";
 
+export type ProjectKind =
+  | "static_site"
+  | "node_web"
+  | "tauri_desktop"
+  | "minecraft_mod_gradle"
+  | "rust"
+  | "generic";
+
 export interface ClarificationOption {
   readonly id: string;
   readonly label: string;
@@ -509,6 +519,8 @@ export type AgentContextProfile =
   | "apply_changes_explain"
   | "security_review"
   | "website_creation"
+  | "minecraft_mod"
+  | "software_project"
   | "ui_work"
   | "none";
 

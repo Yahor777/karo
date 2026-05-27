@@ -23,6 +23,12 @@ import type {
   TaskInternalPersistent,
   BuildTaskContextOptions,
   TaskContextPackage,
+  RuntimeTaskRun,
+  RuntimeEvent,
+  RuntimeArtifactRecord,
+  RuntimeValidationRecord,
+  RuntimeRecoveryState,
+  RuntimeProjectProfile,
 } from "./types.js";
 import type {
   TraceEvent,
@@ -126,6 +132,16 @@ export const DESKTOP_SHELL_COMMANDS = {
   shellGetTerminalStatus: "shell_get_terminal_status",
   shellGetTerminalProfiles: "shell_get_terminal_profiles",
   shellOpenPreviewFile: "shell_open_preview_file",
+  runtimeDetectProjectKind: "runtime_detect_project_kind",
+  runtimeCreateRun: "runtime_create_run",
+  runtimeUpdateRun: "runtime_update_run",
+  runtimeGetRun: "runtime_get_run",
+  runtimeListRuns: "runtime_list_runs",
+  runtimeAppendEvent: "runtime_append_event",
+  runtimeRecordArtifact: "runtime_record_artifact",
+  runtimeRecordValidation: "runtime_record_validation",
+  runtimeGetRecoveryState: "runtime_get_recovery_state",
+  runtimeApplyRunArtifacts: "runtime_apply_run_artifacts",
 } as const;
 
 export const nativeDesktopShell: DesktopShell = {
@@ -289,6 +305,54 @@ export const nativeDesktopShell: DesktopShell = {
     return callNative(DESKTOP_SHELL_COMMANDS.shellOpenPreviewFile, {
       projectPath: normalizeWindowsExtendedPath(projectPath),
       relativePath,
+    });
+  },
+
+  runtime_detect_project_kind(projectPath: string): Promise<RuntimeProjectProfile> {
+    return callNative<RuntimeProjectProfile>(DESKTOP_SHELL_COMMANDS.runtimeDetectProjectKind, {
+      projectPath: normalizeWindowsExtendedPath(projectPath),
+    });
+  },
+
+  runtime_create_run(run: RuntimeTaskRun): Promise<void> {
+    return callNative<void>(DESKTOP_SHELL_COMMANDS.runtimeCreateRun, { run });
+  },
+
+  runtime_update_run(run: RuntimeTaskRun): Promise<void> {
+    return callNative<void>(DESKTOP_SHELL_COMMANDS.runtimeUpdateRun, { run });
+  },
+
+  runtime_get_run(runId: string): Promise<RuntimeTaskRun | null> {
+    return callNative<RuntimeTaskRun | null>(DESKTOP_SHELL_COMMANDS.runtimeGetRun, { runId });
+  },
+
+  runtime_list_runs(projectPath: string): Promise<RuntimeTaskRun[]> {
+    return callNative<RuntimeTaskRun[]>(DESKTOP_SHELL_COMMANDS.runtimeListRuns, {
+      projectPath: normalizeWindowsExtendedPath(projectPath),
+    });
+  },
+
+  runtime_append_event(runId: string, event: RuntimeEvent): Promise<RuntimeTaskRun> {
+    return callNative<RuntimeTaskRun>(DESKTOP_SHELL_COMMANDS.runtimeAppendEvent, { runId, event });
+  },
+
+  runtime_record_artifact(runId: string, artifact: RuntimeArtifactRecord): Promise<RuntimeTaskRun> {
+    return callNative<RuntimeTaskRun>(DESKTOP_SHELL_COMMANDS.runtimeRecordArtifact, { runId, artifact });
+  },
+
+  runtime_record_validation(runId: string, validation: RuntimeValidationRecord): Promise<RuntimeTaskRun> {
+    return callNative<RuntimeTaskRun>(DESKTOP_SHELL_COMMANDS.runtimeRecordValidation, { runId, validation });
+  },
+
+  runtime_get_recovery_state(runId: string): Promise<RuntimeRecoveryState | null> {
+    return callNative<RuntimeRecoveryState | null>(DESKTOP_SHELL_COMMANDS.runtimeGetRecoveryState, { runId });
+  },
+
+  runtime_apply_run_artifacts(projectPath: string, runId: string, approval: boolean): Promise<ApplyResult> {
+    return callNative<ApplyResult>(DESKTOP_SHELL_COMMANDS.runtimeApplyRunArtifacts, {
+      projectPath: normalizeWindowsExtendedPath(projectPath),
+      runId,
+      approval,
     });
   },
 

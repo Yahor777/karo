@@ -16,6 +16,14 @@ export type TaskExecutionMode = "chat" | "plan" | "assist" | "agent" | "clarify"
 
 export type TaskRiskLevel = "low" | "medium" | "high" | "destructive" | "unknown";
 
+export type ProjectKind =
+  | "static_site"
+  | "node_web"
+  | "tauri_desktop"
+  | "minecraft_mod_gradle"
+  | "rust"
+  | "generic";
+
 export interface ClarificationOption {
   id: string;
   label: string;
@@ -44,6 +52,7 @@ export interface DecisionEngineInput {
   selectedMode: "auto" | "chat" | "plan" | "assist" | "agent";
   selectedModelId?: string | undefined;
   hasActiveProject: boolean;
+  projectKind?: ProjectKind | undefined;
   contextHint?: string | undefined;
   userSettings?: Record<string, any> | undefined;
 }
@@ -75,6 +84,11 @@ function hasWebsiteCreationSignal(prompt: string): boolean {
     /\b(?:create|build|make|generate|implement|write|modify|add)\b/iu.test(prompt) ||
     /\u0441\u043e\u0437\u0434\u0430|\u0441\u0434\u0435\u043b\u0430|\u043f\u043e\u0441\u0442\u0440\u043e|\u0441\u0433\u0435\u043d\u0435\u0440|\u0440\u0435\u0430\u043b\u0438\u0437|\u0434\u043e\u0431\u0430\u0432/iu.test(prompt);
   return siteSignal && createSignal;
+}
+
+function hasMinecraftModSignal(prompt: string): boolean {
+  return /\b(?:minecraft|forge|fabric|neoforge|gradle|mod|mixin|capability|entity|blockstate|datagen)\b/iu.test(prompt) ||
+    /\u043c\u0430\u0439\u043d\u043a\u0440\u0430\u0444\u0442|\u043c\u043e\u0434\b|\u043c\u043e\u0434\u0430\b|\u043c\u043e\u0434\u044b\b|\u0433\u0440\u0430\u0434\u043b|\u0444\u043e\u0440\u0434\u0436|\u0444\u0430\u0431\u0440\u0438\u043a/iu.test(prompt);
 }
 
 function hasExplicitFileChangingIntent(prompt: string, fileIntent: boolean): boolean {
@@ -184,6 +198,11 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
     "скрипт",
     "workbench.ts",
     "desktoporchestratortransport",
+    "minecraft",
+    "mod",
+    "forge",
+    "fabric",
+    "gradle",
   ];
   const localProjectQuery = containsAny(p, projectKeywords);
 
@@ -266,6 +285,9 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
     "выполни команду",
     "cargo test",
     "cargo check",
+    "gradlew",
+    "./gradlew",
+    "gradlew.bat",
     "pnpm test",
     "npm test",
     "git status",
@@ -409,16 +431,20 @@ export function runDecisionEngineSync(input: DecisionEngineInput): TaskDecision 
     allowCommands = false;
     requiresContextEngine = false;
     reasoningSummary = "Пользователь уточнил, что хочет обычный разговор без изменения файлов.";
-  } else if (fileIntent || explicitFileChangingIntent) {
+  } else if (fileIntent || explicitFileChangingIntent || (input.projectKind === "minecraft_mod_gradle" && hasMinecraftModSignal(input.prompt))) {
     intent = p.includes("баг") || p.includes("bug") || p.includes("ошибк") ? "fix_bug" : "modify_file";
     allowFileChanges = true;
-    requiresContextEngine = localProjectQuery || hasActiveProject;
+    requiresContextEngine = localProjectQuery || hasActiveProject || input.projectKind === "minecraft_mod_gradle";
     executionMode = input.selectedMode === "auto" ? "agent" : input.selectedMode;
     expectedOutput = "artifacts";
-    riskLevel = "medium";
+    riskLevel = input.projectKind === "minecraft_mod_gradle" ? "high" : "medium";
     reasoningSummary = explicitFileChangingIntent
       ? "Explicit file-changing request with target files or Agent Mode. Route to staged artifacts; read-only/security analysis must not override it."
       : "Запрошено изменение файлов локального проекта.";
+    if (input.projectKind === "minecraft_mod_gradle") {
+      reasoningSummary =
+        "Minecraft/Gradle project work requires Agent Mode, staged artifacts, and build/test validation evidence instead of browser Preview.";
+    }
     if (requiresContextEngine && !input.projectRoot && input.selectedMode === "auto" && !isTest) {
       needsClarification = true;
       executionMode = "clarify";

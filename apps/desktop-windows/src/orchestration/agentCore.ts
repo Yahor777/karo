@@ -3,6 +3,7 @@ import type {
   AgentCoreEstimate,
   AgentCoreStageEstimate,
   DeterministicValidationSummary,
+  ProjectKind,
   TaskDecision,
 } from "./types.js";
 import { estimateTokens } from "./tokenEstimator.js";
@@ -13,6 +14,7 @@ export interface AgentCoreEstimateInput {
   readonly quickEditAvailable: boolean;
   readonly contextTokensEstimate?: number | undefined;
   readonly selectedFilesEstimate?: number | undefined;
+  readonly projectKind?: ProjectKind | undefined;
 }
 
 export interface ArtifactValidationInput {
@@ -318,6 +320,7 @@ export function buildAgentImplementationPlan(input: {
   readonly decision: TaskDecision;
   readonly quickEditAvailable: boolean;
   readonly contextProfile?: AgentContextProfile | undefined;
+  readonly projectKind?: ProjectKind | undefined;
 }): AgentImplementationPlan {
   const compactPrompt = input.prompt.trim();
   if (input.quickEditAvailable) {
@@ -393,6 +396,38 @@ export function buildAgentImplementationPlan(input: {
       previewInstructionsNeeded: true,
       estimatedModelCalls: 1 + WEBSITE_CHUNK_COUNT,
       contextBudget: "minimal",
+      fallbackAllowedAsSuccess: false,
+    };
+  }
+
+  if (input.projectKind === "minecraft_mod_gradle" || isMinecraftModPrompt(input.prompt)) {
+    return {
+      taskType: "existing_project_change",
+      goal: compactPrompt || "Prepare staged Minecraft mod changes.",
+      filesToCreate: [],
+      filesToModify: ["targeted Gradle/Minecraft mod source files"],
+      filesToRead: ["build.gradle/settings.gradle", "src/main/java", "src/main/resources/META-INF/mods.toml or fabric.mod.json"],
+      acceptanceCriteria: [
+        "Modify only the minimal mod files required by the prompt.",
+        "Keep all changes staged until Apply Changes.",
+        "Do not show browser Preview as evidence for mod work.",
+        "Use Gradle build/test output as validation evidence when available.",
+        "Final Report states which checks were run and which were not run.",
+      ],
+      requiredChecks: [
+        "safe artifact paths",
+        "no generated secrets",
+        "Gradle build/test command suggested",
+        "no fake Preview for non-web output",
+      ],
+      risks: [
+        "Minecraft/Forge/Fabric projects often require a local JDK and Gradle cache.",
+        "Validation may need to stop at command evidence if dependencies are unavailable.",
+      ],
+      expectedArtifacts: ["staged Java/resources/Gradle artifacts"],
+      previewInstructionsNeeded: false,
+      estimatedModelCalls: 4,
+      contextBudget: "broad",
       fallbackAllowedAsSuccess: false,
     };
   }
@@ -735,6 +770,14 @@ function inferContextProfile(input: AgentCoreEstimateInput): AgentContextProfile
   }
 
   if (isStaticWebsiteCreationPrompt(input.prompt)) return "website_creation";
+  if (input.projectKind === "minecraft_mod_gradle" || isMinecraftModPrompt(input.prompt)) return "minecraft_mod";
+  if (
+    input.projectKind === "rust" ||
+    input.projectKind === "tauri_desktop" ||
+    input.projectKind === "node_web"
+  ) {
+    return "software_project";
+  }
   if (input.decision.intent === "security_review") return "security_review";
   if (isApplyChangesQuestion(text)) return "apply_changes_explain";
   if (isUiWorkPrompt(text)) return "ui_work";
@@ -916,6 +959,11 @@ function insertHtmlSections(content: string, additions: readonly string[]): stri
   if (/<\/main>/i.test(content)) return content.replace(/<\/main>/i, `${block}</main>`);
   if (/<\/body>/i.test(content)) return content.replace(/<\/body>/i, `${block}</body>`);
   return `${content.trim()}\n${additions.join("\n")}\n`;
+}
+
+function isMinecraftModPrompt(prompt: string): boolean {
+  return /\b(minecraft|forge|fabric|neoforge|gradle|mod|mixin|blockstate|entity|datagen)\b/iu.test(prompt) ||
+    /\u043c\u0430\u0439\u043d\u043a\u0440\u0430\u0444\u0442|\u043c\u043e\u0434\b|\u043c\u043e\u0434\u0430\b|\u0433\u0440\u0430\u0434\u043b|\u0444\u043e\u0440\u0434\u0436|\u0444\u0430\u0431\u0440\u0438\u043a/iu.test(prompt);
 }
 
 function hasVisibleCta(content: string): boolean {

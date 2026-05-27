@@ -1106,11 +1106,13 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
     const activeRightTab = await ctx.page.locator('.kw-right-tab[aria-current="page"]').textContent().catch(() => "");
     bag.assertions.push(
       {
-        name: "right-panel-empty-state-has-limited-tabs",
+        name: "right-panel-empty-state-has-task-cockpit-tabs",
         passed:
-          visibleRightTabs.length <= 4 &&
+          visibleRightTabs.length <= 6 &&
           visibleRightTabs.includes("Preview") &&
           visibleRightTabs.includes("Changes") &&
+          visibleRightTabs.includes("Terminal") &&
+          visibleRightTabs.includes("Recovery") &&
           visibleRightTabs.includes("Logs") &&
           visibleRightTabs.includes("Usage"),
         details: visibleRightTabs.join(", "),
@@ -1120,12 +1122,15 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
         passed: !/Files/i.test(activeRightTab ?? ""),
         details: activeRightTab ?? "",
       },
-      await assertNotVisible(ctx, { testId: TEST_IDS.rightTabTerminal, name: "terminal-not-right-panel-tab" }),
+      await assertVisible(ctx, { testId: TEST_IDS.rightTabTerminal, name: "terminal-right-panel-tab-visible" }),
+      await assertVisible(ctx, { testId: TEST_IDS.rightTabRecovery, name: "recovery-right-panel-tab-visible" }),
       await assertVisible(ctx, { testId: TEST_IDS.terminalPanel, name: "terminal-bottom-panel-visible" }),
     );
     for (const [tab, testId] of [
       ["preview", TEST_IDS.rightTabPreview],
       ["changes", TEST_IDS.rightTabChanges],
+      ["terminal", TEST_IDS.rightTabTerminal],
+      ["recovery", TEST_IDS.rightTabRecovery],
       ["logs", TEST_IDS.rightTabLogs],
       ["usage", TEST_IDS.rightTabUsage],
     ] as const) {
@@ -1150,7 +1155,7 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
           name: "preview-run-button-state-honest",
           passed:
             /Run preview/i.test(tabText ?? "") &&
-            /Terminal status/i.test(tabText ?? "") &&
+            /Open terminal/i.test(tabText ?? "") &&
             /Copy command/i.test(tabText ?? "") &&
             (previewBackendConnected || /not wired|unavailable|disabled/i.test(tabText ?? "")),
           details: tabText ?? "",
@@ -1166,6 +1171,23 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
           passed: !/Open Composer/i.test(tabText ?? ""),
           details: tabText ?? "",
         });
+      }
+      if (tab === "terminal") {
+        bag.assertions.push({
+          name: "terminal-tab-honest-mvp",
+          passed: /Terminal/i.test(tabText ?? "") && /not a full interactive PTY|Command execution is disabled/i.test(tabText ?? ""),
+          details: tabText ?? "",
+        });
+        bag.screenshots.push((await karoScreenshot(ctx, { name: "product-terminal-panel" })).path);
+      }
+      if (tab === "recovery") {
+        bag.assertions.push({
+          name: "recovery-tab-honest-empty-state",
+          passed: /Recovery/i.test(tabText ?? "") && /No active run|No recovery needed|failed stages stay failed/i.test(tabText ?? ""),
+          details: tabText ?? "",
+        });
+        bag.assertions.push(await assertVisible(ctx, { testId: TEST_IDS.recoveryPanel, name: "recovery-panel-visible" }));
+        bag.screenshots.push((await karoScreenshot(ctx, { name: "product-recovery-panel" })).path);
       }
       if (tab === "logs") {
         bag.assertions.push({
@@ -1237,7 +1259,7 @@ export async function runScenarioRightPanelTabs(ctx: KaroAutomationContext): Pro
       }
     }, ctx.state.repoRoot);
     await karoClick(ctx, { testId: TEST_IDS.rightTabPreview });
-    await karoFill(ctx, { selector: ".kw-preview-command input", text: "pnpm build" });
+    await karoFill(ctx, { selector: ".kw-preview-command input", text: "pnpm deploy" });
     const invalidPreviewText = await ctx.page.locator(".kw-right-content").textContent().catch(() => "");
     const previewRunDisabled = await ctx.page.locator(byTestId(TEST_IDS.previewRunButton)).isDisabled().catch(() => false);
     const terminalStatusAfterInvalidPreview = await ctx.page.evaluate(() => {

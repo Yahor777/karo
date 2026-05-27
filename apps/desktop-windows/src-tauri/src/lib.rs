@@ -8,6 +8,7 @@ pub mod security;
 pub mod commands;
 pub mod context;
 pub mod terminal;
+pub mod runtime;
 
 use tauri::Manager;
 use serde::{Deserialize, Serialize};
@@ -380,6 +381,16 @@ pub fn run() {
             terminal::shell_clear_command_output,
             terminal::shell_get_terminal_status,
             terminal::shell_get_terminal_profiles,
+            runtime::runtime_detect_project_kind,
+            runtime::runtime_create_run,
+            runtime::runtime_update_run,
+            runtime::runtime_get_run,
+            runtime::runtime_list_runs,
+            runtime::runtime_append_event,
+            runtime::runtime_record_artifact,
+            runtime::runtime_record_validation,
+            runtime::runtime_get_recovery_state,
+            runtime::runtime_apply_run_artifacts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

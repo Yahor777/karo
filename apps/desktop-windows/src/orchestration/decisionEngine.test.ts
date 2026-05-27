@@ -115,6 +115,18 @@ describe("Decision Engine", () => {
     expect(decision.reasoningSummary).toContain("Explicit file-changing request");
   });
 
+  it("routes Minecraft Gradle mod implementation to Agent with build evidence expectations", () => {
+    const decision = decide("Add a Forge item capability to my Minecraft mod and validate with Gradle build", {
+      projectKind: "minecraft_mod_gradle",
+    });
+    expect(decision.executionMode).toBe("agent");
+    expect(decision.intent).toBe("modify_file");
+    expect(decision.allowFileChanges).toBe(true);
+    expect(decision.requiresContextEngine).toBe(true);
+    expect(decision.riskLevel).toBe("high");
+    expect(decision.reasoningSummary).toContain("Minecraft/Gradle project work");
+  });
+
   it("honors explicit Agent Mode for file creation prompts", () => {
     const decision = decide(
       "Используй Agent Mode. Создай src/karo-demo-site/index.html и src/karo-demo-site/styles.css для маленького сайта.",

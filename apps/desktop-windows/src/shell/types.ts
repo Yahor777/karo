@@ -161,6 +161,120 @@ export type OpenPreviewFileResult = {
   readonly opened: boolean;
 };
 
+export type ProjectKind =
+  | "static_site"
+  | "node_web"
+  | "tauri_desktop"
+  | "minecraft_mod_gradle"
+  | "rust"
+  | "generic";
+
+export type RuntimeRunMode =
+  | "auto"
+  | "chat"
+  | "plan"
+  | "agent"
+  | "quick_edit"
+  | "assist"
+  | "safety";
+
+export type RuntimeRunStatus =
+  | "created"
+  | "running"
+  | "waiting_input"
+  | "completed"
+  | "stopped_limit"
+  | "error"
+  | "applied";
+
+export type RuntimeEventKind =
+  | "router"
+  | "context"
+  | "plan"
+  | "implement"
+  | "validate"
+  | "review"
+  | "recover"
+  | "apply"
+  | "terminal"
+  | "preview";
+
+export type RuntimeProjectProfile = {
+  readonly projectRoot: string;
+  readonly projectKind: ProjectKind;
+  readonly signals: readonly string[];
+  readonly validationCommands: readonly string[];
+  readonly previewKind: "browser" | "validation_evidence";
+};
+
+export type RuntimeEvent = {
+  readonly id: string;
+  readonly runId: string;
+  readonly sequence: number;
+  readonly kind: RuntimeEventKind;
+  readonly stage: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly status: "started" | "finished" | "error" | "blocked" | "completed";
+  readonly at: string;
+  readonly evidence: readonly string[];
+};
+
+export type RuntimeArtifactRecord = {
+  readonly id: string;
+  readonly runId: string;
+  readonly fileName: string;
+  readonly latestVersion: number;
+  readonly contentHash: string;
+  readonly authoredBy: string;
+  readonly diffStatus: "pending" | "available" | "unavailable";
+  readonly validationStatus: "pending" | "passed" | "failed" | "needs_review";
+  readonly applyStatus: "staged" | "applied" | "failed";
+  readonly updatedAt: string;
+};
+
+export type RuntimeValidationRecord = {
+  readonly id: string;
+  readonly runId: string;
+  readonly command: string;
+  readonly projectKind: ProjectKind;
+  readonly status: "pending" | "passed" | "failed" | "needs_review" | "skipped";
+  readonly exitCode?: number | null;
+  readonly outputExcerpt: string;
+  readonly canRetry: boolean;
+  readonly recoveryHint: string;
+  readonly createdAt: string;
+};
+
+export type RuntimeRecoveryState = {
+  readonly runId: string;
+  readonly failedStage: string;
+  readonly status: string;
+  readonly userMessage: string;
+  readonly preservedArtifacts: readonly string[];
+  readonly actions: readonly string[];
+  readonly updatedAt: string;
+};
+
+export type RuntimeTaskRun = {
+  readonly id: string;
+  readonly prompt: string;
+  readonly mode: RuntimeRunMode;
+  readonly projectRoot: string;
+  readonly projectKind: ProjectKind;
+  readonly status: RuntimeRunStatus;
+  readonly activeStage: string;
+  readonly permissionProfile: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly stagedArtifacts: readonly RuntimeArtifactRecord[];
+  readonly validations: readonly RuntimeValidationRecord[];
+  readonly recoveryState?: RuntimeRecoveryState | null;
+  readonly terminalSessions: readonly string[];
+  readonly usageSummary?: unknown;
+  readonly events: readonly RuntimeEvent[];
+};
+
 /**
  * Input shape for `DesktopShell.probeProvider`.
  *
@@ -306,6 +420,16 @@ export interface DesktopShell {
   shell_get_terminal_status?(): Promise<TerminalStatusResult>;
   shell_get_terminal_profiles?(): Promise<TerminalProfile[]>;
   shell_open_preview_file?(projectPath: string, relativePath: string): Promise<OpenPreviewFileResult>;
+  runtime_detect_project_kind?(projectPath: string): Promise<RuntimeProjectProfile>;
+  runtime_create_run?(run: RuntimeTaskRun): Promise<void>;
+  runtime_update_run?(run: RuntimeTaskRun): Promise<void>;
+  runtime_get_run?(runId: string): Promise<RuntimeTaskRun | null>;
+  runtime_list_runs?(projectPath: string): Promise<RuntimeTaskRun[]>;
+  runtime_append_event?(runId: string, event: RuntimeEvent): Promise<RuntimeTaskRun>;
+  runtime_record_artifact?(runId: string, artifact: RuntimeArtifactRecord): Promise<RuntimeTaskRun>;
+  runtime_record_validation?(runId: string, validation: RuntimeValidationRecord): Promise<RuntimeTaskRun>;
+  runtime_get_recovery_state?(runId: string): Promise<RuntimeRecoveryState | null>;
+  runtime_apply_run_artifacts?(projectPath: string, runId: string, approval: boolean): Promise<ApplyResult>;
 }
 
 export type ProjectFileEntry = {

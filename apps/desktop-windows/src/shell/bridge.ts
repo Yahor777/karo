@@ -20,6 +20,10 @@ import type {
   TaskInternalPersistent,
   BuildTaskContextOptions,
   TaskContextPackage,
+  RuntimeTaskRun,
+  RuntimeEvent,
+  RuntimeArtifactRecord,
+  RuntimeValidationRecord,
 } from "./types.js";
 import type {
   TraceEvent,
@@ -203,5 +207,71 @@ export const desktopShell: DesktopShell = {
       return Promise.reject(new Error("shell_open_preview_file is not implemented in this environment"));
     }
     return shell.shell_open_preview_file(projectPath, relativePath);
+  },
+  runtime_detect_project_kind(projectPath: string) {
+    const shell = getDesktopShell();
+    if (shell.runtime_detect_project_kind === undefined) {
+      return Promise.resolve({
+        projectRoot: projectPath,
+        projectKind: "generic" as const,
+        signals: [],
+        validationCommands: ["git status"],
+        previewKind: "validation_evidence" as const,
+      });
+    }
+    return shell.runtime_detect_project_kind(projectPath);
+  },
+  runtime_create_run(run: RuntimeTaskRun) {
+    const shell = getDesktopShell();
+    if (shell.runtime_create_run === undefined) return Promise.resolve();
+    return shell.runtime_create_run(run);
+  },
+  runtime_update_run(run: RuntimeTaskRun) {
+    const shell = getDesktopShell();
+    if (shell.runtime_update_run === undefined) return Promise.resolve();
+    return shell.runtime_update_run(run);
+  },
+  runtime_get_run(runId: string) {
+    const shell = getDesktopShell();
+    if (shell.runtime_get_run === undefined) return Promise.resolve(null);
+    return shell.runtime_get_run(runId);
+  },
+  runtime_list_runs(projectPath: string) {
+    const shell = getDesktopShell();
+    if (shell.runtime_list_runs === undefined) return Promise.resolve([]);
+    return shell.runtime_list_runs(projectPath);
+  },
+  runtime_append_event(runId: string, event: RuntimeEvent) {
+    const shell = getDesktopShell();
+    if (shell.runtime_append_event === undefined) {
+      return Promise.reject(new Error("runtime_append_event is not implemented in this environment"));
+    }
+    return shell.runtime_append_event(runId, event);
+  },
+  runtime_record_artifact(runId: string, artifact: RuntimeArtifactRecord) {
+    const shell = getDesktopShell();
+    if (shell.runtime_record_artifact === undefined) {
+      return Promise.reject(new Error("runtime_record_artifact is not implemented in this environment"));
+    }
+    return shell.runtime_record_artifact(runId, artifact);
+  },
+  runtime_record_validation(runId: string, validation: RuntimeValidationRecord) {
+    const shell = getDesktopShell();
+    if (shell.runtime_record_validation === undefined) {
+      return Promise.reject(new Error("runtime_record_validation is not implemented in this environment"));
+    }
+    return shell.runtime_record_validation(runId, validation);
+  },
+  runtime_get_recovery_state(runId: string) {
+    const shell = getDesktopShell();
+    if (shell.runtime_get_recovery_state === undefined) return Promise.resolve(null);
+    return shell.runtime_get_recovery_state(runId);
+  },
+  runtime_apply_run_artifacts(projectPath: string, runId: string, approval: boolean) {
+    const shell = getDesktopShell();
+    if (shell.runtime_apply_run_artifacts === undefined) {
+      return shell.shell_apply_staged_changes!(projectPath, runId, approval);
+    }
+    return shell.runtime_apply_run_artifacts(projectPath, runId, approval);
   },
 };

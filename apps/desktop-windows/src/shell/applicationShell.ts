@@ -35,6 +35,10 @@ import type {
   TaskInternalPersistent,
   BuildTaskContextOptions,
   TaskContextPackage,
+  RuntimeTaskRun,
+  RuntimeEvent,
+  RuntimeArtifactRecord,
+  RuntimeValidationRecord,
 } from "./types.js";
 import type {
   TraceEvent,
@@ -230,6 +234,63 @@ export function createApplicationShell(
         return Promise.reject(new Error("shell_open_preview_file is not implemented in this environment"));
       }
       return inner.shell_open_preview_file(projectPath, relativePath);
+    },
+
+    runtime_detect_project_kind(projectPath: string) {
+      if (inner.runtime_detect_project_kind === undefined) {
+        return Promise.resolve({
+          projectRoot: projectPath,
+          projectKind: "generic" as const,
+          signals: [],
+          validationCommands: ["git status"],
+          previewKind: "validation_evidence" as const,
+        });
+      }
+      return inner.runtime_detect_project_kind(projectPath);
+    },
+    runtime_create_run(run: RuntimeTaskRun) {
+      if (inner.runtime_create_run === undefined) return Promise.resolve();
+      return inner.runtime_create_run(run);
+    },
+    runtime_update_run(run: RuntimeTaskRun) {
+      if (inner.runtime_update_run === undefined) return Promise.resolve();
+      return inner.runtime_update_run(run);
+    },
+    runtime_get_run(runId: string) {
+      if (inner.runtime_get_run === undefined) return Promise.resolve(null);
+      return inner.runtime_get_run(runId);
+    },
+    runtime_list_runs(projectPath: string) {
+      if (inner.runtime_list_runs === undefined) return Promise.resolve([]);
+      return inner.runtime_list_runs(projectPath);
+    },
+    runtime_append_event(runId: string, event: RuntimeEvent) {
+      if (inner.runtime_append_event === undefined) {
+        return Promise.reject(new Error("runtime_append_event is not implemented in this environment"));
+      }
+      return inner.runtime_append_event(runId, event);
+    },
+    runtime_record_artifact(runId: string, artifact: RuntimeArtifactRecord) {
+      if (inner.runtime_record_artifact === undefined) {
+        return Promise.reject(new Error("runtime_record_artifact is not implemented in this environment"));
+      }
+      return inner.runtime_record_artifact(runId, artifact);
+    },
+    runtime_record_validation(runId: string, validation: RuntimeValidationRecord) {
+      if (inner.runtime_record_validation === undefined) {
+        return Promise.reject(new Error("runtime_record_validation is not implemented in this environment"));
+      }
+      return inner.runtime_record_validation(runId, validation);
+    },
+    runtime_get_recovery_state(runId: string) {
+      if (inner.runtime_get_recovery_state === undefined) return Promise.resolve(null);
+      return inner.runtime_get_recovery_state(runId);
+    },
+    runtime_apply_run_artifacts(projectPath: string, runId: string, approval: boolean) {
+      if (inner.runtime_apply_run_artifacts === undefined) {
+        return inner.shell_apply_staged_changes!(projectPath, runId, approval);
+      }
+      return inner.runtime_apply_run_artifacts(projectPath, runId, approval);
     },
 
     isNativeBridgeWired(): boolean {

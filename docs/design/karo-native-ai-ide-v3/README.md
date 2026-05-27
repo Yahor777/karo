@@ -1,5 +1,7 @@
 # Karo Native AI IDE v3 UI Direction
 
+Status: superseded by `docs/design/karo-native-ai-ide-v4-standard`. The v3 direction was rejected because it still felt too AI-styled and over-colored. Keep this folder only as historical context.
+
 This design package defines the target interface for Karo as a local-first AI IDE, not a website-only generator. It is a product/UI contract for the next implementation pass and a visual checkpoint for judging whether the app feels like a premium task cockpit.
 
 ## Product Goal

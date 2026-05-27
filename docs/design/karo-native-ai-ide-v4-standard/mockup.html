@@ -1,0 +1,1091 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karo Native AI IDE v4 Standard Mockups</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --activity: #333333;
+      --side: #252526;
+      --workbench: #1e1e1e;
+      --panel: #181818;
+      --tab: #2d2d2d;
+      --tab-active: #1e1e1e;
+      --row: #232323;
+      --row-hover: #2a2d2e;
+      --border: #3c3c3c;
+      --border-soft: #303030;
+      --text: #cccccc;
+      --text-strong: #e7e7e7;
+      --muted: #858585;
+      --accent: #007acc;
+      --accent-hover: #0e639c;
+      --success: #89d185;
+      --warning: #cca700;
+      --error: #f14c4c;
+      --link: #4fc1ff;
+      --font: "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: Consolas, "SFMono-Regular", "Liberation Mono", monospace;
+      font-family: var(--font);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 1480px;
+      background: #111;
+      color: var(--text);
+      padding: 28px;
+    }
+
+    .page-title {
+      width: 1440px;
+      margin: 0 auto 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+    }
+
+    .page-title h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .page-title span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .shot {
+      width: 1440px;
+      height: 960px;
+      margin: 0 auto 34px;
+      overflow: hidden;
+      border: 1px solid #111;
+      background: var(--workbench);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+    }
+
+    .ide {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 48px 260px 1fr 360px;
+      grid-template-rows: 34px 1fr 220px 24px;
+      background: var(--workbench);
+    }
+
+    .titlebar {
+      grid-column: 1 / 5;
+      height: 34px;
+      display: grid;
+      grid-template-columns: 48px 260px 1fr 360px;
+      align-items: center;
+      background: #1f1f1f;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .window-controls {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #5a5a5a;
+    }
+
+    .command-center {
+      grid-column: 3;
+      justify-self: center;
+      width: 560px;
+      height: 24px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      color: var(--muted);
+      background: #262626;
+    }
+
+    .runtime-state {
+      grid-column: 4;
+      display: flex;
+      justify-content: end;
+      gap: 8px;
+      padding-right: 10px;
+    }
+
+    .activity {
+      grid-column: 1;
+      grid-row: 2 / 4;
+      background: var(--activity);
+      border-right: 1px solid #2b2b2b;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 8px 0;
+      gap: 6px;
+    }
+
+    .activity .icon {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      color: var(--text);
+      border-left: 2px solid transparent;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .activity .icon.active {
+      border-left-color: var(--accent);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .activity .spacer {
+      flex: 1;
+    }
+
+    .sidebar {
+      grid-column: 2;
+      grid-row: 2 / 4;
+      background: var(--side);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .section-title {
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      color: var(--text-strong);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .sidebar-block {
+      border-bottom: 1px solid var(--border-soft);
+      padding: 8px 0;
+    }
+
+    .tree-row,
+    .run-row,
+    .tab,
+    .panel-tab,
+    .mode {
+      height: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      color: var(--text);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .tree-row.active,
+    .run-row.active {
+      background: #37373d;
+      color: #fff;
+    }
+
+    .tree-row.dim,
+    .run-row.dim {
+      color: var(--muted);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      height: 18px;
+      padding: 0 6px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .badge.success {
+      color: var(--success);
+      border-color: rgba(137, 209, 133, 0.35);
+    }
+
+    .badge.warn {
+      color: var(--warning);
+      border-color: rgba(204, 167, 0, 0.38);
+    }
+
+    .badge.error {
+      color: var(--error);
+      border-color: rgba(241, 76, 76, 0.38);
+    }
+
+    .badge.accent {
+      color: #d8ecff;
+      border-color: rgba(0, 122, 204, 0.55);
+      background: rgba(0, 122, 204, 0.18);
+    }
+
+    .main {
+      grid-column: 3;
+      grid-row: 2;
+      min-width: 0;
+      background: var(--workbench);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tabs {
+      height: 36px;
+      display: flex;
+      align-items: stretch;
+      background: var(--tab);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab {
+      height: 36px;
+      border-right: 1px solid var(--border);
+      background: #2d2d2d;
+      color: var(--muted);
+      min-width: 148px;
+      justify-content: space-between;
+      padding: 0 10px;
+    }
+
+    .tab.active {
+      background: var(--workbench);
+      color: var(--text-strong);
+      border-top: 1px solid var(--accent);
+    }
+
+    .content {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .breadcrumb {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .conversation,
+    .timeline,
+    .plan-doc,
+    .recovery-doc {
+      flex: 1;
+      padding: 18px 22px;
+      overflow: hidden;
+    }
+
+    .message {
+      border: 1px solid var(--border);
+      background: #202020;
+      margin-bottom: 12px;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .message-head {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      background: #262626;
+      border-bottom: 1px solid var(--border-soft);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .message-body {
+      padding: 12px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .empty-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .hint-card,
+    .stage,
+    .evidence-card,
+    .plan-section,
+    .recovery-card {
+      border: 1px solid var(--border);
+      background: #202020;
+      border-radius: 4px;
+    }
+
+    .hint-card {
+      padding: 12px;
+      min-height: 86px;
+    }
+
+    .hint-card strong,
+    .evidence-card strong,
+    .plan-section strong {
+      display: block;
+      color: var(--text-strong);
+      font-size: 13px;
+      margin-bottom: 7px;
+    }
+
+    .hint-card span,
+    .evidence-card p,
+    .plan-section p,
+    .recovery-card p {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    .composer {
+      grid-column: 3;
+      grid-row: 3;
+      background: #1b1b1b;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-rows: 1fr 38px;
+      padding: 10px;
+      gap: 8px;
+    }
+
+    .input {
+      border: 1px solid var(--border);
+      background: #111;
+      border-radius: 4px;
+      padding: 10px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .composer-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .modes {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .mode {
+      height: 28px;
+      padding: 0 10px;
+      border-right: 1px solid var(--border);
+      background: #252526;
+      color: var(--muted);
+    }
+
+    .mode:last-child {
+      border-right: 0;
+    }
+
+    .mode.active {
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .btn {
+      height: 28px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0 12px;
+      background: #2d2d2d;
+      color: var(--text);
+      font-size: 12px;
+      font-family: var(--font);
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn.warn {
+      border-color: rgba(204, 167, 0, 0.45);
+      color: #f2dd8f;
+    }
+
+    .inspector {
+      grid-column: 4;
+      grid-row: 2 / 4;
+      background: #1b1b1b;
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .panel-tabs {
+      height: 36px;
+      display: flex;
+      background: var(--tab);
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .panel-tab {
+      height: 36px;
+      border-right: 1px solid var(--border);
+      color: var(--muted);
+      padding: 0 10px;
+    }
+
+    .panel-tab.active {
+      background: #1b1b1b;
+      color: var(--text-strong);
+      border-top: 1px solid var(--accent);
+    }
+
+    .inspector-body {
+      flex: 1;
+      padding: 12px;
+      overflow: hidden;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .evidence-card {
+      padding: 10px;
+    }
+
+    .evidence-row {
+      min-height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 12px;
+    }
+
+    .evidence-row:last-child {
+      border-bottom: 0;
+    }
+
+    .preview {
+      height: 194px;
+      border: 1px solid var(--border);
+      background: #101010;
+      border-radius: 4px;
+      display: grid;
+      grid-template-rows: 34px 1fr 40px;
+      overflow: hidden;
+    }
+
+    .preview .preview-top {
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      background: #1f1f1f;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .preview-main {
+      padding: 14px;
+      background: linear-gradient(135deg, #151515, #202020);
+    }
+
+    .preview-main h3 {
+      margin: 0 0 8px;
+      color: #fff;
+      font-size: 20px;
+    }
+
+    .preview-main p {
+      margin: 0;
+      color: #aaa;
+      font-size: 12px;
+      line-height: 1.35;
+      width: 80%;
+    }
+
+    .player-bar {
+      display: grid;
+      grid-template-columns: 28px 1fr 42px;
+      gap: 8px;
+      align-items: center;
+      padding: 0 10px;
+      background: #0b0b0b;
+      border-top: 1px solid var(--border-soft);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .play {
+      width: 22px;
+      height: 22px;
+      border-radius: 3px;
+      display: grid;
+      place-items: center;
+      background: #303030;
+      color: var(--text);
+      font-size: 10px;
+    }
+
+    .bar {
+      height: 4px;
+      background: #3c3c3c;
+      position: relative;
+    }
+
+    .bar::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 42%;
+      background: var(--accent);
+    }
+
+    .stage {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+
+    .stage-letter {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      display: grid;
+      place-items: center;
+      background: #303030;
+      color: var(--text-strong);
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .stage-main strong {
+      display: block;
+      color: var(--text-strong);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .stage-main span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .plan-doc {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .plan-section {
+      padding: 12px;
+      min-height: 128px;
+    }
+
+    .plan-section.large {
+      grid-column: span 2;
+      min-height: 164px;
+    }
+
+    .recovery-card {
+      padding: 14px;
+      border-color: rgba(204, 167, 0, 0.45);
+    }
+
+    .recovery-card h2 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      color: var(--text-strong);
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .metric {
+      border: 1px solid var(--border-soft);
+      background: #1b1b1b;
+      padding: 9px;
+      border-radius: 4px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+
+    .metric strong {
+      color: var(--text-strong);
+      font-size: 12px;
+    }
+
+    .bottom {
+      grid-column: 3 / 5;
+      grid-row: 3;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .bottom-tabs {
+      height: 32px;
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: #202020;
+    }
+
+    .bottom-tab {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      color: var(--muted);
+      border-right: 1px solid var(--border);
+      font-size: 12px;
+    }
+
+    .bottom-tab.active {
+      color: var(--text);
+      background: var(--panel);
+    }
+
+    .terminal {
+      flex: 1;
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      color: #bdbdbd;
+      overflow: hidden;
+    }
+
+    .terminal .ok {
+      color: var(--success);
+    }
+
+    .terminal .bad {
+      color: var(--error);
+    }
+
+    .statusbar {
+      grid-column: 1 / 5;
+      grid-row: 4;
+      background: var(--accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      font-size: 12px;
+    }
+
+    .compact {
+      width: 430px;
+      height: 890px;
+      margin: 35px auto;
+      border: 1px solid var(--border);
+      background: var(--workbench);
+      display: grid;
+      grid-template-rows: 34px 42px 1fr 170px 24px;
+    }
+
+    .compact .mini-title {
+      background: #1f1f1f;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .compact .mini-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--tab);
+    }
+
+    .compact .mini-tabs span {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      border-right: 1px solid var(--border);
+    }
+
+    .compact .mini-tabs .active {
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .compact .mini-main {
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    .compact .mini-compose {
+      border-top: 1px solid var(--border);
+      padding: 10px;
+      background: #1b1b1b;
+      display: grid;
+      grid-template-rows: 1fr 30px;
+      gap: 8px;
+    }
+
+    .compact .mini-status {
+      background: var(--accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-title">
+    <h1>Karo Native AI IDE v4 standard mockups</h1>
+    <span>Conventional IDE palette: graphite surfaces, blue selection, semantic statuses</span>
+  </div>
+
+  <section class="shot" data-shot="workbench">
+    <div class="ide">
+      <div class="titlebar">
+        <div class="window-controls"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div style="padding-left:10px">Karo</div>
+        <div class="command-center">Search, run command, or ask Karo</div>
+        <div class="runtime-state"><span class="badge success">Runtime v2</span><span class="badge">Local project</span></div>
+      </div>
+      <div class="activity"><div class="icon active">K</div><div class="icon">F</div><div class="icon">R</div><div class="icon">M</div><div class="spacer"></div><div class="icon">S</div></div>
+      <aside class="sidebar">
+        <div class="section-title">Explorer <span>...</span></div>
+        <div class="sidebar-block">
+          <div class="tree-row active">karo-extension</div>
+          <div class="tree-row">apps</div>
+          <div class="tree-row">docs</div>
+          <div class="tree-row">packages</div>
+          <div class="tree-row dim">.karo ignored</div>
+        </div>
+        <div class="section-title">Runs</div>
+        <div class="sidebar-block">
+          <div class="run-row active">Anime site <span class="badge warn">staged</span></div>
+          <div class="run-row">Explain router <span class="badge">chat</span></div>
+          <div class="run-row">Gradle build <span class="badge error">failed</span></div>
+        </div>
+        <div class="section-title">Project</div>
+        <div class="sidebar-block">
+          <div class="tree-row">Kind: static_site</div>
+          <div class="tree-row">Context: 4 files</div>
+          <div class="tree-row">Policy: safe commands</div>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="tabs"><div class="tab active">Task Cockpit <span>x</span></div><div class="tab">README.md <span>x</span></div></div>
+        <div class="content">
+          <div class="breadcrumb">Karo / Task Cockpit / Chat</div>
+          <div class="conversation">
+            <div class="message">
+              <div class="message-head"><span>You</span><span>Auto route</span></div>
+              <div class="message-body">Create an anime streaming website with a player and a clean design.</div>
+            </div>
+            <div class="message">
+              <div class="message-head"><span>Karo</span><span>Agent mode can stage artifacts</span></div>
+              <div class="message-body">I can prepare reviewable files first. Apply is required before disk writes. Preview unlocks only after a real web artifact exists in the project.</div>
+            </div>
+            <div class="empty-grid">
+              <div class="hint-card"><strong>Chat</strong><span>Read-only answers and project explanations. No artifacts.</span></div>
+              <div class="hint-card"><strong>Plan</strong><span>Read-only implementation plan with no Apply button.</span></div>
+              <div class="hint-card"><strong>Agent</strong><span>Stages artifacts, validates, then waits for Apply.</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+      <section class="composer">
+        <div class="input">Ask Karo to build, fix, explain, refactor, validate, or plan...</div>
+        <div class="composer-bar">
+          <div class="modes"><span class="mode active">Auto</span><span class="mode">Chat</span><span class="mode">Plan</span><span class="mode">Agent</span><span class="mode">Quick Edit</span></div>
+          <div><button class="btn">Attach</button> <button class="btn primary">Start</button></div>
+        </div>
+      </section>
+      <aside class="inspector">
+        <div class="panel-tabs"><span class="panel-tab active">Preview</span><span class="panel-tab">Changes</span><span class="panel-tab">Logs</span><span class="panel-tab">Usage</span></div>
+        <div class="inspector-body">
+          <div class="evidence-card"><strong>No preview yet</strong><p>Preview appears after a real web target is applied or an allowed dev command is started.</p></div>
+          <div class="evidence-card">
+            <div class="evidence-row"><span>Artifacts</span><span class="badge warn">none staged</span></div>
+            <div class="evidence-row"><span>Validation</span><span class="badge">not recorded</span></div>
+            <div class="evidence-row"><span>Apply</span><span class="badge">disabled</span></div>
+          </div>
+        </div>
+      </aside>
+      <div class="statusbar"><span>codex/cursor-level-workbench-flow</span><span>Mode: Auto | Context: 4 files | Safety: enabled</span></div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="agent-run">
+    <div class="ide">
+      <div class="titlebar">
+        <div class="window-controls"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div style="padding-left:10px">Karo</div>
+        <div class="command-center">Agent run: anime website</div>
+        <div class="runtime-state"><span class="badge warn">Apply required</span><span class="badge success">3 artifacts</span></div>
+      </div>
+      <div class="activity"><div class="icon active">A</div><div class="icon">C</div><div class="icon">T</div><div class="spacer"></div><div class="icon">S</div></div>
+      <aside class="sidebar">
+        <div class="section-title">Agent Roles</div>
+        <div class="sidebar-block">
+          <div class="run-row active">Researcher <span class="badge success">done</span></div>
+          <div class="run-row active">Planner <span class="badge success">done</span></div>
+          <div class="run-row active">Coder <span class="badge success">done</span></div>
+          <div class="run-row">Validator <span class="badge accent">running</span></div>
+          <div class="run-row">Finalizer <span class="badge">pending</span></div>
+        </div>
+        <div class="section-title">Artifacts</div>
+        <div class="sidebar-block">
+          <div class="tree-row">index.html</div>
+          <div class="tree-row">style.css</div>
+          <div class="tree-row">app.js</div>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="tabs"><div class="tab active">Agent Activity <span>x</span></div><div class="tab">Plan Result <span>x</span></div></div>
+        <div class="content">
+          <div class="breadcrumb">Karo / Runs / website_creation / public events</div>
+          <div class="timeline">
+            <div class="stage"><div class="stage-letter">R</div><div class="stage-main"><strong>Researcher</strong><span>Detected static_site and selected 4 relevant files. No files changed.</span></div><span class="badge success">done</span></div>
+            <div class="stage"><div class="stage-letter">P</div><div class="stage-main"><strong>Planner</strong><span>Prepared implementation plan for local HTML/CSS/JS website with real player shell, search, genres, popular section, and responsive catalog.</span></div><span class="badge success">done</span></div>
+            <div class="stage"><div class="stage-letter">C</div><div class="stage-main"><strong>Coder</strong><span>Staged 3 artifacts. Fallback parser recovered valid file content from non-JSON model output.</span></div><span class="badge success">done</span></div>
+            <div class="stage"><div class="stage-letter">V</div><div class="stage-main"><strong>Validator</strong><span>Checking required sections, no network dependencies, safe paths, and non-empty artifacts.</span></div><span class="badge accent">running</span></div>
+            <div class="stage"><div class="stage-letter">F</div><div class="stage-main"><strong>Finalizer</strong><span>Will report staged files, validation evidence, missing checks, and Apply requirement.</span></div><span class="badge">pending</span></div>
+          </div>
+        </div>
+      </main>
+      <section class="composer">
+        <div class="input">Agent is still staging and validating. Disk writes are blocked until Apply Changes.</div>
+        <div class="composer-bar">
+          <div class="modes"><span class="mode">Auto</span><span class="mode">Chat</span><span class="mode">Plan</span><span class="mode active">Agent</span></div>
+          <div><button class="btn">Stop</button> <button class="btn warn">Review Changes</button></div>
+        </div>
+      </section>
+      <aside class="inspector">
+        <div class="panel-tabs"><span class="panel-tab">Preview</span><span class="panel-tab active">Changes</span><span class="panel-tab">Files</span><span class="panel-tab">Usage</span></div>
+        <div class="inspector-body">
+          <div class="evidence-card">
+            <strong>Staged files</strong>
+            <div class="evidence-row"><span>index.html</span><span class="badge warn">new</span></div>
+            <div class="evidence-row"><span>style.css</span><span class="badge warn">new</span></div>
+            <div class="evidence-row"><span>app.js</span><span class="badge warn">new</span></div>
+          </div>
+          <div class="evidence-card"><strong>Apply boundary</strong><p>The project directory remains unchanged until Apply Changes is clicked.</p></div>
+        </div>
+      </aside>
+      <div class="bottom">
+        <div class="bottom-tabs"><span class="bottom-tab active">Terminal</span><span class="bottom-tab">Validation</span><span class="bottom-tab">Logs</span></div>
+        <div class="terminal"><span class="ok">$ validate staged artifacts</span><br>safe paths: ok<br>non-empty files: ok<br>required sections: checking</div>
+      </div>
+      <div class="statusbar"><span>Agent: website_creation</span><span>Artifacts staged, Apply required</span></div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="plan-mode">
+    <div class="ide">
+      <div class="titlebar">
+        <div class="window-controls"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div style="padding-left:10px">Karo</div>
+        <div class="command-center">Plan mode: native runtime refactor</div>
+        <div class="runtime-state"><span class="badge">read-only</span><span class="badge">no artifacts</span></div>
+      </div>
+      <div class="activity"><div class="icon active">P</div><div class="icon">F</div><div class="icon">R</div><div class="spacer"></div><div class="icon">S</div></div>
+      <aside class="sidebar">
+        <div class="section-title">Plan Outline</div>
+        <div class="sidebar-block">
+          <div class="tree-row active">Summary</div>
+          <div class="tree-row">Architecture</div>
+          <div class="tree-row">Phases</div>
+          <div class="tree-row">Risks</div>
+          <div class="tree-row">Test plan</div>
+        </div>
+        <div class="section-title">Mode</div>
+        <div class="sidebar-block">
+          <div class="tree-row">Read-only</div>
+          <div class="tree-row">No Apply</div>
+          <div class="tree-row">No staged files</div>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="tabs"><div class="tab active">Plan Result <span>x</span></div></div>
+        <div class="content">
+          <div class="breadcrumb">Karo / Plan / read-only</div>
+          <div class="plan-doc">
+            <div class="plan-section large"><strong>Summary</strong><p>Rebuild Karo around a native Runtime v2 run record. The renderer should present task state from runtime data, not infer success from local UI flags.</p></div>
+            <div class="plan-section"><strong>Architecture</strong><p>Rust owns run storage, artifacts, terminal sessions, validation records, recovery, and apply boundary.</p></div>
+            <div class="plan-section"><strong>Implementation phases</strong><p>Runtime commands, RunViewModel, workbench split, agent event writer, validation profiles.</p></div>
+            <div class="plan-section"><strong>Risks</strong><p>Do not break staged apply, preview honesty, or terminal safety. Keep compatibility shims temporary.</p></div>
+            <div class="plan-section"><strong>Test plan</strong><p>Unit tests for routing/project kinds/recovery plus GUI flows for chat, plan, agent, preview, terminal.</p></div>
+          </div>
+        </div>
+      </main>
+      <section class="composer">
+        <div class="input">Plan mode is read-only. Ask to start implementation when ready.</div>
+        <div class="composer-bar">
+          <div class="modes"><span class="mode">Auto</span><span class="mode">Chat</span><span class="mode active">Plan</span><span class="mode">Agent</span></div>
+          <div><button class="btn">Copy Plan</button> <button class="btn primary">Start Implementation</button></div>
+        </div>
+      </section>
+      <aside class="inspector">
+        <div class="panel-tabs"><span class="panel-tab active">Evidence</span><span class="panel-tab">Usage</span></div>
+        <div class="inspector-body">
+          <div class="evidence-card"><strong>No artifacts</strong><p>Plan mode does not stage files and must not show Apply Changes.</p></div>
+          <div class="evidence-card">
+            <div class="evidence-row"><span>Route</span><span class="badge">Plan</span></div>
+            <div class="evidence-row"><span>Write gate</span><span class="badge">closed</span></div>
+            <div class="evidence-row"><span>Preview</span><span class="badge">not applicable</span></div>
+          </div>
+        </div>
+      </aside>
+      <div class="statusbar"><span>Plan mode</span><span>Read-only | No artifacts | No Apply</span></div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="recovery-terminal">
+    <div class="ide">
+      <div class="titlebar">
+        <div class="window-controls"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div style="padding-left:10px">Karo</div>
+        <div class="command-center">Recovery: run stopped before success</div>
+        <div class="runtime-state"><span class="badge error">error</span><span class="badge warn">not success yet</span></div>
+      </div>
+      <div class="activity"><div class="icon active">R</div><div class="icon">L</div><div class="icon">T</div><div class="spacer"></div><div class="icon">S</div></div>
+      <aside class="sidebar">
+        <div class="section-title">Recovery</div>
+        <div class="sidebar-block">
+          <div class="run-row active">Coder failed <span class="badge error">failed</span></div>
+          <div class="run-row">Artifacts <span class="badge">0</span></div>
+          <div class="run-row">Validation <span class="badge">not recorded</span></div>
+          <div class="run-row">Preview <span class="badge">unavailable</span></div>
+        </div>
+        <div class="section-title">Actions</div>
+        <div class="sidebar-block">
+          <div class="tree-row">Retry reduced context</div>
+          <div class="tree-row">Open logs</div>
+          <div class="tree-row">Switch to Quick Edit</div>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="tabs"><div class="tab active">Recovery <span>x</span></div><div class="tab">Logs <span>x</span></div></div>
+        <div class="content">
+          <div class="breadcrumb">Karo / Recovery / safe stop</div>
+          <div class="recovery-doc">
+            <div class="recovery-card">
+              <span class="badge error">not success yet</span>
+              <h2>Run stopped before completion</h2>
+              <p>Coder returned invalid artifact JSON after one repair retry. Karo did not apply files, did not create a fake preview, and did not mark the task complete.</p>
+              <div class="metric-grid">
+                <div class="metric"><span>Failed stage</span><strong>Coder</strong></div>
+                <div class="metric"><span>Preserved artifacts</span><strong>None</strong></div>
+                <div class="metric"><span>Next action</span><strong>Retry reduced context</strong></div>
+              </div>
+            </div>
+            <div style="height:12px"></div>
+            <div class="stage"><div class="stage-letter">O</div><div class="stage-main"><strong>Orchestrator</strong><span>Selected Agent mode for website generation.</span></div><span class="badge success">done</span></div>
+            <div class="stage"><div class="stage-letter">C</div><div class="stage-main"><strong>Coder</strong><span>Invalid artifact JSON after repair retry. No files applied.</span></div><span class="badge error">failed</span></div>
+          </div>
+        </div>
+      </main>
+      <aside class="inspector">
+        <div class="panel-tabs"><span class="panel-tab active">Logs</span><span class="panel-tab">Recovery</span><span class="panel-tab">Terminal</span></div>
+        <div class="inspector-body">
+          <div class="evidence-card"><strong>Public note</strong><p>The failure remains visible. No hidden success state was created.</p></div>
+          <div class="evidence-card"><strong>Preview unavailable</strong><p>No browser preview because no applied web artifact exists.</p></div>
+          <div class="evidence-card"><strong>Retry</strong><p>Use smaller context and stricter artifact schema, or Quick Edit for deterministic files.</p></div>
+        </div>
+      </aside>
+      <div class="bottom">
+        <div class="bottom-tabs"><span class="bottom-tab active">Terminal</span><span class="bottom-tab">Logs</span><span class="bottom-tab">Validation</span></div>
+        <div class="terminal"><span class="ok">$ pnpm test</span><br>PASS desktopOrchestratorTransport.test.ts<br><span class="bad">$ rm -rf .</span><br>blocked by policy before execution<br>$ pnpm --filter @ai-agent-orchestrator/desktop-windows gui:check<br>waiting for user action</div>
+      </div>
+      <div class="statusbar"><span>Recovery state</span><span>Safe stop | Artifacts: 0 | Apply disabled</span></div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="compact">
+    <div class="compact">
+      <div class="mini-title"><strong>Karo</strong><span class="badge success">Runtime v2</span></div>
+      <div class="mini-tabs"><span class="active">Task</span><span>Changes</span><span>Logs</span></div>
+      <div class="mini-main">
+        <div class="message">
+          <div class="message-head"><span>You</span><span>Agent</span></div>
+          <div class="message-body">Build an anime viewer with a player and clean design.</div>
+        </div>
+        <div class="stage"><div class="stage-letter">R</div><div class="stage-main"><strong>Researcher</strong><span>Detected static_site and selected files.</span></div></div>
+        <div class="stage"><div class="stage-letter">C</div><div class="stage-main"><strong>Coder</strong><span>Staged 3 files. Apply required.</span></div></div>
+        <div class="evidence-card"><strong>Evidence drawer</strong><p>Preview, Changes, Terminal, Logs, and Recovery collapse into tabs on narrow screens.</p></div>
+      </div>
+      <div class="mini-compose">
+        <div class="input">Continue, retry, or ask for a plan...</div>
+        <div class="composer-bar"><span class="badge">Context 4 files</span><button class="btn primary">Start</button></div>
+      </div>
+      <div class="mini-status"><span>Auto</span><span>Safe commands</span></div>
+    </div>
+  </section>
+</body>
+</html>

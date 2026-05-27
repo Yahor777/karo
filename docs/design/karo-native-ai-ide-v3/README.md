@@ -51,22 +51,21 @@ flowchart LR
 
 ## Visual Language
 
-Karo should use a restrained dark/liquid system, not a one-note purple gradient.
+Karo should feel like a serious native IDE with a restrained graphite surface system. The target is premium and calm, not "AI neon" and not a colorful marketing dashboard.
 
 Core tokens:
 
-- `ink-0` `#05070d`: app background.
-- `ink-1` `#090d16`: shell background.
-- `ink-2` `#101827`: panel base.
-- `ink-3` `#17243a`: raised card.
-- `line` `rgba(168, 245, 255, 0.14)`: glass border.
-- `text` `#edf5ff`: primary text.
-- `muted` `#93a4bb`: supporting text.
-- `cyan` `#77e7ff`: active state and preview.
-- `violet` `#8f7bff`: AI/run identity.
-- `rose` `#ff6f9e`: destructive/error accents.
-- `jade` `#66e3a8`: success/validated.
-- `amber` `#ffd36b`: warning/recovery.
+- `ink-0` `#07090d`: app background.
+- `ink-1` `#0d1117`: shell background.
+- `ink-2` `#121821`: panel base.
+- `ink-3` `#171f2b`: raised card.
+- `line` `rgba(198, 211, 224, 0.12)`: panel border.
+- `text` `#eef2f6`: primary text.
+- `muted` `#8c98a8`: supporting text.
+- `steel` `#8fb7ff`: selected state and primary action.
+- `jade` `#7fc99b`: success/validated.
+- `amber` `#d8b66d`: warning/recovery.
+- `red` `#d77a86`: failure/destructive.
 
 Type:
 
@@ -77,10 +76,11 @@ Type:
 
 Surface rules:
 
-- Panels use low-alpha glass, 1px borders, soft inner highlights, and directional shadows.
-- Interactive controls have one clear selected state.
+- Panels use matte graphite surfaces, 1px borders, small inner highlights, and restrained shadows.
+- Interactive controls have one clear selected state, usually border + subtle fill rather than saturated color.
 - Important safety states use content and iconography, not color alone.
 - Empty states answer: what this panel shows, why it is empty, what unlocks it.
+- Gradients are allowed only as subtle depth, not as decoration. Avoid multi-color glow backgrounds.
 
 ## Mockups
 

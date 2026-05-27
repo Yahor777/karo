@@ -1586,6 +1586,83 @@ describe("DesktopOrchestratorTransport — Coder output robustness", () => {
     ]);
   });
 
+  it("recovers chunked anime website files when the model returns code fences instead of artifact JSON", async () => {
+    const shell = buildShell();
+    const { client, calls } = buildScriptedClient([
+      { when: "researcher", response: { kind: "ok", text: "Create an anime viewing site with a local player, catalog, search, and premium dark styling." } },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: [
+            "```html",
+            '<!doctype html><html><head><title>Anime Vault</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"><script defer src="./script.js"></script></head><body><nav class="site-nav"><a href="#home">Home</a><a href="#genres">Genres</a><a href="#popular">Popular</a><a href="#search">Search</a></nav><main><section id="home" class="hero"><div><p class="eyebrow">Premium anime cockpit</p><h1>Watch anime in a cinematic local player.</h1><p>Browse featured series, filter genres, queue episodes, and inspect a polished offline player shell before Apply writes anything to disk.</p><a class="cta-button" href="#player">Open player</a></div><figure class="hero-visual" role="img" aria-label="Anime video player preview with episode queue"><div class="poster-frame">Trailer frame</div><figcaption>Local anime player visual with queue and neon episode rail.</figcaption></figure></section><section id="player" class="watch-player"><h2>Featured trailer</h2><video controls poster="" aria-label="Featured anime trailer"><source src="" type="video/mp4"></video><p>No network video is bundled. Add a local source after Apply to test playback.</p></section><section id="popular" class="catalog-grid"><h2>Popular now</h2><article class="feature-card"><h3>Moon District</h3><p>Urban fantasy action with crisp episode status and next-up guidance.</p></article><article class="feature-card"><h3>Azure Run</h3><p>Fast sci-fi races, watchlist metadata, and genre tags for scanning.</p></article><article class="feature-card"><h3>Quiet Shrine</h3><p>Atmospheric drama cards with ratings, seasons, and clear play affordances.</p></article></section><section id="genres" class="features"><h2>Genres</h2><p>Action, romance, mystery, slice of life, and supernatural filters are presented as calm dense controls.</p></section><section id="search" class="search-panel"><h2>Search library</h2><label>Search anime <input type="search" placeholder="Find a title"></label></section><section class="faq"><h2>FAQ</h2><details open><summary>Can I preview the player?</summary><p>Apply Changes first, then open index.html from Preview. Karo does not fetch videos or run commands.</p></details></section></main></body></html>',
+            "```",
+          ].join("\n"),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: [
+            "```css",
+            ":root{color-scheme:dark;--bg:#05070d;--card:rgba(17,24,39,.82);--accent:#8b5cf6;--cyan:#22d3ee;--rose:#fb7185}body{margin:0;background:radial-gradient(circle at 15% 0%,rgba(34,211,238,.18),transparent 30%),radial-gradient(circle at 80% 10%,rgba(251,113,133,.14),transparent 28%),#05070d;color:#f8fbff;font-family:Inter,system-ui,sans-serif}.site-nav{position:sticky;top:0;display:flex;gap:14px;padding:16px clamp(18px,4vw,56px);background:rgba(5,7,13,.78);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.1)}.site-nav a,.cta-button{color:#eef7ff;text-decoration:none}.cta-button{display:inline-flex;padding:12px 16px;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--cyan));box-shadow:0 18px 48px rgba(34,211,238,.18);transition:transform .16s ease,box-shadow .16s ease}.cta-button:hover{transform:translateY(-1px)}main{display:grid;gap:24px;padding:clamp(24px,5vw,72px)}section{border:1px solid rgba(148,163,184,.2);border-radius:22px;background:var(--card);box-shadow:0 24px 70px rgba(0,0,0,.35);padding:clamp(18px,3vw,34px)}.hero{min-height:min(78vh,760px);display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.86fr);align-items:center;gap:clamp(24px,5vw,64px)}h1{max-width:12ch;font-size:clamp(2.75rem,6vw,4.9rem);line-height:.96;text-wrap:balance;margin:0}.hero p{max-width:68ch}.hero-visual{min-height:330px;border-radius:24px;background:linear-gradient(145deg,rgba(139,92,246,.28),rgba(34,211,238,.12)),radial-gradient(circle,var(--rose),transparent 58%);display:grid;place-items:center;overflow:hidden}.poster-frame{width:78%;aspect-ratio:16/9;border:1px solid rgba(255,255,255,.22);border-radius:18px;background:#080b13;display:grid;place-items:center}.catalog-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.feature-card{min-height:150px;border:1px solid rgba(255,255,255,.12);border-radius:16px;background:rgba(255,255,255,.045);padding:16px}video,input{width:100%;max-width:760px;border-radius:16px;background:#02040a;color:inherit}input{padding:12px;border:1px solid rgba(255,255,255,.18)}a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}@media (max-width:800px){.hero,.catalog-grid{grid-template-columns:1fr}.hero-visual{min-height:240px}}",
+            "```",
+          ].join("\n"),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: [
+            "```javascript",
+            "document.documentElement.dataset.karoPreviewReady = 'true';",
+            "for (const detail of document.querySelectorAll('details')) {",
+            "  detail.addEventListener('toggle', () => { detail.dataset.state = detail.open ? 'open' : 'closed'; });",
+            "}",
+            "const search = document.querySelector('input[type=\"search\"]');",
+            "search?.addEventListener('input', () => { document.documentElement.dataset.searching = search.value.length > 0 ? 'true' : 'false'; });",
+            "```",
+          ].join("\n"),
+        },
+      },
+      {
+        when: "coder",
+        response: {
+          kind: "ok",
+          text: "# Anime Vault Preview\n\nApply Changes first, then open `src/karo-demo-site/index.html` from Preview. No automatic command execution or network video is used.\n",
+        },
+      },
+    ]);
+    const t = new DesktopOrchestratorTransport({ desktopShell: shell, modelClient: client });
+    const logs: Array<{ level: string; text: string }> = [];
+    t.subscribeLog((_, e) => logs.push({ level: e.level, text: e.text }));
+    const { taskId } = await t.createAndRunTask({
+      prompt: "создай сайт для просмотра аниме нужен плеер и красивый дизайн",
+      metadata: SAMPLE_METADATA,
+      mode: "auto",
+      participants: [],
+      maxReviewCycles: 1,
+      confirmedByUser: true,
+    });
+
+    await flushUntil(() => t.getTaskState(taskId)?.status === "completed");
+
+    expect(t.getTaskState(taskId)?.status).toBe("completed");
+    expect(t.getTaskState(taskId)?.agentCoreEstimate?.contextProfile).toBe("website_creation");
+    expect(calls.map((call) => call.which)).toEqual(["researcher", "coder", "coder", "coder", "coder"]);
+    expect(t.getArtifacts(taskId).map((artifact) => artifact.fileName).sort()).toEqual([
+      "src/karo-demo-site/README.md",
+      "src/karo-demo-site/index.html",
+      "src/karo-demo-site/script.js",
+      "src/karo-demo-site/styles.css",
+    ]);
+    expect(t.getTaskState(taskId)?.deterministicValidation?.status).toBe("passed");
+    expect(logs.filter((log) => log.text.includes("non-JSON output")).length).toBe(4);
+  });
+
   it("routes explicit Agent Mode multi-file website creation to staged artifacts instead of security review", async () => {
     const shell = buildShell();
     shell.shell_build_task_context = vi.fn(async (projectPath: string, prompt: string) => ({

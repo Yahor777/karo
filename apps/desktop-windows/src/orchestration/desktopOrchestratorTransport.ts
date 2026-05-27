@@ -3204,8 +3204,8 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         return null;
       }
 
-      const parsed = parseCoderResponse(response.text);
-      if (parsed === null) {
+      const parsedResult = parseWebsiteFileResponse(response.text, file);
+      if (parsedResult === null) {
         this.publishLog(taskId, {
           level: "error",
           source: "coder",
@@ -3233,8 +3233,21 @@ export class DesktopOrchestratorTransport implements OrchestratorTransport {
         );
         return null;
       }
+      if (parsedResult.recoveredNonJson) {
+        this.publishLog(taskId, {
+          level: "warn",
+          source: "coder",
+          text:
+            `Coder returned non-JSON output while generating ${file.fileName}. ` +
+            "Karo recovered the target file content, staged it, and will still validate before completion.",
+        });
+        this.publishTrace(taskId, "coder", {
+          kind: "thought",
+          text: `Recovered ${file.fileName} from code output instead of strict artifact JSON.`,
+        });
+      }
 
-      const normalized = ensureWebsiteChunkContainsTargetFile(parsed, file);
+      const normalized = ensureWebsiteChunkContainsTargetFile(parsedResult.parsed, file);
       const written = await this.writeCoderArtifacts(taskId, normalized);
       if (written === null) {
         this.markModelError(taskId, `Coder produced no artifact for ${file.fileName}.`);
@@ -4671,6 +4684,104 @@ function parseCoderResponse(text: string): ParsedCoderResponse | null {
   return summary !== undefined ? { artifacts, summary } : { artifacts };
 }
 
+function parseWebsiteFileResponse(
+  text: string,
+  file: StaticWebsiteFilePlanItem,
+): { parsed: ParsedCoderResponse; recoveredNonJson: boolean } | null {
+  const parsed = parseCoderResponse(text);
+  if (parsed !== null) return { parsed, recoveredNonJson: false };
+
+  const recoveredContent = recoverWebsiteFileContent(text, file.fileName);
+  if (recoveredContent === null) return null;
+  return {
+    parsed: {
+      artifacts: [{ fileName: file.fileName, content: recoveredContent }],
+      summary: `Recovered ${file.fileName} from non-JSON code output.`,
+    },
+    recoveredNonJson: true,
+  };
+}
+
+function recoverWebsiteFileContent(text: string, fileName: string): string | null {
+  const blocks = extractMarkdownCodeBlocks(text);
+  for (const block of blocks) {
+    const trimmed = trimRecoveredWebsiteContent(block.content, fileName);
+    if (looksLikeWebsiteFileContent(trimmed, fileName, block.info)) return trimmed;
+  }
+
+  const raw = trimRecoveredWebsiteContent(text, fileName);
+  if (looksLikeWebsiteFileContent(raw, fileName, "")) return raw;
+  return null;
+}
+
+function extractMarkdownCodeBlocks(text: string): Array<{ info: string; content: string }> {
+  const blocks: Array<{ info: string; content: string }> = [];
+  const regex = /```([^\r\n`]*)\r?\n([\s\S]*?)```/g;
+  let match: RegExpExecArray | null = regex.exec(text);
+  while (match !== null) {
+    blocks.push({ info: (match[1] ?? "").trim().toLowerCase(), content: match[2] ?? "" });
+    match = regex.exec(text);
+  }
+  return blocks;
+}
+
+function trimRecoveredWebsiteContent(content: string, fileName: string): string {
+  const normalized = content.replace(/^\uFEFF/u, "").trim();
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith(".html")) {
+    const startMatch = /<!doctype\s+html|<html\b|<main\b|<nav\b|<section\b|<video\b/iu.exec(normalized);
+    if (startMatch === null) return normalized;
+    const fromStart = normalized.slice(startMatch.index).trim();
+    const htmlClose = fromStart.toLowerCase().lastIndexOf("</html>");
+    if (htmlClose >= 0) return fromStart.slice(0, htmlClose + "</html>".length).trim();
+    return fromStart;
+  }
+  if (lowerName.endsWith(".css")) {
+    const startMatch = /:root\b|body\s*\{|@media\b|[.#][a-z_-][\w-]*\s*\{/iu.exec(normalized);
+    return startMatch === null ? normalized : normalized.slice(startMatch.index).trim();
+  }
+  if (lowerName.endsWith(".js")) {
+    const startMatch = /(?:const|let|function|document\.|window\.|addEventListener|querySelector)/u.exec(normalized);
+    return startMatch === null ? normalized : normalized.slice(startMatch.index).trim();
+  }
+  return normalized;
+}
+
+function looksLikeWebsiteFileContent(content: string, fileName: string, info: string): boolean {
+  const trimmed = content.trim();
+  if (trimmed.length < 12) return false;
+  const lowerName = fileName.toLowerCase();
+  const lowerInfo = info.toLowerCase();
+  if (lowerName.endsWith(".html")) {
+    return (
+      !/\bjson\b/u.test(lowerInfo) &&
+      /<!doctype\s+html|<html\b|<main\b|<nav\b|<section\b|<video\b/iu.test(trimmed) &&
+      /<\/?[a-z][\s\S]*>/iu.test(trimmed)
+    );
+  }
+  if (lowerName.endsWith(".css")) {
+    return (
+      (/\bcss\b/u.test(lowerInfo) || lowerInfo.length === 0 || lowerInfo.includes("styles.css")) &&
+      /[{][\s\S]*[}]/u.test(trimmed) &&
+      /:root\b|body\s*\{|@media\b|[.#][a-z_-][\w-]*\s*\{/iu.test(trimmed)
+    );
+  }
+  if (lowerName.endsWith(".js")) {
+    return (
+      (/\b(?:js|javascript)\b/u.test(lowerInfo) || lowerInfo.length === 0 || lowerInfo.includes("script.js")) &&
+      /document\.|window\.|addEventListener|querySelector|function\b|const\b|let\b/iu.test(trimmed) &&
+      /[;{}()]/u.test(trimmed)
+    );
+  }
+  if (lowerName.endsWith(".md")) {
+    return (
+      (/\b(?:md|markdown)\b/u.test(lowerInfo) || lowerInfo.length === 0 || lowerInfo.includes("readme")) &&
+      /^#|\bapply changes\b|\bpreview\b|\bindex\.html\b/iu.test(trimmed)
+    );
+  }
+  return false;
+}
+
 /**
  * Tolerant parser for the Fixer's response. Same shapes accepted as
  * {@link parseCoderResponse}, plus `addressedDefectIds`.
@@ -4718,7 +4829,7 @@ function isStaticWebsiteCreationPrompt(prompt: string): boolean {
     text.includes("построй") ||
     text.includes("сгенер");
   const staticSignals =
-    /\b(hero|features|faq|responsive|cards|pricing|abilities|characters)\b/i.test(text) ||
+    /\b(hero|features|faq|responsive|cards|pricing|abilities|characters|anime|video|player|streaming|watch|trailer|genres|popular|search|catalog|gallery|dashboard|portfolio|app)\b/i.test(text) ||
     text.includes("hero") ||
     text.includes("faq") ||
     text.includes("responsive") ||
@@ -4728,7 +4839,7 @@ function isStaticWebsiteCreationPrompt(prompt: string): boolean {
   const explicitWebsiteFiles = /\b(index\.html|styles\.css|script\.js|readme\.md)\b/i.test(text);
   const unicodeSiteSignals = /\u0441\u0430\u0439\u0442|\u043b\u0435\u043d\u0434\u0438\u043d\u0433|\u0441\u0442\u0440\u0430\u043d\u0438\u0446/i.test(text);
   const unicodeCreateSignals = /\u0441\u043e\u0437\u0434\u0430|\u0441\u0434\u0435\u043b\u0430|\u043f\u043e\u0441\u0442\u0440\u043e|\u0441\u0433\u0435\u043d\u0435\u0440|\u0440\u0435\u0430\u043b\u0438\u0437/i.test(text);
-  const unicodeSectionSignals = /\u0441\u043f\u043e\u0441\u043e\u0431\u043d\u043e\u0441|\u043f\u0435\u0440\u0441\u043e\u043d\u0430\u0436|\u044d\u043d\u0435\u0440\u0433|\u043a\u0430\u0440\u0442\u043e\u0447/i.test(text);
+  const unicodeSectionSignals = /\u0441\u043f\u043e\u0441\u043e\u0431\u043d\u043e\u0441|\u043f\u0435\u0440\u0441\u043e\u043d\u0430\u0436|\u044d\u043d\u0435\u0440\u0433|\u043a\u0430\u0440\u0442\u043e\u0447|\u0430\u043d\u0438\u043c\u0435|\u043f\u043b\u0435\u0435\u0440|\u043f\u0440\u043e\u0441\u043c\u043e\u0442\u0440|\u0441\u043c\u043e\u0442\u0440|\u0432\u0438\u0434\u0435\u043e|\u0436\u0430\u043d\u0440|\u043f\u043e\u0438\u0441\u043a|\u043f\u043e\u043f\u0443\u043b\u044f\u0440|\u0434\u0438\u0437\u0430\u0439\u043d|\u043a\u0440\u0430\u0441\u0438\u0432/i.test(text);
   return (
     (asksForSite || explicitWebsiteFiles || unicodeSiteSignals) &&
     (asksToCreate || unicodeCreateSignals) &&
@@ -4740,7 +4851,7 @@ function buildStaticWebsiteFilePlan(): readonly StaticWebsiteFilePlanItem[] {
   return [
     {
       fileName: "src/karo-demo-site/index.html",
-      purpose: "semantic static HTML shell",
+      purpose: "semantic static HTML/app shell",
       requiredSignals: [
         "title/meta viewport",
         "linked styles.css",
@@ -4748,10 +4859,10 @@ function buildStaticWebsiteFilePlan(): readonly StaticWebsiteFilePlanItem[] {
         "site navigation",
         "hero",
         "first-viewport hero visual scene",
-        "abilities",
-        "characters",
-        "energy",
-        "features",
+        "primary requested experience (player/tool/gallery/showcase)",
+        "abilities or topic showcase",
+        "characters/energy/player or catalog section",
+        "features or content library",
         "FAQ",
         "FAQ details",
         "visible CTA",
@@ -4762,11 +4873,12 @@ function buildStaticWebsiteFilePlan(): readonly StaticWebsiteFilePlanItem[] {
     },
     {
       fileName: "src/karo-demo-site/styles.css",
-      purpose: "responsive dark anime visual system",
+      purpose: "responsive premium visual system for the requested site",
       requiredSignals: [
         "responsive",
-        "dark anime style",
+        "domain-specific dark/premium style",
         "cards",
+        "primary experience styling",
         "hero visual styling",
         "mobile layout",
         "premium dark/liquid polish",
@@ -4781,8 +4893,8 @@ function buildStaticWebsiteFilePlan(): readonly StaticWebsiteFilePlanItem[] {
     },
     {
       fileName: "src/karo-demo-site/script.js",
-      purpose: "small safe interactions for FAQ and navigation",
-      requiredSignals: ["FAQ interaction", "progressive enhancement", "no dependencies"],
+      purpose: "small safe interactions for FAQ, navigation, player/search/filter state",
+      requiredSignals: ["FAQ/player/search interaction", "progressive enhancement", "no dependencies"],
     },
     {
       fileName: "src/karo-demo-site/README.md",
@@ -4813,7 +4925,7 @@ function buildWebsiteFileCoderPrompt(
       ? ["", "Researcher/Planner summary:", compactText(researcherSummary, 900)].join("\n")
       : "";
   return [
-    "Generate exactly one file for a static website task.",
+    "Generate exactly one file for a static website or local app-surface task.",
     "",
     `Target file: ${file.fileName}`,
     `Purpose: ${file.purpose}`,
@@ -4832,12 +4944,14 @@ function buildWebsiteFileCoderPrompt(
     "- The result must be runnable as plain static HTML/CSS/JS after Apply Changes.",
     "- Do not use external CDNs, package installs, hidden commands, or absolute local paths.",
     "- Do not include markdown fences or commentary outside JSON.",
-    "- Make the landing page feel complete, not a placeholder.",
+    "- Make the generated site feel complete and usable, not a placeholder.",
     "- index.html must include a title, meta viewport, linked styles.css, deferred script.js, top navigation, semantic sections, and at least one visible CTA.",
+    "- Build the primary experience requested by the user. For anime/video/streaming/player requests, include a real local <video controls> player shell, Home/Genres/Popular/Search navigation, a searchable anime catalog or episode grid, and clear empty/offline states without network calls.",
+    "- For software/product/tool requests, build the requested interface surface, not only a generic marketing landing page.",
     "- Build a product-grade first viewport: brand signal, nav, specific headline, body copy, CTA, local hero visual scene, and visible next-section hint.",
     "- The hero must include a subject-specific visual element such as <figure class=\"hero-visual\" role=\"img\" aria-label=\"...\"> with local HTML/CSS scene details; do not rely only on gradients or text.",
     "- Keep hero headlines short and readable. Avoid long hyphenated compounds, oversized one-word lines, and font-size values that dominate mobile screens.",
-    "- Include multi-card composition for abilities/features and FAQ details or equivalent question/answer blocks.",
+    "- Include multi-card composition for the requested domain: abilities/features, media catalog, project cards, tool states, or equivalent substantive cards, plus FAQ/details or equivalent help blocks.",
     "- Use substantial, specific copy for the requested subject. Each major section needs body text; avoid lorem ipsum, empty cards, generic labels without body text, and one-line placeholder pages.",
     "- styles.css must deliver responsive premium dark/liquid UI with stable spacing tokens, readable contrast, mobile layout, navigation styling, hero visual styling, FAQ styling, and visible depth such as gradients/shadows.",
     "- styles.css must define readable hero typography with a bounded clamp(), max-width in ch/clamp/min units, line-height around 0.95-1.2, and balanced wrapping such as text-wrap: balance.",
@@ -4846,7 +4960,7 @@ function buildWebsiteFileCoderPrompt(
     "- Add interaction polish with hover/focus states or transitions that do not move layout unexpectedly.",
     "- Keep the palette balanced; do not make the whole page a single flat hue or stock-template layout.",
     "- Buttons, cards, and section blocks need stable dimensions so hover/focus states do not shift layout.",
-    "- script.js must provide small safe progressive enhancement for FAQ/navigation state only; no network calls, secrets, storage writes, or command execution.",
+    "- script.js must provide small safe progressive enhancement for FAQ/navigation/player/search/filter state only; no network calls, secrets, storage writes, or command execution.",
     "",
     'Required JSON schema: {"artifacts":[{"fileName":"string","content":"string"}],"summary":"string"}',
   ].join("\n");

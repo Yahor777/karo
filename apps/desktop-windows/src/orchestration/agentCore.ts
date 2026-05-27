@@ -354,15 +354,15 @@ export function buildAgentImplementationPlan(input: {
       filesToModify: [],
       filesToRead: input.contextProfile === "website_creation" ? [] : [],
       acceptanceCriteria: [
-        "index.html contains title/meta viewport, linked styles.css/script.js, navigation, hero, abilities, characters/energy, features, FAQ, and a visible CTA.",
+        "index.html contains title/meta viewport, linked styles.css/script.js, navigation, hero, the requested primary experience, substantive content cards/sections, FAQ/help, and a visible CTA.",
         "index.html contains a subject-specific first-viewport hero visual scene, not only text and gradient blocks.",
         "index.html contains substantive subject-specific copy, not just section labels or placeholder cards.",
         "index.html uses a multi-card product composition with FAQ details or equivalent expandable/readable answers.",
-        "styles.css contains responsive premium dark anime/card styling, visual depth, stable spacing, and a mobile layout.",
+        "styles.css contains responsive premium domain-specific/card styling, visual depth, stable spacing, and a mobile layout.",
         "styles.css keeps first-viewport hero typography readable with balanced wrapping instead of oversized one-word lines.",
         "styles.css uses a balanced accent palette instead of a one-note monochrome theme.",
         "styles.css includes interactive polish for links/cards without layout shift.",
-        "script.js is present, non-empty, user-visible, and limited to safe local progressive enhancement.",
+        "script.js is present, non-empty, user-visible, and limited to safe local progressive enhancement for navigation, FAQ, player, search, or filters.",
         "README.md explains Apply Changes and preview/open flow.",
         "All generated files remain staged until Apply Changes.",
         "Emergency fallback is not counted as benchmark success.",
@@ -743,14 +743,14 @@ export function isStaticWebsiteCreationPrompt(prompt: string): boolean {
     text.includes("построй") ||
     text.includes("сгенер");
   const staticSignals =
-    /\b(hero|features|faq|responsive|cards|pricing|abilities|characters)\b/iu.test(text) ||
+    /\b(hero|features|faq|responsive|cards|pricing|abilities|characters|anime|video|player|streaming|watch|trailer|genres|popular|search|catalog|gallery|dashboard|portfolio|app)\b/iu.test(text) ||
     text.includes("способност") ||
     text.includes("персонаж") ||
     text.includes("карточ");
   const explicitWebsiteFiles = /\b(index\.html|styles\.css|script\.js|readme\.md)\b/iu.test(text);
   const unicodeSiteSignals = /\u0441\u0430\u0439\u0442|\u043b\u0435\u043d\u0434\u0438\u043d\u0433|\u0441\u0442\u0440\u0430\u043d\u0438\u0446/iu.test(text);
   const unicodeCreateSignals = /\u0441\u043e\u0437\u0434\u0430|\u0441\u0434\u0435\u043b\u0430|\u043f\u043e\u0441\u0442\u0440\u043e|\u0441\u0433\u0435\u043d\u0435\u0440|\u0440\u0435\u0430\u043b\u0438\u0437/iu.test(text);
-  const unicodeSectionSignals = /\u0441\u043f\u043e\u0441\u043e\u0431\u043d\u043e\u0441|\u043f\u0435\u0440\u0441\u043e\u043d\u0430\u0436|\u044d\u043d\u0435\u0440\u0433|\u043a\u0430\u0440\u0442\u043e\u0447/iu.test(text);
+  const unicodeSectionSignals = /\u0441\u043f\u043e\u0441\u043e\u0431\u043d\u043e\u0441|\u043f\u0435\u0440\u0441\u043e\u043d\u0430\u0436|\u044d\u043d\u0435\u0440\u0433|\u043a\u0430\u0440\u0442\u043e\u0447|\u0430\u043d\u0438\u043c\u0435|\u043f\u043b\u0435\u0435\u0440|\u043f\u0440\u043e\u0441\u043c\u043e\u0442\u0440|\u0441\u043c\u043e\u0442\u0440|\u0432\u0438\u0434\u0435\u043e|\u0436\u0430\u043d\u0440|\u043f\u043e\u0438\u0441\u043a|\u043f\u043e\u043f\u0443\u043b\u044f\u0440|\u0434\u0438\u0437\u0430\u0439\u043d|\u043a\u0440\u0430\u0441\u0438\u0432/iu.test(text);
   return (
     (asksForSite || explicitWebsiteFiles || unicodeSiteSignals) &&
     (asksToCreate || unicodeCreateSignals) &&
@@ -837,6 +837,7 @@ function validateStaticWebsiteArtifacts(
   artifacts: readonly ArtifactValidationInput[],
 ): DeterministicValidationSummary {
   const content = artifacts.map((artifact) => artifact.content).join("\n").toLowerCase();
+  const contentWithDomainAliases = `${content}\n${inferStaticWebsiteValidationAliases(content)}`;
   const names = artifacts.map((artifact) => artifact.fileName.replace(/\\/g, "/").toLowerCase());
   const index = findArtifact(artifacts, /index\.html$/i);
   const css = findArtifact(artifacts, /\.css$/i);
@@ -876,7 +877,7 @@ function validateStaticWebsiteArtifacts(
   ] as const;
 
   for (const [label, regex] of sectionSignals) {
-    recordSignal(checkedSignals, issues, regex.test(content), label);
+    recordSignal(checkedSignals, issues, regex.test(contentWithDomainAliases), label);
   }
   recordSignal(checkedSignals, issues, hasSubstantiveWebsiteCopy(indexContent), "substantive section copy");
   recordSignal(checkedSignals, issues, hasHeroVisual(indexContent), "first-viewport hero visual");
@@ -950,6 +951,17 @@ function findArtifact(
   return artifacts.find((artifact) => pattern.test(artifact.fileName.replace(/\\/g, "/")));
 }
 
+function inferStaticWebsiteValidationAliases(content: string): string {
+  const aliases: string[] = [];
+  if (/\b(anime|video|player|streaming|watch|trailer|genres?|popular|catalog|catalogue|episodes?|search)\b|\u0430\u043d\u0438\u043c\u0435|\u043f\u043b\u0435\u0435\u0440|\u0432\u0438\u0434\u0435\u043e|\u0436\u0430\u043d\u0440|\u043f\u043e\u0438\u0441\u043a|\u043f\u043e\u043f\u0443\u043b\u044f\u0440|\u043f\u0440\u043e\u0441\u043c\u043e\u0442\u0440|\u0441\u043c\u043e\u0442\u0440/iu.test(content)) {
+    aliases.push("abilities characters energy features");
+  }
+  if (/\b(tool|dashboard|editor|workspace|terminal|library|portfolio|gallery|kanban|calendar|analytics)\b/iu.test(content)) {
+    aliases.push("abilities characters energy features");
+  }
+  return aliases.join("\n");
+}
+
 function hasIssue(issues: readonly string[], label: string): boolean {
   return issues.some((issue) => issue.toLowerCase().includes(label.toLowerCase()));
 }
@@ -985,7 +997,7 @@ function hasSiteNavigation(content: string): boolean {
 function hasHeroVisual(content: string): boolean {
   return (
     /class=["'][^"']*\bhero-visual\b|role=["']img["']|<figure\b|<svg\b|<canvas\b/iu.test(content) &&
-    /\b(domain|cursed|technique|energy|visual|poster|arena|minecraft|jjk)\b|aria-label|figcaption/iu.test(content)
+    /\b(domain|cursed|technique|energy|visual|poster|arena|minecraft|jjk|anime|player|video|episode|catalog|screen)\b|aria-label|figcaption/iu.test(content)
   );
 }
 

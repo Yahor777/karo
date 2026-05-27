@@ -3,17 +3,14 @@
  *
  * Palette (per redesign brief):
  *
- *   app-bg              #07070B
- *   topbar / sidebar    #0B0B11
- *   panels / cards      #0E0E16
- *   elevated panels     #151426
- *   borders             #2A2440
- *   text                #F5F3FF
- *   muted text          #A1A1AA
- *   accent purple       #8B5CF6
- *   accent bright       #A78BFA
- *   accent dark         #4C1D95
- *   success / warn / err #22C55E / #F59E0B / #EF4444
+ *   app-bg              #03050A
+ *   topbar / sidebar    translucent obsidian glass
+ *   panels / cards      blue-black glass layers
+ *   borders             cool steel/cyan hairlines
+ *   text                #F7FBFF
+ *   muted text          #A9B6CA
+ *   accents             violet / cyan / rose / jade
+ *   success / warn / err #55F0A7 / #FFC857 / #EF4444
  *
  * No emoji glyphs anywhere in interactive UI. Monospace is reserved
  * for code / model ids / logs.
@@ -30,22 +27,25 @@
   font-size: 13.5px;
   line-height: 1.45;
 
-  --karo-app-bg: #07070b;
-  --karo-bar-bg: #0b0b11;
-  --karo-card: #101016;
-  --karo-elev: #171720;
-  --karo-border: #272333;
-  --karo-border-strong: #36304a;
-  --karo-text: #f5f3ff;
-  --karo-text-muted: #a1a1aa;
-  --karo-text-faint: #71717a;
-  --karo-accent: #7c3aed;
-  --karo-accent-bright: #a78bfa;
-  --karo-accent-dark: #4c1d95;
-  --karo-accent-soft: rgba(124, 58, 237, 0.16);
-  --karo-cyan: #38d5e8;
-  --karo-cyan-soft: rgba(56, 213, 232, 0.12);
-  --karo-glass: rgba(18, 20, 30, 0.82);
+  --karo-app-bg: #03050a;
+  --karo-bar-bg: rgba(7, 10, 18, 0.88);
+  --karo-card: rgba(13, 18, 30, 0.78);
+  --karo-elev: rgba(18, 25, 42, 0.84);
+  --karo-border: rgba(130, 154, 190, 0.18);
+  --karo-border-strong: rgba(153, 201, 255, 0.34);
+  --karo-text: #f7fbff;
+  --karo-text-muted: #a9b6ca;
+  --karo-text-faint: #6f7b91;
+  --karo-accent: #8f5cff;
+  --karo-accent-bright: #c7b8ff;
+  --karo-accent-dark: #4f29a8;
+  --karo-accent-soft: rgba(143, 92, 255, 0.16);
+  --karo-cyan: #38f8ff;
+  --karo-cyan-soft: rgba(56, 248, 255, 0.12);
+  --karo-jade: #55f0a7;
+  --karo-rose: #ff6f91;
+  --karo-amber: #ffc857;
+  --karo-glass: rgba(12, 17, 29, 0.78);
   --karo-success: #22c55e;
   --karo-warn: #f59e0b;
   --karo-error: #ef4444;
@@ -53,9 +53,12 @@
   --karo-warn-bg: rgba(245, 158, 11, 0.14);
   --karo-error-bg: rgba(239, 68, 68, 0.16);
   --karo-radius: 8px;
-  --karo-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --karo-shadow: 0 24px 72px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(255, 255, 255, 0.018);
+  --karo-shadow-soft: 0 14px 38px rgba(0, 0, 0, 0.32);
+  --karo-hairline: rgba(255, 255, 255, 0.07);
   --karo-mono: "JetBrains Mono", "Cascadia Mono", "Consolas",
     "SFMono-Regular", monospace;
+  --karo-font-mono: var(--karo-mono);
   --karo-bg: var(--karo-app-bg);
   --karo-surface: var(--karo-card);
   --karo-surface-raised: var(--karo-elev);
@@ -80,7 +83,11 @@ html, body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: var(--karo-app-bg);
+  background:
+    radial-gradient(circle at 18% -12%, rgba(56, 248, 255, 0.14), transparent 28%),
+    radial-gradient(circle at 72% -10%, rgba(143, 92, 255, 0.18), transparent 32%),
+    radial-gradient(circle at 52% 118%, rgba(85, 240, 167, 0.08), transparent 34%),
+    linear-gradient(135deg, #03050a 0%, #07101c 48%, #05050a 100%);
   color: var(--karo-text);
 }
 
@@ -396,7 +403,9 @@ html, body {
   height: 100%;
   width: 100%;
   min-height: 0;
-  background: var(--karo-app-bg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.024), transparent 120px),
+    transparent;
   color: var(--karo-text);
   overflow: hidden;
 }
@@ -409,28 +418,34 @@ html, body {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
-  padding: 0 16px;
-  background: var(--karo-bar-bg);
-  border-bottom: 1px solid var(--karo-border);
+  padding: 0 18px;
+  background:
+    linear-gradient(90deg, rgba(15, 23, 42, 0.9), rgba(8, 12, 22, 0.78)),
+    var(--karo-bar-bg);
+  border-bottom: 1px solid var(--karo-hairline);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(20px) saturate(1.16);
 }
 
 .kw-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-weight: 600;
 }
 
 .kw-brand-logo {
-  width: 24px;
-  height: 24px;
+  width: 27px;
+  height: 27px;
   display: block;
+  filter: drop-shadow(0 0 16px rgba(56, 248, 255, 0.22));
 }
 
 .kw-brand-name {
-  color: var(--karo-accent-bright);
+  color: var(--karo-text);
   letter-spacing: 0.08em;
-  font-size: 14px;
+  font-size: 14.5px;
+  text-shadow: 0 0 18px rgba(56, 248, 255, 0.18);
 }
 
 .kw-brand-tagline {
@@ -442,9 +457,11 @@ html, body {
 
 .kw-project-field {
   justify-self: start;
-  padding: 6px 12px;
-  background: var(--karo-card);
-  border: 1px solid var(--karo-border);
+  padding: 7px 13px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+    rgba(3, 5, 10, 0.48);
+  border: 1px solid rgba(153, 201, 255, 0.2);
   border-radius: 999px;
   color: var(--karo-text-muted);
   font: inherit;
@@ -459,7 +476,8 @@ html, body {
 
 .kw-project-field:hover {
   color: var(--karo-text);
-  border-color: var(--karo-accent);
+  border-color: rgba(56, 248, 255, 0.38);
+  box-shadow: 0 0 0 3px rgba(56, 248, 255, 0.06);
 }
 
 .kw-topbar-right {
@@ -472,8 +490,11 @@ html, body {
 .kw-bottom-tools {
   grid-row: 3;
   min-height: 0;
-  border-top: 1px solid var(--karo-border);
-  background: rgba(10, 10, 15, 0.96);
+  border-top: 1px solid var(--karo-hairline);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(5, 7, 13, 0.96)),
+    var(--karo-bar-bg);
+  backdrop-filter: blur(18px);
 }
 
 .kw-bottom-tools-head {
@@ -535,10 +556,10 @@ html, body {
 }
 
 .kw-topbar-button {
-  padding: 6px 12px;
-  background: transparent;
-  border: 1px solid var(--karo-border);
-  border-radius: 6px;
+  padding: 7px 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(153, 201, 255, 0.16);
+  border-radius: 8px;
   font: inherit;
   font-size: 12px;
   color: var(--karo-text);
@@ -546,8 +567,9 @@ html, body {
 }
 
 .kw-topbar-button:hover {
-  background: var(--karo-card);
-  border-color: var(--karo-accent);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(56, 248, 255, 0.32);
+  box-shadow: 0 0 0 3px rgba(56, 248, 255, 0.055);
 }
 
 .kw-topbar-signout {
@@ -658,29 +680,33 @@ html, body {
   display: flex;
   flex-direction: column;
   width: 240px;
-  background: var(--karo-bar-bg);
-  border-right: 1px solid var(--karo-border);
-  padding: 12px 8px;
+  background:
+    linear-gradient(180deg, rgba(12, 17, 29, 0.94), rgba(6, 9, 16, 0.88)),
+    var(--karo-bar-bg);
+  border-right: 1px solid var(--karo-hairline);
+  padding: 12px 9px;
   gap: 8px;
   transition: width 120ms ease;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  box-shadow: inset -1px 0 0 rgba(153, 201, 255, 0.04), 12px 0 42px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px) saturate(1.12);
 }
 
 .kw-sidebar-footer {
   margin-top: auto;
   padding-top: 12px;
-  border-top: 1px solid var(--karo-border);
+  border-top: 1px solid var(--karo-hairline);
   flex: 0 0 auto;
 }
 
 .kw-sidebar-signout {
   width: 100%;
   padding: 8px 12px;
-  background: transparent;
-  border: 1px solid var(--karo-border);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(153, 201, 255, 0.12);
+  border-radius: 8px;
   color: var(--karo-text-muted);
   font: inherit;
   font-size: 12px;
@@ -690,7 +716,7 @@ html, body {
 }
 
 .kw-sidebar-signout:hover {
-  background: var(--karo-card);
+  background: rgba(239, 68, 68, 0.08);
   border-color: var(--karo-error);
   color: var(--karo-error);
 }
@@ -702,9 +728,9 @@ html, body {
 .kw-sidebar-collapse {
   align-self: flex-end;
   padding: 4px 8px;
-  background: transparent;
-  border: 1px solid var(--karo-border);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.026);
+  border: 1px solid rgba(153, 201, 255, 0.12);
+  border-radius: 8px;
   font: inherit;
   font-size: 11px;
   color: var(--karo-text-muted);
@@ -712,28 +738,36 @@ html, body {
 }
 
 .kw-sidebar-collapse:hover {
-  border-color: var(--karo-accent);
+  border-color: rgba(56, 248, 255, 0.34);
   color: var(--karo-text);
+  background: rgba(56, 248, 255, 0.055);
 }
 
 .kw-sidebar-new-chat {
   width: 100%;
-  padding: 9px 12px;
-  border: 1px solid rgba(139, 92, 246, 0.38);
-  border-radius: 8px;
-  background: rgba(139, 92, 246, 0.12);
+  padding: 10px 12px;
+  border: 1px solid rgba(56, 248, 255, 0.25);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(143, 92, 255, 0.22), rgba(56, 248, 255, 0.095)),
+    rgba(255, 255, 255, 0.035);
   color: var(--karo-text);
   font: inherit;
   font-size: 12px;
   font-weight: 700;
   text-align: left;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  box-shadow: 0 12px 28px rgba(56, 248, 255, 0.08);
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
 
 .kw-sidebar-new-chat:hover {
-  border-color: rgba(167, 139, 250, 0.7);
-  background: rgba(139, 92, 246, 0.18);
+  border-color: rgba(56, 248, 255, 0.42);
+  background:
+    linear-gradient(135deg, rgba(143, 92, 255, 0.3), rgba(56, 248, 255, 0.14)),
+    rgba(255, 255, 255, 0.045);
+  box-shadow: 0 16px 36px rgba(56, 248, 255, 0.12);
+  transform: translateY(-1px);
 }
 
 .kw-sidebar[data-collapsed="true"] .kw-sidebar-collapse {
@@ -759,10 +793,10 @@ html, body {
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 8px 12px;
+  padding: 8px 11px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 9px;
   color: var(--karo-text);
   font: inherit;
   font-size: 13px;
@@ -771,14 +805,17 @@ html, body {
 }
 
 .kw-sidebar-button:hover {
-  background: var(--karo-card);
-  border-color: var(--karo-border);
+  background: rgba(255, 255, 255, 0.043);
+  border-color: rgba(153, 201, 255, 0.12);
 }
 
 .kw-sidebar-button[aria-current="page"] {
-  background: var(--karo-accent-soft);
-  border-color: var(--karo-accent);
-  color: var(--karo-accent-bright);
+  background:
+    linear-gradient(135deg, rgba(143, 92, 255, 0.18), rgba(56, 248, 255, 0.07)),
+    rgba(255, 255, 255, 0.04);
+  border-color: rgba(56, 248, 255, 0.25);
+  color: var(--karo-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 22px rgba(0, 0, 0, 0.18);
 }
 
 .kw-sidebar-initials {
@@ -791,13 +828,15 @@ html, body {
   font-size: 10.5px;
   letter-spacing: 0.06em;
   color: var(--karo-text-muted);
-  background: var(--karo-elev);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(153, 201, 255, 0.12);
+  border-radius: 6px;
   flex: 0 0 auto;
 }
 
 .kw-sidebar-button[aria-current="page"] .kw-sidebar-initials {
-  background: var(--karo-accent-dark);
+  background: linear-gradient(135deg, rgba(143, 92, 255, 0.78), rgba(56, 248, 255, 0.28));
+  border-color: rgba(56, 248, 255, 0.28);
   color: var(--karo-text);
 }
 
@@ -953,7 +992,9 @@ html, body {
   min-height: 0;
   overflow: hidden;
   padding: 0;
-  background: var(--karo-app-bg);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(56, 248, 255, 0.045), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.014), rgba(0, 0, 0, 0.025));
   height: 100%;
 }
 
@@ -962,19 +1003,23 @@ html, body {
 .kw-right {
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--karo-border);
-  background: var(--karo-bar-bg);
+  border-left: 1px solid var(--karo-hairline);
+  background:
+    linear-gradient(180deg, rgba(12, 17, 29, 0.94), rgba(6, 9, 16, 0.9)),
+    var(--karo-bar-bg);
   min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  box-shadow: inset 1px 0 0 rgba(153, 201, 255, 0.04), -14px 0 42px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(18px) saturate(1.12);
 }
 
 .kw-right-tabs {
   display: flex;
   gap: 0;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--karo-border);
+  padding: 7px 8px 0;
+  border-bottom: 1px solid var(--karo-hairline);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -982,7 +1027,7 @@ html, body {
 
 .kw-right-tab {
   flex: 0 0 auto;
-  padding: 10px 12px;
+  padding: 8px 11px 10px;
   background: transparent;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -994,11 +1039,13 @@ html, body {
 
 .kw-right-tab:hover {
   color: var(--karo-text);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .kw-right-tab[aria-current="page"] {
-  color: var(--karo-accent-bright);
-  border-bottom-color: var(--karo-accent);
+  color: var(--karo-text);
+  border-bottom-color: var(--karo-cyan);
+  text-shadow: 0 0 18px rgba(56, 248, 255, 0.16);
 }
 
 .kw-right-content {
@@ -1008,6 +1055,9 @@ html, body {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(143, 92, 255, 0.05), transparent 34%),
+    transparent;
 }
 
 .kw-usage-view {
@@ -1279,7 +1329,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 24px 24px 12px 24px;
+  padding: 26px 26px 12px 26px;
   overflow: auto;
 }
 
@@ -1287,12 +1337,14 @@ html, body {
   position: relative;
   overflow: hidden;
   background:
-    linear-gradient(145deg, rgba(24, 28, 42, 0.94), rgba(12, 14, 22, 0.96)),
-    radial-gradient(circle at 12% 0%, rgba(56, 213, 232, 0.1), transparent 32%);
-  border: 1px solid rgba(71, 85, 105, 0.48);
-  border-radius: 8px;
-  padding: 22px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+    linear-gradient(145deg, rgba(20, 28, 48, 0.84), rgba(8, 12, 22, 0.92)),
+    radial-gradient(circle at 14% 0%, rgba(56, 248, 255, 0.16), transparent 34%),
+    radial-gradient(circle at 92% 8%, rgba(255, 111, 145, 0.1), transparent 30%);
+  border: 1px solid rgba(153, 201, 255, 0.2);
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: var(--karo-shadow);
+  backdrop-filter: blur(18px) saturate(1.12);
 }
 
 .kw-chat-welcome::before {
@@ -1301,8 +1353,8 @@ html, body {
   inset: -1px;
   pointer-events: none;
   background:
-    radial-gradient(circle at 82% 8%, rgba(139, 92, 246, 0.18), transparent 28%),
-    linear-gradient(90deg, rgba(56, 213, 232, 0.1), transparent 42%);
+    linear-gradient(90deg, rgba(56, 248, 255, 0.26), transparent 32%),
+    radial-gradient(circle at 82% 8%, rgba(143, 92, 255, 0.22), transparent 30%);
   opacity: 0.8;
 }
 
@@ -1321,8 +1373,9 @@ html, body {
 
 .kw-chat-welcome-title {
   margin: 0 0 6px 0;
-  font-size: 24px;
-  font-weight: 750;
+  font-size: 27px;
+  font-weight: 780;
+  letter-spacing: 0;
 }
 
 .kw-chat-welcome-sub {
@@ -1342,9 +1395,12 @@ html, body {
 .kw-welcome-contract-card {
   min-width: 0;
   padding: 11px;
-  border: 1px solid rgba(71, 85, 105, 0.42);
-  border-radius: 8px;
-  background: rgba(5, 8, 13, 0.45);
+  border: 1px solid rgba(153, 201, 255, 0.14);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.022)),
+    rgba(5, 8, 13, 0.46);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
 .kw-welcome-contract-head {
@@ -1466,15 +1522,19 @@ html, body {
 }
 
 .kw-chat-message {
-  background: var(--karo-card);
-  border: 1px solid var(--karo-border);
-  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    var(--karo-card);
+  border: 1px solid rgba(153, 201, 255, 0.14);
+  border-radius: 14px;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 0;
   animation: kw-message-in 140ms ease-out;
+  box-shadow: var(--karo-shadow-soft);
+  backdrop-filter: blur(14px) saturate(1.06);
 }
 
 @keyframes kw-message-in {
@@ -1489,8 +1549,10 @@ html, body {
 }
 
 .kw-chat-user {
-  background: var(--karo-elev);
-  border-color: var(--karo-border-strong);
+  background:
+    linear-gradient(135deg, rgba(143, 92, 255, 0.11), rgba(56, 248, 255, 0.045)),
+    var(--karo-elev);
+  border-color: rgba(56, 248, 255, 0.2);
 }
 
 .kw-user-request-compact {
@@ -1970,18 +2032,20 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  padding: 11px;
-  border: 1px solid rgba(71, 85, 105, 0.44);
-  border-radius: 8px;
+  padding: 13px;
+  border: 1px solid rgba(153, 201, 255, 0.18);
+  border-radius: 12px;
   background:
-    radial-gradient(circle at 8% 0%, rgba(56, 213, 232, 0.08), transparent 34%),
-    linear-gradient(135deg, rgba(12, 16, 24, 0.84), rgba(20, 18, 31, 0.76));
+    radial-gradient(circle at 8% 0%, rgba(56, 248, 255, 0.1), transparent 34%),
+    linear-gradient(135deg, rgba(12, 17, 29, 0.84), rgba(22, 20, 38, 0.76));
+  box-shadow: var(--karo-shadow-soft);
+  backdrop-filter: blur(14px);
 }
 
 .kw-agent-run-summary[data-state="ready"] {
-  border-color: rgba(34, 197, 94, 0.34);
+  border-color: rgba(85, 240, 167, 0.34);
   background:
-    radial-gradient(circle at 8% 0%, rgba(34, 197, 94, 0.11), transparent 34%),
+    radial-gradient(circle at 8% 0%, rgba(85, 240, 167, 0.12), transparent 34%),
     linear-gradient(135deg, rgba(10, 20, 18, 0.86), rgba(16, 18, 28, 0.78));
 }
 
@@ -2015,9 +2079,9 @@ html, body {
 .kw-agent-run-summary-head span {
   flex: 0 0 auto;
   padding: 2px 7px;
-  border: 1px solid rgba(56, 213, 232, 0.28);
+  border: 1px solid rgba(56, 248, 255, 0.28);
   border-radius: 999px;
-  background: rgba(56, 213, 232, 0.08);
+  background: rgba(56, 248, 255, 0.08);
   color: var(--karo-cyan);
   font-size: 10.5px;
   font-weight: 780;
@@ -2025,9 +2089,9 @@ html, body {
 }
 
 .kw-agent-run-summary[data-state="ready"] .kw-agent-run-summary-head span {
-  border-color: rgba(34, 197, 94, 0.3);
-  background: rgba(34, 197, 94, 0.1);
-  color: var(--karo-success);
+  border-color: rgba(85, 240, 167, 0.3);
+  background: rgba(85, 240, 167, 0.1);
+  color: var(--karo-jade);
 }
 
 .kw-agent-run-summary[data-state="blocked"] .kw-agent-run-summary-head span {
@@ -2058,9 +2122,11 @@ html, body {
 .kw-agent-run-summary-item {
   min-width: 0;
   padding: 8px;
-  border: 1px solid rgba(71, 85, 105, 0.36);
-  border-radius: 8px;
-  background: rgba(5, 8, 13, 0.42);
+  border: 1px solid rgba(153, 201, 255, 0.13);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    rgba(5, 8, 13, 0.46);
 }
 
 .kw-agent-run-summary-item span {
@@ -2336,18 +2402,21 @@ html, body {
 }
 
 .kw-agent-step {
-  background: var(--karo-elev);
-  border: 1px solid var(--karo-border);
-  border-radius: 8px;
-  padding: 10px 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.017)),
+    var(--karo-elev);
+  border: 1px solid rgba(153, 201, 255, 0.14);
+  border-radius: 12px;
+  padding: 11px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border-left: 3px solid var(--karo-border);
+  border-left: 3px solid rgba(153, 201, 255, 0.18);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
 }
 
 .kw-agent-step[data-status="started"] {
-  border-left-color: var(--karo-accent);
+  border-left-color: var(--karo-cyan);
 }
 
 .kw-agent-step[data-status="finished"] {
@@ -2376,10 +2445,10 @@ html, body {
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
-  border-radius: 7px;
-  border: 1px solid var(--karo-border-strong);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.26), rgba(21, 20, 38, 0.9));
-  color: var(--karo-accent-bright);
+  border-radius: 9px;
+  border: 1px solid rgba(56, 248, 255, 0.24);
+  background: linear-gradient(135deg, rgba(143, 92, 255, 0.34), rgba(56, 248, 255, 0.12));
+  color: var(--karo-text);
   font-family: var(--karo-mono);
   font-size: 11px;
   font-weight: 700;
@@ -2407,8 +2476,9 @@ html, body {
   font-size: 11px;
   padding: 1px 8px;
   border-radius: 999px;
-  background: var(--karo-accent-soft);
-  color: var(--karo-accent-bright);
+  background: rgba(56, 248, 255, 0.08);
+  color: var(--karo-cyan);
+  border: 1px solid rgba(56, 248, 255, 0.16);
 }
 
 .kw-agent-step-status[data-status="finished"] {
@@ -2734,16 +2804,19 @@ html, body {
 .kw-composer {
   position: sticky;
   bottom: 0;
-  margin: 0 24px 24px 24px;
+  margin: 0 26px 24px 26px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  background: var(--karo-card);
-  border: 1px solid var(--karo-border);
-  border-radius: 12px;
-  padding: 12px;
-  box-shadow: var(--karo-shadow);
+  background:
+    linear-gradient(180deg, rgba(19, 29, 49, 0.9), rgba(8, 12, 22, 0.92)),
+    var(--karo-card);
+  border: 1px solid rgba(153, 201, 255, 0.22);
+  border-radius: 16px;
+  padding: 13px;
+  box-shadow: 0 26px 90px rgba(0, 0, 0, 0.54), 0 0 0 1px rgba(56, 248, 255, 0.03);
+  backdrop-filter: blur(22px) saturate(1.16);
 }
 
 .kw-composer-input {
@@ -2751,9 +2824,11 @@ html, body {
   min-height: 64px;
   min-width: 0;
   resize: vertical;
-  background: var(--karo-app-bg);
-  border: 1px solid var(--karo-border);
-  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(0, 0, 0, 0.04)),
+    rgba(2, 5, 12, 0.76);
+  border: 1px solid rgba(153, 201, 255, 0.16);
+  border-radius: 12px;
   color: inherit;
   font: inherit;
   font-family: var(--karo-mono);
@@ -2762,9 +2837,10 @@ html, body {
 }
 
 .kw-composer-input:focus-visible {
-  outline: 2px solid var(--karo-accent-soft);
-  border-color: var(--karo-accent);
+  outline: 2px solid rgba(56, 248, 255, 0.12);
+  border-color: rgba(56, 248, 255, 0.46);
   outline-offset: 0;
+  box-shadow: inset 0 0 0 1px rgba(56, 248, 255, 0.08), 0 0 0 4px rgba(56, 248, 255, 0.045);
 }
 
 .kw-composer-mode-contract {
@@ -2772,15 +2848,17 @@ html, body {
   grid-template-columns: minmax(98px, auto) repeat(3, minmax(0, 1fr));
   gap: 6px;
   align-items: stretch;
-  padding: 7px;
-  border: 1px solid rgba(71, 85, 105, 0.42);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.022);
+  padding: 8px;
+  border: 1px solid rgba(153, 201, 255, 0.16);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.014)),
+    rgba(255, 255, 255, 0.018);
 }
 
 .kw-composer-mode-contract[data-tone="auto"] {
-  border-color: rgba(56, 213, 232, 0.24);
-  background: rgba(56, 213, 232, 0.045);
+  border-color: rgba(56, 248, 255, 0.24);
+  background: rgba(56, 248, 255, 0.045);
 }
 
 .kw-composer-mode-contract[data-tone="readonly"] {
@@ -2794,17 +2872,17 @@ html, body {
 }
 
 .kw-composer-mode-contract[data-tone="agent"] {
-  border-color: rgba(139, 92, 246, 0.38);
-  background: rgba(139, 92, 246, 0.07);
+  border-color: rgba(143, 92, 255, 0.38);
+  background: rgba(143, 92, 255, 0.07);
 }
 
 .kw-composer-mode-contract > strong,
 .kw-composer-mode-fact {
   min-width: 0;
   padding: 7px 8px;
-  border: 1px solid rgba(71, 85, 105, 0.32);
-  border-radius: 7px;
-  background: rgba(5, 8, 13, 0.46);
+  border: 1px solid rgba(153, 201, 255, 0.13);
+  border-radius: 9px;
+  background: rgba(5, 8, 13, 0.5);
 }
 
 .kw-composer-mode-contract > strong {
@@ -2900,14 +2978,15 @@ html, body {
 
 .kw-pill-group {
   display: inline-flex;
-  border: 1px solid var(--karo-border);
+  border: 1px solid rgba(153, 201, 255, 0.16);
   border-radius: 999px;
   overflow: hidden;
-  background: var(--karo-app-bg);
+  background: rgba(2, 5, 12, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 .kw-pill {
-  padding: 5px 10px;
+  padding: 6px 11px;
   background: transparent;
   border: 0;
   font: inherit;
@@ -2917,8 +2996,9 @@ html, body {
 }
 
 .kw-pill[aria-current="true"] {
-  background: var(--karo-accent);
+  background: linear-gradient(135deg, rgba(143, 92, 255, 0.9), rgba(56, 248, 255, 0.34));
   color: #ffffff;
+  box-shadow: 0 10px 24px rgba(56, 248, 255, 0.12);
 }
 
 .kw-chip {
@@ -3211,9 +3291,11 @@ html, body {
   padding: 3px 8px 3px 3px;
   width: auto;
   max-width: 118px;
-  border: 1px solid var(--karo-border);
+  border: 1px solid rgba(153, 201, 255, 0.16);
   border-radius: 999px;
-  background: var(--karo-app-bg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.014)),
+    rgba(2, 5, 12, 0.72);
 }
 
 .kw-context-ring-label {
@@ -3287,12 +3369,14 @@ html, body {
   max-height: min(520px, calc(100vh - 24px));
   overflow: auto;
   padding: 14px;
-  border: 1px solid var(--karo-border);
+  border: 1px solid rgba(153, 201, 255, 0.22);
   border-radius: 12px;
-  background: rgba(18, 18, 24, 0.98);
+  background:
+    linear-gradient(180deg, rgba(19, 29, 49, 0.96), rgba(7, 10, 18, 0.98)),
+    rgba(18, 18, 24, 0.98);
   color: var(--karo-text);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(10px);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.52), 0 0 0 1px rgba(56, 248, 255, 0.035);
+  backdrop-filter: blur(18px) saturate(1.12);
   user-select: text;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -3670,17 +3754,19 @@ html, body {
     align-items: center;
     gap: 8px;
     padding: 8px 10px;
-    border: 1px solid var(--karo-border);
-    border-radius: 8px;
-    background: var(--karo-elev);
+    border: 1px solid rgba(153, 201, 255, 0.15);
+    border-radius: 10px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+      var(--karo-elev);
     color: var(--karo-text-muted);
     font-size: 12px;
     overflow-wrap: anywhere;
   }
 
   .kw-preview-status {
-    border-color: rgba(56, 213, 232, 0.28);
-    background: linear-gradient(135deg, rgba(56, 213, 232, 0.08), rgba(124, 58, 237, 0.08));
+    border-color: rgba(56, 248, 255, 0.28);
+    background: linear-gradient(135deg, rgba(56, 248, 255, 0.08), rgba(143, 92, 255, 0.08));
     color: var(--karo-text);
     font-weight: 650;
   }
@@ -3704,17 +3790,17 @@ html, body {
   }
 
   .kw-preview-status[data-state="static-file-ready"] {
-    border-color: rgba(34, 197, 94, 0.35);
-    color: var(--karo-success);
-    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(85, 240, 167, 0.35);
+    color: var(--karo-jade);
+    background: rgba(85, 240, 167, 0.08);
   }
 
   .kw-preview-status[data-state="validation-evidence-only"],
   .kw-preview-status[data-state="validation-command-available"] {
-    border-color: rgba(56, 213, 232, 0.34);
-    color: #a5f3fc;
+    border-color: rgba(56, 248, 255, 0.34);
+    color: #b9fbff;
     background:
-      radial-gradient(circle at 0% 0%, rgba(56, 213, 232, 0.13), transparent 44%),
+      radial-gradient(circle at 0% 0%, rgba(56, 248, 255, 0.13), transparent 44%),
       rgba(14, 116, 144, 0.08);
   }
 
@@ -3727,9 +3813,11 @@ html, body {
   .kw-preview-contract-item {
     min-width: 0;
     padding: 9px;
-    border: 1px solid var(--karo-border);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(153, 201, 255, 0.14);
+    border-radius: 10px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+      rgba(255, 255, 255, 0.025);
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -3756,7 +3844,7 @@ html, body {
     gap: 8px;
     padding: 9px;
     border: 1px solid rgba(245, 158, 11, 0.36);
-    border-radius: 8px;
+    border-radius: 10px;
     background: rgba(245, 158, 11, 0.085);
     color: #fed7aa;
     font-size: 12px;
@@ -3780,9 +3868,9 @@ html, body {
     width: 100%;
     min-width: 0;
     padding: 8px 10px;
-    border: 1px solid var(--karo-border);
-    border-radius: 8px;
-    background: var(--karo-app-bg);
+    border: 1px solid rgba(153, 201, 255, 0.16);
+    border-radius: 10px;
+    background: rgba(2, 5, 12, 0.76);
     color: var(--karo-text);
     font: inherit;
   }
@@ -3792,9 +3880,9 @@ html, body {
   width: 100%;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--karo-border);
-  border-radius: 8px;
-  background: var(--karo-app-bg);
+  border: 1px solid rgba(153, 201, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(2, 5, 12, 0.76);
   color: var(--karo-text);
   font: inherit;
   font-family: var(--karo-mono);
@@ -3806,9 +3894,11 @@ html, body {
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  border: 1px solid rgba(71, 85, 105, 0.5);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.024);
+  border: 1px solid rgba(153, 201, 255, 0.16);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    rgba(255, 255, 255, 0.024);
 }
 
 .kw-terminal-command-guide-head {
@@ -3838,9 +3928,11 @@ html, body {
   min-width: 0;
   min-height: 82px;
   padding: 9px;
-  border: 1px solid rgba(71, 85, 105, 0.46);
-  border-radius: 8px;
-  background: rgba(8, 10, 17, 0.7);
+  border: 1px solid rgba(153, 201, 255, 0.15);
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.018)),
+    rgba(8, 10, 17, 0.72);
   color: var(--karo-text);
   display: flex;
   flex-direction: column;
@@ -3851,8 +3943,8 @@ html, body {
 }
 
 .kw-terminal-command-suggestion:hover:not(:disabled) {
-  border-color: rgba(56, 213, 232, 0.42);
-  background: rgba(56, 213, 232, 0.07);
+  border-color: rgba(56, 248, 255, 0.42);
+  background: rgba(56, 248, 255, 0.07);
 }
 
 .kw-terminal-command-suggestion:disabled {
@@ -3930,9 +4022,11 @@ html, body {
   overflow: auto;
   margin: 0;
   padding: 10px;
-  border: 1px solid var(--karo-border);
-  border-radius: 8px;
-  background: #050508;
+  border: 1px solid rgba(153, 201, 255, 0.16);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent),
+    #02050b;
   color: var(--karo-text);
   font-family: var(--karo-mono);
   font-size: 11.5px;
@@ -3945,13 +4039,15 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 13px;
-  border: 1px solid rgba(245, 158, 11, 0.38);
-  border-radius: 10px;
+  padding: 14px;
+  border: 1px solid rgba(255, 200, 87, 0.36);
+  border-radius: 13px;
   background:
-    linear-gradient(135deg, rgba(245, 158, 11, 0.11), rgba(124, 58, 237, 0.055)),
+    radial-gradient(circle at 0% 0%, rgba(255, 200, 87, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(255, 200, 87, 0.11), rgba(143, 92, 255, 0.055)),
     rgba(10, 13, 20, 0.72);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--karo-shadow-soft);
+  backdrop-filter: blur(14px);
 }
 
 .kw-recovery-head {
@@ -3973,11 +4069,11 @@ html, body {
 
 .kw-recovery-badge {
   flex: 0 0 auto;
-  border: 1px solid rgba(245, 158, 11, 0.34);
+  border: 1px solid rgba(255, 200, 87, 0.34);
   border-radius: 999px;
   padding: 3px 8px;
-  background: rgba(245, 158, 11, 0.1);
-  color: #facc15;
+  background: rgba(255, 200, 87, 0.1);
+  color: var(--karo-amber);
   font-size: 10.5px;
   font-weight: 760;
   letter-spacing: 0;
@@ -4003,9 +4099,11 @@ html, body {
   flex-direction: column;
   gap: 3px;
   padding: 9px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(153, 201, 255, 0.14);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    rgba(255, 255, 255, 0.025);
 }
 
 .kw-recovery-fact span {
@@ -4044,9 +4142,9 @@ html, body {
   gap: 7px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid rgba(56, 213, 232, 0.18);
-  border-radius: 8px;
-  background: rgba(56, 213, 232, 0.045);
+  border: 1px solid rgba(56, 248, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(56, 248, 255, 0.045);
 }
 
 .kw-recovery-preserved strong {
@@ -4065,15 +4163,16 @@ html, body {
  * ---------------------------------------------------------------- */
 
 .kw-button {
-  padding: 7px 14px;
+  padding: 8px 14px;
   font: inherit;
   font-size: 12.5px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 9px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
 }
 
 .kw-button:disabled {
@@ -4082,25 +4181,31 @@ html, body {
 }
 
 .kw-button-primary {
-  background: var(--karo-accent);
+  background: linear-gradient(135deg, var(--karo-accent), rgba(56, 248, 255, 0.72));
   color: #ffffff;
-  border-color: var(--karo-accent);
+  border-color: rgba(56, 248, 255, 0.22);
+  box-shadow: 0 14px 32px rgba(56, 248, 255, 0.12);
 }
 
 .kw-button-primary:hover:not(:disabled) {
-  background: var(--karo-accent-bright);
-  border-color: var(--karo-accent-bright);
+  background: linear-gradient(135deg, var(--karo-accent-bright), var(--karo-cyan));
+  border-color: rgba(56, 248, 255, 0.36);
+  transform: translateY(-1px);
+  box-shadow: 0 18px 42px rgba(56, 248, 255, 0.18);
 }
 
 .kw-button-secondary {
-  background: var(--karo-card);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    var(--karo-card);
   color: var(--karo-text);
-  border-color: var(--karo-border);
+  border-color: rgba(153, 201, 255, 0.16);
 }
 
 .kw-button-secondary:hover:not(:disabled) {
   background: var(--karo-elev);
-  border-color: var(--karo-accent);
+  border-color: rgba(56, 248, 255, 0.32);
+  transform: translateY(-1px);
 }
 
 .kw-button-danger {
@@ -4200,9 +4305,11 @@ html, body {
 }
 
 .kw-empty {
-  background: var(--karo-elev);
-  border: 1px dashed var(--karo-border);
-  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.014)),
+    var(--karo-elev);
+  border: 1px dashed rgba(153, 201, 255, 0.18);
+  border-radius: 12px;
   padding: 16px;
   text-align: left;
 }
@@ -5792,8 +5899,10 @@ html, body {
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  border: 1px solid var(--karo-border);
-  background: var(--karo-card);
+  border: 1px solid rgba(153, 201, 255, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.018)),
+    var(--karo-card);
   transition: all 0.25s ease;
   user-select: none;
 }
@@ -5808,16 +5917,16 @@ html, body {
 }
 
 .kw-status-badge[data-status="ready"] {
-  color: var(--karo-success);
-  background: rgba(34, 197, 94, 0.08);
-  border-color: rgba(34, 197, 94, 0.25);
+  color: var(--karo-jade);
+  background: rgba(85, 240, 167, 0.08);
+  border-color: rgba(85, 240, 167, 0.25);
 }
 
 .kw-status-badge[data-status="running"] {
-  color: var(--karo-accent-bright);
-  background: rgba(139, 92, 246, 0.08);
-  border-color: rgba(139, 92, 246, 0.25);
-  box-shadow: 0 0 8px rgba(139, 92, 246, 0.15);
+  color: var(--karo-cyan);
+  background: rgba(56, 248, 255, 0.08);
+  border-color: rgba(56, 248, 255, 0.25);
+  box-shadow: 0 0 12px rgba(56, 248, 255, 0.14);
 }
 
 .kw-status-badge[data-status="running"]::before {
@@ -5865,18 +5974,18 @@ html, body {
 
 /* Mode Selector Styling */
 .kw-mode-group {
-  padding: 2px;
-  background: rgba(14, 14, 22, 0.65) !important;
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--karo-border) !important;
-  border-radius: 20px !important;
+  padding: 3px;
+  background: rgba(2, 5, 12, 0.72) !important;
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(153, 201, 255, 0.16) !important;
+  border-radius: 999px !important;
 }
 
 .kw-pill {
-  border-radius: 18px !important;
+  border-radius: 999px !important;
   font-weight: 550 !important;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  padding: 4px 14px !important;
+  padding: 6px 14px !important;
   margin: 0 1px;
 }
 
@@ -5886,16 +5995,16 @@ html, body {
 }
 
 .kw-pill[aria-current="true"] {
-  background: var(--karo-accent) !important;
+  background: linear-gradient(135deg, rgba(143, 92, 255, 0.92), rgba(56, 248, 255, 0.34)) !important;
   color: #ffffff !important;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 10px 24px rgba(56, 248, 255, 0.12);
 }
 
 /* Cosmic gradient active auto mode pill */
 .kw-pill[data-value="auto"][aria-current="true"] {
-  background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%) !important;
+  background: linear-gradient(135deg, #8f5cff 0%, #38f8ff 52%, #ff6f91 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 2px 10px rgba(219, 39, 119, 0.4) !important;
+  box-shadow: 0 12px 28px rgba(56, 248, 255, 0.16) !important;
   border: 0 !important;
 }
 
@@ -6126,6 +6235,12 @@ html, body {
   padding: 40px 24px;
   height: 100%;
   min-height: 240px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(56, 248, 255, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.042), rgba(255, 255, 255, 0.014)),
+    rgba(10, 15, 26, 0.58);
+  border: 1px dashed rgba(153, 201, 255, 0.2);
+  border-radius: 14px;
 }
 
 .kw-empty-title {

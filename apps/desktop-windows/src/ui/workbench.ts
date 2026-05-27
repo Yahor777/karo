@@ -1323,16 +1323,19 @@ export function mountWorkspaceShell(
       const viewportW = doc.defaultView?.innerWidth ?? 1024;
       const viewportH = doc.defaultView?.innerHeight ?? 768;
       const width = Math.min(320, Math.max(280, viewportW - margin * 2));
+      const maxPortalHeight = 136;
       el.style.width = `${width}px`;
-      el.style.maxHeight = `min(300px, calc(100vh - 24px))`;
-      const height = Math.min(el.offsetHeight || 300, Math.min(300, viewportH - margin * 2));
+      el.style.maxHeight = `min(${String(maxPortalHeight)}px, calc(100vh - 24px))`;
+      const height = Math.min(el.offsetHeight || maxPortalHeight, Math.min(maxPortalHeight, viewportH - margin * 2));
       let left = rect.left + rect.width / 2 - width / 2;
       if (left + width + margin > viewportW) left = viewportW - width - margin;
       if (left < margin) left = margin;
-      let top = rect.bottom + 8;
-      if (top + height + margin > viewportH) {
+      const textareaRect = trigger.closest(".kw-composer")?.querySelector("textarea")?.getBoundingClientRect();
+      let top = rect.top - height - 8;
+      if (textareaRect !== undefined && top < textareaRect.bottom + 8) {
         top = (composerRect?.top ?? rect.top) - height - 8;
       }
+      if (top + height + margin > viewportH) top = rect.bottom + 8;
       if (top < margin) top = margin;
       el.style.left = `${Math.round(left)}px`;
       el.style.top = `${Math.round(top)}px`;

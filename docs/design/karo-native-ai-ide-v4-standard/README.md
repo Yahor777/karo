@@ -1,5 +1,7 @@
 # Karo Native AI IDE v4 Standard UI
 
+Status: superseded by `docs/design/karo-native-ai-ide-v5-cursor-grade`. v4 fixed the palette, but it was still too plain and wireframe-like to be the target product direction.
+
 This is the replacement direction for the previous v3 mockups. The v3 direction was too colorful and too "AI product" in presentation. v4 moves Karo toward a conventional native IDE surface with standard dark theme colors, dense layout, and clear run evidence.
 
 ## Direction

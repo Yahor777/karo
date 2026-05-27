@@ -1,0 +1,1298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karo Native AI IDE v3 Mockups</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink-0: #05070d;
+      --ink-1: #090d16;
+      --ink-2: #101827;
+      --ink-3: #17243a;
+      --line: rgba(168, 245, 255, 0.14);
+      --line-strong: rgba(168, 245, 255, 0.28);
+      --text: #edf5ff;
+      --soft: #c5d4e6;
+      --muted: #8fa2bb;
+      --dim: #5f7088;
+      --cyan: #77e7ff;
+      --violet: #8f7bff;
+      --rose: #ff6f9e;
+      --jade: #66e3a8;
+      --amber: #ffd36b;
+      --shadow: 0 28px 90px rgba(0, 0, 0, 0.44);
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: var(--font);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 1460px;
+      background:
+        radial-gradient(circle at 8% 4%, rgba(119, 231, 255, 0.20), transparent 28%),
+        radial-gradient(circle at 82% 6%, rgba(143, 123, 255, 0.16), transparent 30%),
+        radial-gradient(circle at 68% 82%, rgba(102, 227, 168, 0.10), transparent 28%),
+        var(--ink-0);
+      color: var(--text);
+      padding: 36px;
+    }
+
+    .page-title {
+      width: 1440px;
+      margin: 0 auto 22px;
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      color: var(--soft);
+    }
+
+    .page-title h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .page-title span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .artboard {
+      width: 1440px;
+      height: 960px;
+      margin: 0 auto 44px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(180, 220, 255, 0.13);
+      border-radius: 32px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+        radial-gradient(circle at 22% 12%, rgba(119, 231, 255, 0.16), transparent 32%),
+        radial-gradient(circle at 88% 22%, rgba(255, 111, 158, 0.10), transparent 28%),
+        radial-gradient(circle at 58% 106%, rgba(143, 123, 255, 0.18), transparent 36%),
+        var(--ink-1);
+      box-shadow: var(--shadow);
+    }
+
+    .artboard::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.026) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: radial-gradient(circle at 50% 40%, black, transparent 82%);
+    }
+
+    .app {
+      position: absolute;
+      inset: 22px;
+      display: grid;
+      grid-template-columns: 78px 238px 1fr 390px;
+      grid-template-rows: 64px 1fr 174px;
+      gap: 14px;
+    }
+
+    .glass {
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.072), rgba(255, 255, 255, 0.028)),
+        rgba(9, 13, 22, 0.72);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 18px 60px rgba(0, 0, 0, 0.24);
+      backdrop-filter: blur(24px);
+    }
+
+    .topbar {
+      grid-column: 2 / 5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-radius: 22px;
+      padding: 0 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 35px;
+      height: 35px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(135deg, rgba(119, 231, 255, 0.9), rgba(143, 123, 255, 0.82) 48%, rgba(255, 111, 158, 0.8));
+      color: #06101a;
+      font-weight: 900;
+      box-shadow: 0 0 36px rgba(119, 231, 255, 0.35);
+    }
+
+    .brand-title {
+      display: grid;
+      gap: 2px;
+    }
+
+    .brand-title strong {
+      font-size: 14px;
+    }
+
+    .brand-title span,
+    .crumb,
+    .small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chip,
+    .pill,
+    .tab,
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.045);
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .chip {
+      height: 30px;
+      padding: 0 12px;
+    }
+
+    .chip.good {
+      border-color: rgba(102, 227, 168, 0.34);
+      color: #c3ffdf;
+      background: rgba(102, 227, 168, 0.09);
+    }
+
+    .chip.warn {
+      border-color: rgba(255, 211, 107, 0.34);
+      color: #ffe6a6;
+      background: rgba(255, 211, 107, 0.08);
+    }
+
+    .chip.bad {
+      border-color: rgba(255, 111, 158, 0.34);
+      color: #ffc0d0;
+      background: rgba(255, 111, 158, 0.08);
+    }
+
+    .rail {
+      grid-row: 1 / 4;
+      border-radius: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px 10px;
+      gap: 12px;
+    }
+
+    .rail .logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 15px;
+    }
+
+    .rail-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      border: 1px solid transparent;
+      background: transparent;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .rail-btn.active {
+      color: var(--text);
+      border-color: rgba(119, 231, 255, 0.36);
+      background: rgba(119, 231, 255, 0.10);
+      box-shadow: 0 0 28px rgba(119, 231, 255, 0.16);
+    }
+
+    .rail-spacer {
+      flex: 1;
+    }
+
+    .sidebar {
+      grid-row: 2 / 4;
+      border-radius: 24px;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .sidebar h3,
+    .panel h3,
+    .thread h3 {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .new-task {
+      height: 44px;
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid rgba(119, 231, 255, 0.32);
+      color: #051019;
+      background: linear-gradient(135deg, var(--cyan), #a996ff);
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: 0 14px 40px rgba(119, 231, 255, 0.16);
+    }
+
+    .nav-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .nav-item,
+    .run-item {
+      border-radius: 15px;
+      padding: 10px 11px;
+      color: var(--soft);
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid transparent;
+      font-size: 13px;
+    }
+
+    .nav-item.active,
+    .run-item.active {
+      border-color: var(--line-strong);
+      background: rgba(119, 231, 255, 0.085);
+      color: var(--text);
+    }
+
+    .run-item {
+      display: grid;
+      gap: 5px;
+      margin-top: 9px;
+    }
+
+    .run-item strong {
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .thread {
+      grid-column: 3;
+      grid-row: 2;
+      border-radius: 26px;
+      padding: 18px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .thread-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .headline {
+      display: grid;
+      gap: 6px;
+    }
+
+    .headline h2 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.06;
+      letter-spacing: 0;
+    }
+
+    .headline p {
+      max-width: 610px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .message {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 15px;
+      background: rgba(255, 255, 255, 0.042);
+    }
+
+    .message.user {
+      margin-left: 86px;
+      background: rgba(119, 231, 255, 0.075);
+      border-color: rgba(119, 231, 255, 0.18);
+    }
+
+    .message.assistant {
+      margin-right: 66px;
+    }
+
+    .message .meta,
+    .card .meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 9px;
+    }
+
+    .message p,
+    .card p {
+      margin: 0;
+      color: var(--soft);
+      font-size: 14px;
+      line-height: 1.52;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .mini-card {
+      min-height: 86px;
+      border-radius: 20px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .mini-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .mini-card span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .composer {
+      grid-column: 3;
+      grid-row: 3;
+      border-radius: 26px;
+      padding: 15px;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      gap: 12px;
+    }
+
+    .composer-input {
+      border-radius: 20px;
+      min-height: 84px;
+      padding: 15px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.22);
+      color: var(--soft);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .composer-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .segmented {
+      height: 36px;
+      border-radius: 999px;
+      padding: 3px;
+      display: inline-flex;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .segmented span {
+      padding: 0 12px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .segmented .active {
+      color: #07111c;
+      background: linear-gradient(135deg, var(--cyan), #d7c8ff);
+      font-weight: 800;
+    }
+
+    .btn {
+      height: 36px;
+      padding: 0 14px;
+      font-weight: 700;
+    }
+
+    .btn.primary {
+      color: #06101a;
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--cyan), #b6a7ff);
+    }
+
+    .panel {
+      grid-column: 4;
+      grid-row: 2 / 4;
+      border-radius: 26px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 7px;
+      overflow: hidden;
+      margin: 12px 0 14px;
+    }
+
+    .tab {
+      height: 30px;
+      padding: 0 10px;
+      color: var(--muted);
+    }
+
+    .tab.active {
+      color: var(--text);
+      border-color: rgba(119, 231, 255, 0.36);
+      background: rgba(119, 231, 255, 0.10);
+    }
+
+    .evidence {
+      display: grid;
+      gap: 11px;
+      overflow: hidden;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .preview-frame {
+      height: 230px;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      background:
+        linear-gradient(135deg, rgba(5, 7, 13, 0.2), rgba(5, 7, 13, 0.82)),
+        radial-gradient(circle at 82% 20%, rgba(255, 111, 158, 0.38), transparent 34%),
+        radial-gradient(circle at 16% 24%, rgba(119, 231, 255, 0.25), transparent 30%),
+        linear-gradient(135deg, #10142a, #1d0f26 50%, #08131f);
+      padding: 18px;
+      position: relative;
+    }
+
+    .preview-frame h4 {
+      margin: 0 0 7px;
+      font-size: 22px;
+      line-height: 1.05;
+    }
+
+    .preview-frame p {
+      width: 70%;
+      color: #d5d9e7;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .video-shell {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 18px;
+      height: 78px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(0, 0, 0, 0.36);
+      display: grid;
+      grid-template-columns: 46px 1fr 44px;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .play {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--cyan);
+      color: #051019;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+    }
+
+    .timeline {
+      height: 7px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.16);
+      overflow: hidden;
+    }
+
+    .timeline::before {
+      content: "";
+      display: block;
+      width: 44%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--rose));
+    }
+
+    .activity {
+      display: grid;
+      gap: 10px;
+      overflow: hidden;
+    }
+
+    .stage-card {
+      display: grid;
+      grid-template-columns: 42px 1fr auto;
+      gap: 12px;
+      align-items: start;
+      padding: 14px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .stage-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 15px;
+      display: grid;
+      place-items: center;
+      background: rgba(119, 231, 255, 0.11);
+      border: 1px solid rgba(119, 231, 255, 0.2);
+      color: var(--cyan);
+      font-weight: 900;
+    }
+
+    .stage-body strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+
+    .stage-body p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.42;
+    }
+
+    .status {
+      height: 26px;
+      padding: 0 9px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    .status.done {
+      color: #c3ffdf;
+      border-color: rgba(102, 227, 168, 0.34);
+      background: rgba(102, 227, 168, 0.08);
+    }
+
+    .status.run {
+      color: #d6f8ff;
+      border-color: rgba(119, 231, 255, 0.38);
+      background: rgba(119, 231, 255, 0.10);
+    }
+
+    .status.warn {
+      color: #ffe6a6;
+      border-color: rgba(255, 211, 107, 0.34);
+      background: rgba(255, 211, 107, 0.08);
+    }
+
+    .status.fail {
+      color: #ffc0d0;
+      border-color: rgba(255, 111, 158, 0.38);
+      background: rgba(255, 111, 158, 0.08);
+    }
+
+    .artifact-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      color: var(--soft);
+      font-size: 13px;
+    }
+
+    .artifact-row:last-child {
+      border-bottom: 0;
+    }
+
+    .mono {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+
+    .terminal {
+      grid-column: 2 / 5;
+      grid-row: 3;
+      border-radius: 24px;
+      padding: 14px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 10px;
+    }
+
+    .terminal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .terminal-body {
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.075);
+      padding: 12px;
+      color: #b7c7d9;
+      overflow: hidden;
+      line-height: 1.55;
+    }
+
+    .recovery-app {
+      grid-template-columns: 78px 238px 1fr 390px;
+      grid-template-rows: 64px 1fr 220px;
+    }
+
+    .recovery-app .sidebar,
+    .recovery-app .thread,
+    .recovery-app .panel {
+      grid-row: 2;
+    }
+
+    .recovery-app .terminal {
+      grid-row: 3;
+    }
+
+    .recovery-app .thread {
+      overflow: hidden;
+    }
+
+    .recovery-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .metric {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 15px;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.16);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+
+    .metric strong {
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .terminal-body .green {
+      color: var(--jade);
+    }
+
+    .terminal-body .red {
+      color: var(--rose);
+    }
+
+    .recovery-card {
+      border-color: rgba(255, 211, 107, 0.34);
+      background:
+        linear-gradient(180deg, rgba(255, 211, 107, 0.10), rgba(255, 255, 255, 0.03));
+    }
+
+    .recovery-card h2 {
+      margin: 0 0 8px;
+      font-size: 24px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .compact-board {
+      width: 420px;
+      height: 880px;
+      margin: 40px auto;
+      border-radius: 34px;
+      border: 1px solid var(--line);
+      background:
+        radial-gradient(circle at 50% 0%, rgba(119, 231, 255, 0.16), transparent 32%),
+        rgba(9, 13, 22, 0.86);
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .compact-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 13px;
+    }
+
+    .compact-thread {
+      height: 610px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .compact-composer {
+      margin-top: 13px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 12px;
+    }
+
+    .drawer-preview {
+      height: 128px;
+      margin-top: 12px;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(119, 231, 255, 0.06);
+      padding: 12px;
+    }
+
+    .drawer-preview strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-title">
+    <h1>Karo Native AI IDE v3 mockups</h1>
+    <span>Static design targets for premium local-first task cockpit</span>
+  </div>
+
+  <section class="artboard" data-shot="cockpit" aria-label="Task cockpit">
+    <div class="app">
+      <aside class="rail glass">
+        <div class="logo">K</div>
+        <div class="rail-btn active">T</div>
+        <div class="rail-btn">R</div>
+        <div class="rail-btn">F</div>
+        <div class="rail-btn">M</div>
+        <div class="rail-spacer"></div>
+        <div class="rail-btn">S</div>
+      </aside>
+
+      <header class="topbar glass">
+        <div class="brand">
+          <div class="logo">K</div>
+          <div class="brand-title">
+            <strong>Karo Task Cockpit</strong>
+            <span>D:\projects\anime-vault - static_site</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="chip good">Runtime v2 connected</span>
+          <span class="chip">DeepSeek V4 Pro</span>
+          <span class="chip warn">Apply required</span>
+        </div>
+      </header>
+
+      <aside class="sidebar glass">
+        <button class="new-task">New task</button>
+        <div class="nav-list">
+          <div class="nav-item active">Task Cockpit</div>
+          <div class="nav-item">Runs</div>
+          <div class="nav-item">Project Files</div>
+          <div class="nav-item">Models</div>
+          <div class="nav-item">Agents</div>
+        </div>
+        <div style="height:24px"></div>
+        <h3>Recent runs</h3>
+        <div class="run-item active">
+          <strong>Anime streaming site</strong>
+          <span class="small">Agent - staged, 3 artifacts</span>
+        </div>
+        <div class="run-item">
+          <strong>Explain routing</strong>
+          <span class="small">Chat - read-only</span>
+        </div>
+        <div class="run-item">
+          <strong>Minecraft build fix</strong>
+          <span class="small">Agent - validation failed</span>
+        </div>
+      </aside>
+
+      <main class="thread glass">
+        <div class="thread-head">
+          <div class="headline">
+            <h2>One task, one honest state.</h2>
+            <p>Chat, Plan, Agent, Preview, Terminal, Recovery, and Changes all read from the same run record. No fake success, no hidden apply, no browser preview for non-web work.</p>
+          </div>
+          <span class="chip good">Ready</span>
+        </div>
+        <div class="message user">
+          <div class="meta"><span>You</span><span>Auto route</span></div>
+          <p>Create an anime streaming website with a player and premium visual design.</p>
+        </div>
+        <div class="message assistant">
+          <div class="meta"><span>Karo</span><span>Agent mode - staged artifacts</span></div>
+          <p>I will generate reviewable files first. Disk writes require Apply. Preview unlocks only after the staged HTML is applied to the selected project.</p>
+        </div>
+        <div class="cards">
+          <div class="mini-card">
+            <strong>Read-only modes</strong>
+            <span>Chat and Plan never stage artifacts or show Apply.</span>
+          </div>
+          <div class="mini-card">
+            <strong>Agent evidence</strong>
+            <span>Public stage cards show inputs, artifacts, checks, and failures.</span>
+          </div>
+          <div class="mini-card">
+            <strong>Preview contract</strong>
+            <span>Browser preview appears only for real web output after Apply.</span>
+          </div>
+        </div>
+      </main>
+
+      <section class="composer glass">
+        <div class="composer-input">Ask Karo to build, fix, explain, refactor, validate, or plan. Attach files or select project context before starting an Agent run.</div>
+        <div class="composer-bar">
+          <div class="segmented">
+            <span class="active">Auto</span>
+            <span>Chat</span>
+            <span>Plan</span>
+            <span>Agent</span>
+            <span>Quick Edit</span>
+          </div>
+          <div class="top-actions">
+            <span class="chip">Context 4 files</span>
+            <span class="chip warn">Safe commands only</span>
+            <button class="btn primary">Start</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel glass">
+        <div class="thread-head">
+          <h3>Evidence</h3>
+          <span class="chip">Run state</span>
+        </div>
+        <div class="tabs">
+          <span class="tab active">Preview</span>
+          <span class="tab">Changes</span>
+          <span class="tab">Terminal</span>
+          <span class="tab">Logs</span>
+        </div>
+        <div class="evidence">
+          <div class="card">
+            <div class="meta"><span>Preview</span><span>Apply required</span></div>
+            <div class="preview-frame">
+              <h4>Anime Vault</h4>
+              <p>Dark cinematic catalog with a real local video player shell, search, genres, popular titles, and episode grid.</p>
+              <div class="video-shell">
+                <div class="play">P</div>
+                <div class="timeline"></div>
+                <span class="small">12:42</span>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="artifact-row"><span>index.html</span><span class="status warn">staged</span></div>
+            <div class="artifact-row"><span>style.css</span><span class="status warn">staged</span></div>
+            <div class="artifact-row"><span>app.js</span><span class="status warn">staged</span></div>
+          </div>
+          <div class="card">
+            <p>Preview is locked until Apply writes staged files to the project. This panel should never imply success before validation and review.</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="artboard" data-shot="agent-run" aria-label="Agent run">
+    <div class="app">
+      <aside class="rail glass">
+        <div class="logo">K</div>
+        <div class="rail-btn active">A</div>
+        <div class="rail-btn">C</div>
+        <div class="rail-btn">V</div>
+        <div class="rail-spacer"></div>
+        <div class="rail-btn">S</div>
+      </aside>
+
+      <header class="topbar glass">
+        <div class="brand">
+          <div class="logo">K</div>
+          <div class="brand-title">
+            <strong>Agent Run</strong>
+            <span>Route: website_creation - Status: staging</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="chip good">3 artifacts</span>
+          <span class="chip">2 validations</span>
+          <span class="chip warn">Awaiting Apply</span>
+        </div>
+      </header>
+
+      <aside class="sidebar glass">
+        <button class="new-task">New task</button>
+        <div class="nav-list">
+          <div class="nav-item active">Current run</div>
+          <div class="nav-item">Agent roles</div>
+          <div class="nav-item">Artifacts</div>
+          <div class="nav-item">Validation</div>
+          <div class="nav-item">Recovery</div>
+        </div>
+        <div style="height:24px"></div>
+        <h3>Public roles</h3>
+        <div class="run-item active"><strong>Researcher</strong><span class="small">Selected context files</span></div>
+        <div class="run-item active"><strong>Coder</strong><span class="small">Created staged files</span></div>
+        <div class="run-item"><strong>Reviewer</strong><span class="small">Checks quality and safety</span></div>
+      </aside>
+
+      <main class="thread glass">
+        <div class="thread-head">
+          <div class="headline">
+            <h2>Agent Activity</h2>
+            <p>Each card is a public event summary. Details are evidence, not hidden model reasoning.</p>
+          </div>
+          <span class="status run">running</span>
+        </div>
+        <div class="activity">
+          <div class="stage-card">
+            <div class="stage-icon">R</div>
+            <div class="stage-body">
+              <strong>Researcher</strong>
+              <p>Selected 4 relevant files and detected a static_site target. No files were changed.</p>
+            </div>
+            <span class="status done">done</span>
+          </div>
+          <div class="stage-card">
+            <div class="stage-icon">P</div>
+            <div class="stage-body">
+              <strong>Planner</strong>
+              <p>Created an implementation plan for a local HTML/CSS/JS anime viewer with player, search, genres, and responsive catalog.</p>
+            </div>
+            <span class="status done">done</span>
+          </div>
+          <div class="stage-card">
+            <div class="stage-icon">C</div>
+            <div class="stage-body">
+              <strong>Coder</strong>
+              <p>Staged index.html, style.css, and app.js. Recovered from non-JSON model output by extracting valid file content from code fences.</p>
+            </div>
+            <span class="status done">done</span>
+          </div>
+          <div class="stage-card">
+            <div class="stage-icon">V</div>
+            <div class="stage-body">
+              <strong>Validator</strong>
+              <p>Checked artifact paths, non-empty files, requested UI sections, player shell, and no network dependencies.</p>
+            </div>
+            <span class="status run">checking</span>
+          </div>
+          <div class="stage-card">
+            <div class="stage-icon">F</div>
+            <div class="stage-body">
+              <strong>Finalizer</strong>
+              <p>Will report exactly what was staged, validated, not run, and what needs Apply.</p>
+            </div>
+            <span class="status">pending</span>
+          </div>
+        </div>
+      </main>
+
+      <section class="composer glass">
+        <div class="composer-input">Agent runs always stage first. Apply writes to disk only after review. Generated websites must pass deterministic content checks before Karo calls the run successful.</div>
+        <div class="composer-bar">
+          <div class="segmented">
+            <span>Auto</span>
+            <span>Chat</span>
+            <span>Plan</span>
+            <span class="active">Agent</span>
+            <span>Quick Edit</span>
+          </div>
+          <div class="top-actions">
+            <button class="btn">Stop</button>
+            <button class="btn primary">Review changes</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel glass">
+        <div class="thread-head">
+          <h3>Changes</h3>
+          <span class="chip warn">Apply required</span>
+        </div>
+        <div class="tabs">
+          <span class="tab">Preview</span>
+          <span class="tab active">Changes</span>
+          <span class="tab">Files</span>
+          <span class="tab">Usage</span>
+        </div>
+        <div class="evidence">
+          <div class="card">
+            <div class="artifact-row"><span class="mono">index.html</span><span class="status warn">new</span></div>
+            <div class="artifact-row"><span class="mono">style.css</span><span class="status warn">new</span></div>
+            <div class="artifact-row"><span class="mono">app.js</span><span class="status warn">new</span></div>
+          </div>
+          <div class="card">
+            <div class="meta"><span>Validation</span><span class="status run">running</span></div>
+            <p>Static website checks are deterministic: local files, player shell, navigation, content sections, search behavior, and no fake external preview.</p>
+          </div>
+          <div class="card">
+            <div class="meta"><span>Apply boundary</span><span>locked</span></div>
+            <p>The project directory remains unchanged until the user clicks Apply Changes.</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="artboard" data-shot="recovery-terminal" aria-label="Recovery and terminal">
+    <div class="app recovery-app">
+      <aside class="rail glass">
+        <div class="logo">K</div>
+        <div class="rail-btn active">R</div>
+        <div class="rail-btn">L</div>
+        <div class="rail-btn">T</div>
+        <div class="rail-spacer"></div>
+        <div class="rail-btn">S</div>
+      </aside>
+
+      <header class="topbar glass">
+        <div class="brand">
+          <div class="logo">K</div>
+          <div class="brand-title">
+            <strong>Recovery State</strong>
+            <span>Run stopped before success - no hidden success state</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <span class="chip bad">Error</span>
+          <span class="chip warn">Artifacts preserved: 0</span>
+          <span class="chip">Logs available</span>
+        </div>
+      </header>
+
+      <aside class="sidebar glass">
+        <button class="new-task">Retry safely</button>
+        <div class="nav-list">
+          <div class="nav-item active">Recovery</div>
+          <div class="nav-item">Logs</div>
+          <div class="nav-item">Terminal</div>
+          <div class="nav-item">Validation</div>
+        </div>
+        <div style="height:24px"></div>
+        <h3>Failure summary</h3>
+        <div class="run-item active">
+          <strong>Coder failed</strong>
+          <span class="small">Invalid artifact JSON after one repair retry</span>
+        </div>
+      </aside>
+
+      <main class="thread glass">
+        <div class="thread-head">
+          <div class="headline">
+            <h2>Run stopped before completion</h2>
+            <p>The failed state is first-class. Karo keeps artifacts reviewable, links raw evidence, and avoids any hidden success path.</p>
+          </div>
+          <span class="status fail">not success yet</span>
+        </div>
+        <div class="card recovery-card">
+          <div class="meta"><span>Recovery summary</span><span>safe stop</span></div>
+          <p>Coder returned invalid artifact JSON after one repair retry. No files were applied, no fake browser preview was created, and validation was not recorded.</p>
+          <div class="recovery-metrics">
+            <div class="metric"><span>Failed stage</span><strong>Coder</strong></div>
+            <div class="metric"><span>Preserved artifacts</span><strong>None</strong></div>
+            <div class="metric"><span>Next action</span><strong>Retry reduced context</strong></div>
+          </div>
+          <div style="display:flex; gap:10px; margin-top:14px">
+            <button class="btn primary">Retry reduced context</button>
+            <button class="btn">Open raw logs</button>
+          </div>
+        </div>
+        <div class="activity">
+          <div class="stage-card">
+            <div class="stage-icon">O</div>
+            <div class="stage-body">
+              <strong>Orchestrator</strong>
+              <p>Selected Agent mode and budget for website generation.</p>
+            </div>
+            <span class="status done">done</span>
+          </div>
+          <div class="stage-card">
+            <div class="stage-icon">C</div>
+            <div class="stage-body">
+              <strong>Coder</strong>
+              <p>Returned invalid artifact JSON. One repair retry failed. No files were applied.</p>
+            </div>
+            <span class="status fail">failed</span>
+          </div>
+        </div>
+      </main>
+
+      <aside class="panel glass">
+        <div class="thread-head">
+          <h3>Logs</h3>
+          <span class="chip bad">raw evidence</span>
+        </div>
+        <div class="tabs">
+          <span class="tab">Recovery</span>
+          <span class="tab active">Logs</span>
+          <span class="tab">Terminal</span>
+        </div>
+        <div class="evidence">
+          <div class="card">
+            <div class="meta"><span>Public note</span><span>safe stop</span></div>
+            <p>Coder output was not valid JSON. Karo kept the failure visible and did not create hidden success state.</p>
+          </div>
+          <div class="card">
+            <div class="meta"><span>Next</span><span>actionable</span></div>
+            <p>Inspect logs, retry with reduced context, or switch to Quick Edit when the edit is deterministic.</p>
+          </div>
+          <div class="card">
+            <div class="meta"><span>Preview</span><span>unavailable</span></div>
+            <p>No browser preview because no applied web artifact exists.</p>
+          </div>
+        </div>
+      </aside>
+
+      <section class="terminal glass">
+        <div class="terminal-head">
+          <h3>Safe Terminal Evidence</h3>
+          <div class="top-actions">
+            <span class="chip">Project scoped</span>
+            <span class="chip warn">Dangerous commands blocked</span>
+          </div>
+        </div>
+        <div class="terminal-body mono">
+          <span class="green">$ pnpm test</span><br>
+          PASS apps/desktop-windows/src/orchestration/desktopOrchestratorTransport.test.ts<br>
+          <span class="red">$ rm -rf .</span><br>
+          blocked by policy before execution<br>
+          $ pnpm --filter @ai-agent-orchestrator/desktop-windows gui:check<br>
+          waiting for user action
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section class="artboard" data-shot="compact" aria-label="Compact layout">
+    <div class="compact-board">
+      <div class="compact-top">
+        <div class="brand">
+          <div class="logo">K</div>
+          <div class="brand-title">
+            <strong>Karo</strong>
+            <span>Compact task cockpit</span>
+          </div>
+        </div>
+        <span class="chip good">Ready</span>
+      </div>
+      <div class="segmented" style="width:100%; justify-content:space-between">
+        <span class="active">Auto</span>
+        <span>Chat</span>
+        <span>Plan</span>
+        <span>Agent</span>
+      </div>
+      <div style="height:14px"></div>
+      <div class="compact-thread">
+        <div class="message user" style="margin:0">
+          <div class="meta"><span>You</span><span>Agent</span></div>
+          <p>Build an anime viewer with a player and polished dark design.</p>
+        </div>
+        <div class="stage-card" style="grid-template-columns:38px 1fr; padding:12px">
+          <div class="stage-icon" style="width:38px;height:38px">R</div>
+          <div class="stage-body">
+            <strong>Researcher</strong>
+            <p>Detected static_site and selected relevant files.</p>
+          </div>
+        </div>
+        <div class="stage-card" style="grid-template-columns:38px 1fr; padding:12px">
+          <div class="stage-icon" style="width:38px;height:38px">C</div>
+          <div class="stage-body">
+            <strong>Coder</strong>
+            <p>Staged 3 files. Apply is required before preview.</p>
+          </div>
+        </div>
+        <div class="drawer-preview">
+          <strong>Evidence drawer</strong>
+          <span class="small">Preview, Changes, Terminal, Logs, and Recovery collapse into a single drawer on narrow screens.</span>
+        </div>
+      </div>
+      <div class="compact-composer">
+        <div class="composer-input" style="min-height:74px">Continue, retry, or ask for a plan...</div>
+        <div style="height:10px"></div>
+        <div class="composer-bar">
+          <span class="chip">Context 4 files</span>
+          <button class="btn primary">Start</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

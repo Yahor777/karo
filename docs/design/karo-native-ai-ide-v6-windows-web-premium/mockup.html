@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karo v6 Windows + Web Premium Mockups</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --app: #0f0f0f;
+      --titlebar: #1b1b1b;
+      --surface: #1f1f1f;
+      --surface-2: #252525;
+      --surface-3: #2b2b2b;
+      --surface-4: #313131;
+      --stroke: #3a3a3a;
+      --stroke-soft: #2f2f2f;
+      --text: #e6e6e6;
+      --muted: #9a9a9a;
+      --dim: #777;
+      --accent: #0078d4;
+      --accent-hover: #106ebe;
+      --success: #6ccb5f;
+      --warning: #f3c74f;
+      --error: #ff6b6b;
+      --font: "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: Consolas, "Cascadia Mono", "SFMono-Regular", monospace;
+      font-family: var(--font);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 1480px;
+      padding: 28px;
+      background: #101010;
+      color: var(--text);
+    }
+
+    .page-title {
+      width: 1440px;
+      margin: 0 auto 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+    }
+
+    .page-title h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .page-title span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .shot {
+      width: 1440px;
+      height: 960px;
+      margin: 0 auto 34px;
+      overflow: hidden;
+      background: var(--app);
+      border: 1px solid #0a0a0a;
+      box-shadow: 0 24px 84px rgba(0,0,0,.42);
+    }
+
+    .win {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 56px 286px minmax(0, 1fr) 392px;
+      grid-template-rows: 38px 48px minmax(0, 1fr) 196px 26px;
+      background: var(--surface);
+    }
+
+    .titlebar {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      display: grid;
+      grid-template-columns: 56px 286px minmax(0, 1fr) 138px;
+      align-items: center;
+      background: var(--titlebar);
+      border-bottom: 1px solid var(--stroke);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .app-mark {
+      width: 24px;
+      height: 24px;
+      margin-left: 14px;
+      display: grid;
+      place-items: center;
+      border-radius: 5px;
+      background: #272727;
+      border: 1px solid var(--stroke);
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .window-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      padding: 0 10px;
+      color: var(--text);
+    }
+
+    .win-search {
+      justify-self: center;
+      width: min(680px, 76%);
+      height: 28px;
+      border: 1px solid var(--stroke);
+      border-radius: 6px;
+      background: #242424;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      color: var(--muted);
+    }
+
+    .caption {
+      display: grid;
+      grid-template-columns: repeat(3, 46px);
+      height: 38px;
+      justify-self: end;
+    }
+
+    .cap {
+      display: grid;
+      place-items: center;
+      color: #c8c8c8;
+      font-size: 12px;
+    }
+
+    .cap.close {
+      color: #fff;
+      background: #4a1f1f;
+    }
+
+    .commandbar {
+      grid-column: 3 / 5;
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 392px;
+      background: #202020;
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    .taskline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 14px;
+      border-right: 1px solid var(--stroke);
+      min-width: 0;
+    }
+
+    .taskline-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .taskline-main strong {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .taskline-main span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .task-actions,
+    .evidence-title,
+    .top-badges {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    .evidence-title {
+      justify-content: space-between;
+      padding: 0 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .rail {
+      grid-column: 1;
+      grid-row: 2 / 5;
+      background: #2e2e2e;
+      border-right: 1px solid #262626;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 8px;
+      gap: 4px;
+    }
+
+    .rail-btn {
+      width: 54px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      color: #d0d0d0;
+      border-left: 3px solid transparent;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .rail-btn.active {
+      border-left-color: var(--accent);
+      background: rgba(255,255,255,.08);
+      color: #fff;
+    }
+
+    .rail-spacer { flex: 1; }
+
+    .sidebar {
+      grid-column: 2;
+      grid-row: 2 / 5;
+      background: var(--surface);
+      border-right: 1px solid var(--stroke);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .section {
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--stroke-soft);
+    }
+
+    .side-block {
+      padding: 7px 0;
+      border-bottom: 1px solid var(--stroke-soft);
+    }
+
+    .side-row {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 12px;
+      color: var(--text);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .side-row.active {
+      background: var(--surface-3);
+    }
+
+    .side-row.dim {
+      color: var(--muted);
+    }
+
+    .badge {
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 7px;
+      border-radius: 4px;
+      border: 1px solid var(--stroke);
+      color: var(--muted);
+      background: rgba(0,0,0,.1);
+      font-size: 11px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .badge.accent { color: #dff1ff; background: rgba(0,120,212,.2); border-color: rgba(0,120,212,.55); }
+    .badge.success { color: var(--success); border-color: rgba(108,203,95,.42); }
+    .badge.warn { color: var(--warning); border-color: rgba(243,199,79,.46); }
+    .badge.error { color: var(--error); border-color: rgba(255,107,107,.48); }
+
+    .main {
+      grid-column: 3;
+      grid-row: 3;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: #1c1c1c;
+    }
+
+    .tabs {
+      height: 36px;
+      display: flex;
+      background: #282828;
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    .tab {
+      height: 36px;
+      min-width: 154px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      border-right: 1px solid var(--stroke);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .tab.active {
+      color: #fff;
+      background: #1c1c1c;
+      border-top: 2px solid var(--accent);
+    }
+
+    .crumbs {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+      border-bottom: 1px solid var(--stroke-soft);
+    }
+
+    .scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      padding: 14px 18px;
+    }
+
+    .hero {
+      border: 1px solid var(--stroke);
+      background: var(--surface-2);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 0 rgba(255,255,255,.04) inset;
+    }
+
+    .hero h2 {
+      margin: 0 0 8px;
+      color: #fff;
+      font-size: 21px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .state {
+      min-width: 0;
+      border: 1px solid var(--stroke-soft);
+      border-radius: 6px;
+      background: #1b1b1b;
+      padding: 9px;
+    }
+
+    .state span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+
+    .state strong {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .message,
+    .stage,
+    .e-card,
+    .report,
+    .plan-card {
+      border: 1px solid var(--stroke);
+      border-radius: 7px;
+      background: var(--surface-2);
+      margin-bottom: 10px;
+    }
+
+    .message-head {
+      height: 31px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--stroke-soft);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .message-body {
+      padding: 11px 12px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.52;
+    }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .quick {
+      min-height: 82px;
+      border: 1px solid var(--stroke);
+      border-radius: 7px;
+      background: #222;
+      padding: 12px;
+    }
+
+    .quick strong,
+    .e-card h3,
+    .report strong,
+    .plan-card strong {
+      display: block;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 7px;
+    }
+
+    .quick span,
+    .e-card p,
+    .report p,
+    .plan-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .activity-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .stage {
+      margin: 0;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto 58px;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .role {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 5px;
+      background: #333;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .stage-main strong {
+      display: block;
+      margin-bottom: 3px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .stage-main span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.36;
+    }
+
+    .duration {
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 11px;
+      text-align: right;
+    }
+
+    .composer {
+      grid-column: 3;
+      grid-row: 4;
+      background: #1a1a1a;
+      border-top: 1px solid var(--stroke);
+      display: grid;
+      grid-template-rows: 1fr 36px;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .input {
+      border: 1px solid var(--stroke);
+      border-radius: 7px;
+      background: #101010;
+      padding: 10px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .composer-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .modes {
+      display: flex;
+      overflow: hidden;
+      border: 1px solid var(--stroke);
+      border-radius: 6px;
+    }
+
+    .mode {
+      height: 29px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      border-right: 1px solid var(--stroke);
+      background: #242424;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mode:last-child { border-right: 0; }
+    .mode.active { color: #fff; background: var(--accent); }
+
+    .btn {
+      height: 29px;
+      border: 1px solid var(--stroke);
+      border-radius: 6px;
+      padding: 0 12px;
+      background: #2a2a2a;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 12px;
+    }
+
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.warn { color: var(--warning); border-color: rgba(243,199,79,.52); }
+    .btn.error { color: #ffb8b8; border-color: rgba(255,107,107,.5); }
+
+    .inspector {
+      grid-column: 4;
+      grid-row: 3 / 5;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: #1a1a1a;
+      border-left: 1px solid var(--stroke);
+    }
+
+    .panel-tabs {
+      height: 36px;
+      display: flex;
+      background: #282828;
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    .panel-tab {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      border-right: 1px solid var(--stroke);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .panel-tab.active {
+      color: #fff;
+      background: #1a1a1a;
+      border-top: 2px solid var(--accent);
+    }
+
+    .panel-body {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      padding: 12px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+    }
+
+    .e-card {
+      padding: 10px;
+      margin: 0;
+    }
+
+    .e-row {
+      min-height: 31px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--stroke-soft);
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .e-row:last-child { border-bottom: 0; }
+
+    .preview {
+      height: 220px;
+      border: 1px solid var(--stroke);
+      border-radius: 7px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 32px 1fr 42px;
+      background: #111;
+    }
+
+    .preview-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 10px;
+      background: #222;
+      border-bottom: 1px solid var(--stroke-soft);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .preview-main {
+      padding: 15px;
+      background: linear-gradient(135deg, #151515, #242424);
+    }
+
+    .preview-main h3 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .preview-main p {
+      width: 80%;
+      margin: 0;
+      color: #aaa;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .player {
+      display: grid;
+      grid-template-columns: 28px 1fr 44px;
+      align-items: center;
+      gap: 9px;
+      padding: 0 10px;
+      background: #0b0b0b;
+      border-top: 1px solid var(--stroke-soft);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .play {
+      width: 23px;
+      height: 23px;
+      display: grid;
+      place-items: center;
+      border-radius: 4px;
+      background: #333;
+      color: var(--text);
+      font-size: 10px;
+    }
+
+    .bar {
+      height: 4px;
+      background: #414141;
+      position: relative;
+    }
+
+    .bar::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 46%;
+      background: var(--accent);
+    }
+
+    .bottom {
+      grid-column: 3 / 5;
+      grid-row: 4;
+      background: #151515;
+      border-top: 1px solid var(--stroke);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .bottom-tabs {
+      height: 32px;
+      display: flex;
+      border-bottom: 1px solid var(--stroke);
+      background: #202020;
+    }
+
+    .bottom-tab {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border-right: 1px solid var(--stroke);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .bottom-tab.active {
+      color: var(--text);
+      background: #151515;
+    }
+
+    .terminal {
+      flex: 1;
+      padding: 10px 12px;
+      overflow: hidden;
+      color: #c7c7c7;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .terminal .ok { color: var(--success); }
+    .terminal .bad { color: var(--error); }
+    .terminal .warn { color: var(--warning); }
+
+    .statusbar {
+      grid-column: 1 / -1;
+      grid-row: 5;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      color: #fff;
+      font-size: 12px;
+    }
+
+    .report {
+      padding: 13px;
+      border-color: rgba(243,199,79,.48);
+    }
+
+    .report h2 {
+      margin: 8px 0;
+      color: #fff;
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    .metric-grid,
+    .plan-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 11px;
+    }
+
+    .metric,
+    .plan-card {
+      border: 1px solid var(--stroke-soft);
+      border-radius: 6px;
+      background: #1b1b1b;
+      padding: 9px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+
+    .metric strong {
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .web {
+      height: 100%;
+      display: grid;
+      grid-template-rows: 58px minmax(0, 1fr);
+      background: #111;
+    }
+
+    .web-nav {
+      display: grid;
+      grid-template-columns: 240px 1fr auto;
+      align-items: center;
+      gap: 18px;
+      padding: 0 28px;
+      border-bottom: 1px solid var(--stroke);
+      background: #171717;
+    }
+
+    .web-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .web-tabs {
+      display: flex;
+      gap: 6px;
+      justify-self: center;
+    }
+
+    .web-tab {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .web-tab.active {
+      color: #fff;
+      background: var(--surface-3);
+    }
+
+    .web-main {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 16px;
+      padding: 18px 24px;
+      background: #111;
+    }
+
+    .web-center,
+    .web-right {
+      min-height: 0;
+      border: 1px solid var(--stroke);
+      border-radius: 10px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .web-center {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) 158px;
+    }
+
+    .web-head {
+      padding: 16px;
+      border-bottom: 1px solid var(--stroke-soft);
+      background: #202020;
+    }
+
+    .web-head h2 {
+      margin: 0 0 8px;
+      color: #fff;
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    .web-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .web-scroll {
+      padding: 14px 16px;
+      overflow: hidden;
+    }
+
+    .web-compose {
+      padding: 12px;
+      border-top: 1px solid var(--stroke-soft);
+      background: #181818;
+      display: grid;
+      grid-template-rows: 1fr 34px;
+      gap: 8px;
+    }
+
+    .web-right {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .web-right .panel-tabs {
+      flex: 0 0 auto;
+    }
+
+    .compact-web {
+      width: 430px;
+      height: 890px;
+      margin: 35px auto;
+      border: 1px solid var(--stroke);
+      border-radius: 10px;
+      overflow: hidden;
+      background: var(--surface);
+      display: grid;
+      grid-template-rows: 54px 42px minmax(0, 1fr) 168px;
+    }
+
+    .mobile-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      background: #171717;
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    .mobile-tabs {
+      display: flex;
+      background: #252525;
+      border-bottom: 1px solid var(--stroke);
+    }
+
+    .mobile-tabs span {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      border-right: 1px solid var(--stroke);
+    }
+
+    .mobile-tabs .active {
+      color: #fff;
+      background: var(--accent);
+    }
+
+    .mobile-main {
+      min-height: 0;
+      overflow: hidden;
+      padding: 12px;
+    }
+
+    .mobile-compose {
+      padding: 10px;
+      display: grid;
+      grid-template-rows: 1fr 30px;
+      gap: 8px;
+      border-top: 1px solid var(--stroke);
+      background: #181818;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-title">
+    <h1>Karo v6 Windows + Web premium mockups</h1>
+    <span>Windows-first desktop and web app surfaces, standard Fluent-like palette</span>
+  </div>
+
+  <section class="shot" data-shot="windows-cockpit">
+    <div class="win">
+      <div class="titlebar">
+        <div class="app-mark">K</div>
+        <div class="window-title"><strong>Karo</strong><span>D:\projects\anime-vault</span></div>
+        <div class="win-search"><span>Search, run command, or ask Karo</span><strong>Ctrl K</strong></div>
+        <div class="caption"><span class="cap">-</span><span class="cap">[]</span><span class="cap close">x</span></div>
+      </div>
+      <div class="rail"><div class="rail-btn active">K</div><div class="rail-btn">F</div><div class="rail-btn">R</div><div class="rail-btn">M</div><div class="rail-spacer"></div><div class="rail-btn">S</div></div>
+      <aside class="sidebar">
+        <div class="section">Explorer <span>...</span></div>
+        <div class="side-block"><div class="side-row active"><span>anime-vault</span></div><div class="side-row"><span>apps</span></div><div class="side-row"><span>docs</span></div><div class="side-row dim"><span>.karo ignored</span></div></div>
+        <div class="section">Tasks</div>
+        <div class="side-block"><div class="side-row active"><span>Anime site</span><span class="badge warn">staged</span></div><div class="side-row"><span>Explain router</span><span class="badge">chat</span></div><div class="side-row"><span>Gradle build</span><span class="badge error">failed</span></div></div>
+        <div class="section">Project State</div>
+        <div class="side-block"><div class="side-row"><span>Kind</span><span>static_site</span></div><div class="side-row"><span>Context</span><span>4 files</span></div><div class="side-row"><span>Write gate</span><span>Apply</span></div></div>
+      </aside>
+      <div class="commandbar"><div class="taskline"><div class="taskline-main"><strong>Task Cockpit</strong><span>Create an anime streaming website with a player and clean design</span></div><div class="task-actions"><span class="badge accent">Auto route</span><span class="badge warn">Apply required</span></div></div><div class="evidence-title"><span>Evidence</span><span class="badge">No active preview</span></div></div>
+      <main class="main">
+        <div class="tabs"><div class="tab active">Task Cockpit <span>x</span></div><div class="tab">README.md <span>x</span></div></div>
+        <div class="crumbs">Karo / Task Cockpit / Chat</div>
+        <div class="scroll">
+          <div class="hero"><h2>Windows-first local AI IDE</h2><p>Chat, Plan, Agent, Preview, Changes, Terminal, and Recovery all reflect one honest run state. Premium comes from clarity and native Windows discipline, not decoration.</p><div class="state-grid"><div class="state"><span>Mode</span><strong>Auto</strong></div><div class="state"><span>Project kind</span><strong>static_site</strong></div><div class="state"><span>Artifacts</span><strong>none yet</strong></div><div class="state"><span>Preview</span><strong>locked</strong></div></div></div>
+          <div class="message"><div class="message-head"><span>You</span><span>Auto route</span></div><div class="message-body">Create an anime streaming website with a player and a clean design.</div></div>
+          <div class="message"><div class="message-head"><span>Karo</span><span>Agent can stage artifacts</span></div><div class="message-body">I can prepare reviewable files first. Apply is required before disk writes. Preview unlocks only after a real web artifact exists in the project.</div></div>
+          <div class="quick-grid"><div class="quick"><strong>Chat</strong><span>Read-only answers and project explanations.</span></div><div class="quick"><strong>Plan</strong><span>Structured implementation plan. No Apply.</span></div><div class="quick"><strong>Agent</strong><span>Stages artifacts, validates, waits for Apply.</span></div></div>
+        </div>
+      </main>
+      <section class="composer"><div class="input">Ask Karo to build, fix, explain, refactor, validate, or plan. Attach files or select project context before Agent runs.</div><div class="composer-row"><div class="modes"><span class="mode active">Auto</span><span class="mode">Chat</span><span class="mode">Plan</span><span class="mode">Agent</span><span class="mode">Quick Edit</span></div><div><button class="btn">Attach</button> <button class="btn primary">Start</button></div></div></section>
+      <aside class="inspector"><div class="panel-tabs"><div class="panel-tab active">Preview</div><div class="panel-tab">Changes</div><div class="panel-tab">Logs</div><div class="panel-tab">Usage</div></div><div class="panel-body"><div class="e-card"><h3>No preview yet</h3><p>Preview appears after a real web target is applied or an allowed dev command is started.</p></div><div class="e-card"><div class="e-row"><span>Artifacts</span><span class="badge">none staged</span></div><div class="e-row"><span>Validation</span><span class="badge">not recorded</span></div><div class="e-row"><span>Apply</span><span class="badge">disabled</span></div><div class="e-row"><span>Terminal</span><span class="badge warn">safe runner</span></div></div></div></aside>
+      <div class="statusbar"><span>codex/cursor-level-workbench-flow</span><span>Auto | Context 4 files | Safety enabled</span></div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="windows-agent">
+    <div class="win">
+      <div class="titlebar"><div class="app-mark">K</div><div class="window-title"><strong>Karo</strong><span>D:\projects\anime-vault</span></div><div class="win-search"><span>Agent run: anime website</span><strong>running</strong></div><div class="caption"><span class="cap">-</span><span class="cap">[]</span><span class="cap close">x</span></div></div>
+      <div class="rail"><div class="rail-btn active">A</div><div class="rail-btn">F</div><div class="rail-btn">T</div><div class="rail-spacer"></div><div class="rail-btn">S</div></div>
+      <aside class="sidebar"><div class="section">Run Stages</div><div class="side-block"><div class="side-row active"><span>Researcher</span><span class="badge success">done</span></div><div class="side-row active"><span>Planner</span><span class="badge success">done</span></div><div class="side-row active"><span>Coder</span><span class="badge success">done</span></div><div class="side-row"><span>Validator</span><span class="badge accent">running</span></div><div class="side-row"><span>Finalizer</span><span class="badge">pending</span></div></div><div class="section">Artifacts</div><div class="side-block"><div class="side-row"><span>index.html</span><span class="badge warn">new</span></div><div class="side-row"><span>style.css</span><span class="badge warn">new</span></div><div class="side-row"><span>app.js</span><span class="badge warn">new</span></div></div></aside>
+      <div class="commandbar"><div class="taskline"><div class="taskline-main"><strong>Agent Workspace</strong><span>website_creation / static_site / staged artifacts</span></div><div class="task-actions"><span class="badge accent">Validating</span><span class="badge warn">Disk unchanged</span></div></div><div class="evidence-title"><span>Changes</span><span class="badge warn">Review before Apply</span></div></div>
+      <main class="main"><div class="tabs"><div class="tab active">Agent Activity <span>x</span></div><div class="tab">Final Report <span>x</span></div></div><div class="crumbs">Karo / Runs / website_creation / public events</div><div class="scroll"><div class="hero"><h2>Generating a reviewable anime viewer</h2><p>Public stages show what happened and what evidence exists. Hidden model reasoning is never shown as product UI.</p><div class="state-grid"><div class="state"><span>Status</span><strong>validating</strong></div><div class="state"><span>Artifacts</span><strong>3 staged</strong></div><div class="state"><span>Preview</span><strong>after Apply</strong></div><div class="state"><span>Write gate</span><strong>closed</strong></div></div></div><div class="activity-list"><div class="stage"><div class="role">R</div><div class="stage-main"><strong>Researcher</strong><span>Detected static_site and selected 4 relevant files. No files changed.</span></div><span class="badge success">done</span><span class="duration">18s</span></div><div class="stage"><div class="role">P</div><div class="stage-main"><strong>Planner</strong><span>Planned local HTML/CSS/JS site with player, search, genres, popular titles, and responsive catalog.</span></div><span class="badge success">done</span><span class="duration">&lt;1s</span></div><div class="stage"><div class="role">C</div><div class="stage-main"><strong>Coder</strong><span>Staged 3 artifacts. Recovered valid file content from non-JSON model output.</span></div><span class="badge success">done</span><span class="duration">84s</span></div><div class="stage"><div class="role">V</div><div class="stage-main"><strong>Validator</strong><span>Checking safe paths, non-empty files, player shell, sections, and no network dependencies.</span></div><span class="badge accent">running</span><span class="duration">12s</span></div></div></div></main>
+      <section class="composer"><div class="input">Agent is validating staged artifacts. Disk writes are blocked until Apply Changes.</div><div class="composer-row"><div class="modes"><span class="mode">Auto</span><span class="mode">Chat</span><span class="mode">Plan</span><span class="mode active">Agent</span></div><div><button class="btn">Stop</button> <button class="btn warn">Review Changes</button></div></div></section>
+      <aside class="inspector"><div class="panel-tabs"><div class="panel-tab">Preview</div><div class="panel-tab active">Changes</div><div class="panel-tab">Files</div><div class="panel-tab">Usage</div></div><div class="panel-body"><div class="e-card"><h3>Staged files</h3><div class="e-row"><span>index.html</span><span class="badge warn">new</span></div><div class="e-row"><span>style.css</span><span class="badge warn">new</span></div><div class="e-row"><span>app.js</span><span class="badge warn">new</span></div></div><div class="e-card"><h3>Validation</h3><p>Static checks cover player, navigation, sections, search behavior, safe paths, and local-only output.</p></div><div class="e-card"><h3>Apply boundary</h3><p>The project directory remains unchanged until Apply Changes.</p></div></div></aside>
+      <div class="bottom"><div class="bottom-tabs"><div class="bottom-tab active">Terminal</div><div class="bottom-tab">Validation</div><div class="bottom-tab">Logs</div></div><div class="terminal"><span class="ok">$ validate staged artifacts</span><br>safe paths: ok<br>non-empty files: ok<br>required player shell: ok<br><span class="warn">preview: waiting for Apply</span></div></div>
+      <div class="statusbar"><span>Agent: website_creation</span><span>Artifacts staged | Apply required</span></div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="windows-preview-apply">
+    <div class="win">
+      <div class="titlebar"><div class="app-mark">K</div><div class="window-title"><strong>Karo</strong><span>D:\projects\anime-vault</span></div><div class="win-search"><span>Preview: staged-only apply required</span><strong>blocked honestly</strong></div><div class="caption"><span class="cap">-</span><span class="cap">[]</span><span class="cap close">x</span></div></div>
+      <div class="rail"><div class="rail-btn active">V</div><div class="rail-btn">C</div><div class="rail-btn">T</div><div class="rail-spacer"></div><div class="rail-btn">S</div></div>
+      <aside class="sidebar"><div class="section">Artifacts</div><div class="side-block"><div class="side-row active"><span>index.html</span><span class="badge warn">new</span></div><div class="side-row"><span>style.css</span><span class="badge warn">new</span></div><div class="side-row"><span>app.js</span><span class="badge warn">new</span></div></div><div class="section">Validation</div><div class="side-block"><div class="side-row"><span>Paths</span><span class="badge success">ok</span></div><div class="side-row"><span>Player</span><span class="badge success">ok</span></div><div class="side-row"><span>Sections</span><span class="badge success">ok</span></div></div></aside>
+      <div class="commandbar"><div class="taskline"><div class="taskline-main"><strong>Preview and Apply</strong><span>Staged files are reviewable; Preview unlocks after Apply</span></div><div class="task-actions"><span class="badge success">validated</span><span class="badge warn">Apply required</span></div></div><div class="evidence-title"><span>Preview</span><span class="badge warn">locked</span></div></div>
+      <main class="main"><div class="tabs"><div class="tab active">Final Report <span>x</span></div><div class="tab">Diff: index.html <span>x</span></div></div><div class="crumbs">Karo / Agent / final report</div><div class="scroll"><div class="hero"><h2>Ready for review, not applied</h2><p>The run produced staged files and passed deterministic checks. Karo still needs explicit Apply before disk writes and before opening local preview.</p><div class="state-grid"><div class="state"><span>Files</span><strong>3 staged</strong></div><div class="state"><span>Validation</span><strong>passed</strong></div><div class="state"><span>Disk</span><strong>unchanged</strong></div><div class="state"><span>Preview</span><strong>after Apply</strong></div></div></div><div class="report"><strong>Final Report</strong><p>Staged `index.html`, `style.css`, and `app.js`. Validated safe paths, required sections, local player shell, and no external runtime dependencies.</p><div class="metric-grid"><div class="metric"><span>Validated</span><strong>static site checks</strong></div><div class="metric"><span>Not run</span><strong>browser QA</strong></div><div class="metric"><span>Next</span><strong>Apply Changes</strong></div></div></div></div></main>
+      <section class="composer"><div class="input">Review the staged diff, then Apply Changes to write files. Preview remains disabled until Apply.</div><div class="composer-row"><div class="modes"><span class="mode">Auto</span><span class="mode">Chat</span><span class="mode">Plan</span><span class="mode active">Agent</span></div><div><button class="btn">Open Diff</button> <button class="btn warn">Apply Changes</button></div></div></section>
+      <aside class="inspector"><div class="panel-tabs"><div class="panel-tab active">Preview</div><div class="panel-tab">Changes</div><div class="panel-tab">Logs</div></div><div class="panel-body"><div class="preview"><div class="preview-top"><span>index.html</span><span class="badge warn">Apply first</span></div><div class="preview-main"><h3>Anime Vault</h3><p>Local anime viewer with a player shell, catalog, search, genres, and popular section.</p></div><div class="player"><span class="play">P</span><span class="bar"></span><span>12:42</span></div></div><div class="e-card"><h3>Preview locked</h3><p>Karo can show a design snapshot, but opening the real file is blocked until Apply writes staged artifacts.</p></div><div class="e-card"><div class="e-row"><span>Open preview</span><span class="badge">disabled</span></div><div class="e-row"><span>Apply</span><span class="badge warn">available</span></div></div></div></aside>
+      <div class="statusbar"><span>Final report</span><span>Validated | Staged | Apply required</span></div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="windows-recovery">
+    <div class="win">
+      <div class="titlebar"><div class="app-mark">K</div><div class="window-title"><strong>Karo</strong><span>D:\projects\anime-vault</span></div><div class="win-search"><span>Recovery: run stopped before success</span><strong>safe stop</strong></div><div class="caption"><span class="cap">-</span><span class="cap">[]</span><span class="cap close">x</span></div></div>
+      <div class="rail"><div class="rail-btn active">R</div><div class="rail-btn">L</div><div class="rail-btn">T</div><div class="rail-spacer"></div><div class="rail-btn">S</div></div>
+      <aside class="sidebar"><div class="section">Recovery</div><div class="side-block"><div class="side-row active"><span>Coder failed</span><span class="badge error">failed</span></div><div class="side-row"><span>Artifacts</span><span class="badge">0</span></div><div class="side-row"><span>Validation</span><span class="badge">not recorded</span></div><div class="side-row"><span>Preview</span><span class="badge">unavailable</span></div></div><div class="section">Actions</div><div class="side-block"><div class="side-row"><span>Retry reduced context</span></div><div class="side-row"><span>Open logs</span></div><div class="side-row"><span>Switch to Quick Edit</span></div></div></aside>
+      <div class="commandbar"><div class="taskline"><div class="taskline-main"><strong>Recovery</strong><span>Run stopped before completion; no hidden success state</span></div><div class="task-actions"><span class="badge error">Coder failed</span><span class="badge">Apply disabled</span></div></div><div class="evidence-title"><span>Logs</span><span class="badge error">raw evidence</span></div></div>
+      <main class="main"><div class="tabs"><div class="tab active">Recovery <span>x</span></div><div class="tab">Logs <span>x</span></div></div><div class="crumbs">Karo / Recovery / safe stop</div><div class="scroll"><div class="report"><span class="badge error">not success yet</span><h2>Run stopped before completion</h2><p>Coder returned invalid artifact JSON after one repair retry. Karo did not apply files, did not create a fake preview, and did not mark the task complete.</p><div class="metric-grid"><div class="metric"><span>Failed stage</span><strong>Coder</strong></div><div class="metric"><span>Preserved artifacts</span><strong>None</strong></div><div class="metric"><span>Next action</span><strong>Retry reduced context</strong></div></div></div><div style="height:10px"></div><div class="activity-list"><div class="stage"><div class="role">O</div><div class="stage-main"><strong>Orchestrator</strong><span>Selected Agent mode for website generation.</span></div><span class="badge success">done</span><span class="duration">3s</span></div><div class="stage"><div class="role">C</div><div class="stage-main"><strong>Coder</strong><span>Invalid artifact JSON after repair retry. No files applied.</span></div><span class="badge error">failed</span><span class="duration">84s</span></div></div></div></main>
+      <aside class="inspector"><div class="panel-tabs"><div class="panel-tab active">Logs</div><div class="panel-tab">Recovery</div><div class="panel-tab">Terminal</div></div><div class="panel-body"><div class="e-card"><h3>Public note</h3><p>The failure remains visible. No hidden success state was created.</p></div><div class="e-card"><h3>Preview unavailable</h3><p>No browser preview because no applied web artifact exists.</p></div><div class="e-card"><h3>Retry</h3><p>Use smaller context and stricter artifact schema, or Quick Edit for deterministic files.</p></div></div></aside>
+      <div class="bottom"><div class="bottom-tabs"><div class="bottom-tab active">Terminal</div><div class="bottom-tab">Logs</div><div class="bottom-tab">Validation</div></div><div class="terminal"><span class="ok">$ pnpm test</span><br>PASS desktopOrchestratorTransport.test.ts<br><span class="bad">$ rm -rf .</span><br>blocked by policy before execution<br>$ pnpm --filter @ai-agent-orchestrator/desktop-windows gui:check<br>waiting for user action</div></div>
+      <div class="statusbar"><span>Recovery state</span><span>Safe stop | Artifacts 0 | Apply disabled</span></div>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="web-cockpit">
+    <div class="web">
+      <nav class="web-nav"><div class="web-brand"><span class="app-mark" style="margin:0">K</span><span>Karo Web</span></div><div class="web-tabs"><span class="web-tab active">Task</span><span class="web-tab">Runs</span><span class="web-tab">Project</span><span class="web-tab">Models</span></div><div class="top-badges"><span class="badge success">Runtime v2</span><span class="badge warn">Safe commands</span></div></nav>
+      <main class="web-main">
+        <section class="web-center"><div class="web-head"><h2>Web task cockpit</h2><p>Same run model and evidence-first flow as desktop, but without Windows chrome. This is the browser surface.</p><div class="state-grid"><div class="state"><span>Mode</span><strong>Auto</strong></div><div class="state"><span>Project</span><strong>anime-vault</strong></div><div class="state"><span>Artifacts</span><strong>none yet</strong></div><div class="state"><span>Apply</span><strong>required</strong></div></div></div><div class="web-scroll"><div class="message"><div class="message-head"><span>You</span><span>Auto</span></div><div class="message-body">Create an anime streaming website with a player and clean design.</div></div><div class="message"><div class="message-head"><span>Karo</span><span>Agent can stage artifacts</span></div><div class="message-body">I can prepare reviewable files first. Apply is required before disk writes. Preview unlocks only after a real web artifact exists.</div></div><div class="quick-grid"><div class="quick"><strong>Chat</strong><span>Read-only.</span></div><div class="quick"><strong>Plan</strong><span>No artifacts.</span></div><div class="quick"><strong>Agent</strong><span>Stages and validates.</span></div></div></div><div class="web-compose"><div class="input">Ask Karo to build, fix, explain, refactor, validate, or plan...</div><div class="composer-row"><div class="modes"><span class="mode active">Auto</span><span class="mode">Chat</span><span class="mode">Plan</span><span class="mode">Agent</span></div><button class="btn primary">Start</button></div></div></section>
+        <aside class="web-right"><div class="panel-tabs"><div class="panel-tab active">Preview</div><div class="panel-tab">Changes</div><div class="panel-tab">Logs</div></div><div class="panel-body"><div class="e-card"><h3>No preview yet</h3><p>Preview appears only after a real target exists.</p></div><div class="e-card"><div class="e-row"><span>Validation</span><span class="badge">not recorded</span></div><div class="e-row"><span>Apply</span><span class="badge">disabled</span></div><div class="e-row"><span>Terminal</span><span class="badge warn">safe runner</span></div></div></div></aside>
+      </main>
+    </div>
+  </section>
+
+  <section class="shot" data-shot="web-compact">
+    <div class="compact-web">
+      <div class="mobile-nav"><div class="web-brand"><span class="app-mark" style="margin:0">K</span><span>Karo</span></div><span class="badge success">Runtime v2</span></div>
+      <div class="mobile-tabs"><span class="active">Task</span><span>Evidence</span><span>Logs</span></div>
+      <div class="mobile-main"><div class="hero"><h2 style="font-size:17px">Anime viewer</h2><p>Agent staged 3 files. Apply is required before Preview.</p></div><div class="message"><div class="message-head"><span>You</span><span>Agent</span></div><div class="message-body">Build an anime viewer with a player and clean design.</div></div><div class="stage" style="grid-template-columns:34px minmax(0,1fr);margin-bottom:10px"><div class="role">R</div><div class="stage-main"><strong>Researcher</strong><span>Detected static_site and selected files.</span></div></div><div class="stage" style="grid-template-columns:34px minmax(0,1fr);margin-bottom:10px"><div class="role">C</div><div class="stage-main"><strong>Coder</strong><span>Staged files. Apply required.</span></div></div><div class="e-card"><h3>Evidence drawer</h3><p>Preview, Changes, Terminal, Logs, and Recovery collapse into tabs on narrow web screens.</p></div></div>
+      <div class="mobile-compose"><div class="input">Continue, retry, or ask for a plan...</div><div class="composer-row"><span class="badge">Context 4 files</span><button class="btn primary">Start</button></div></div>
+    </div>
+  </section>
+</body>
+</html>

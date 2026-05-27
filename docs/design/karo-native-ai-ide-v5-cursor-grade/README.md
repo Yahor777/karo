@@ -1,5 +1,7 @@
 # Karo Native AI IDE v5 Cursor-Grade Standard UI
 
+Status: superseded by `docs/design/karo-native-ai-ide-v6-windows-web-premium`. v5 improved the IDE polish, but it still leaned toward generic/mac-like desktop chrome instead of the current Windows desktop + web product shape.
+
 This direction replaces v4 as the design target. v4 fixed the over-colored AI aesthetic, but it was too plain and too close to a bare VS Code wireframe. v5 keeps standard IDE colors while raising the product quality: better density, stronger task context, clearer agent evidence, and more refined split panes.
 
 The goal is not to copy Cursor branding. The goal is Cursor-grade maturity:
